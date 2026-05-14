@@ -31,44 +31,10 @@ pub(crate) fn ops_report(orqa: &Orqa, args: OpsReportArgs) -> Result<(), String>
     println!("- pods: `{}`", pods.len());
     println!();
 
-    print_operator_issues(orqa, since.as_ref())?;
-
     for pod in pods {
         print_pod(orqa, &pod, since.as_ref())?;
     }
 
-    Ok(())
-}
-
-fn print_operator_issues(orqa: &Orqa, since: Option<&SinceFilter>) -> Result<(), String> {
-    println!("## Operator Issues");
-    let mut count = 0usize;
-    for state in ["new", "cur", "closed"] {
-        for path in sorted_files(&orqa.issues_home().join(state))? {
-            if !include_path(&path, since)? {
-                continue;
-            }
-            let contents = read_to_string(&path)?;
-            let (fields, body) = split_front_matter(&contents);
-            let id = message_id(&path)?;
-            println!();
-            println!("### `{}`", id);
-            println!("- state: `{state}`");
-            println!("- path: `{}`", path.display());
-            for key in ["pod", "fin", "status", "severity", "kind", "title", "from"] {
-                if let Some(value) = field_value(&fields, key) {
-                    println!("- {key}: `{}`", inline(&value));
-                }
-            }
-            print_context(body);
-            count += 1;
-        }
-    }
-    if count == 0 {
-        println!();
-        println!("No operator issues matched.");
-    }
-    println!();
     Ok(())
 }
 
@@ -198,17 +164,6 @@ fn header_value<'a>(headers: &'a [(&str, &str)], key: &str) -> Option<&'a str> {
         .iter()
         .find(|(header, _)| header.eq_ignore_ascii_case(key))
         .map(|(_, value)| *value)
-}
-
-fn print_context(body: &str) {
-    let context = clip(body);
-    if context.is_empty() {
-        return;
-    }
-    println!();
-    println!("```text");
-    println!("{context}");
-    println!("```");
 }
 
 fn print_compact_context(body: &str) {

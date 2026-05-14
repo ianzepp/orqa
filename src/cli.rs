@@ -30,7 +30,7 @@ pub(crate) enum Command {
     Mail(MailCommand),
     /// Task helpers for pod-local work items.
     Task(TaskCommand),
-    /// Human operator surface for cross-pod monitoring and issues.
+    /// Human operator surface for cross-pod monitoring.
     Ops(OpsCommand),
     /// Run the wake loop for a pod.
     Loop(LoopArgs),
@@ -135,30 +135,8 @@ pub(crate) struct OpsCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum OpsSubcommand {
-    /// Generate a Markdown report of pods, issues, tasks, and mail.
+    /// Generate a Markdown report of pods, tasks, and mail.
     Report(OpsReportArgs),
-    /// List operator issues.
-    Issues(OpsIssueListArgs),
-    /// Read or update one operator issue.
-    Issue(OpsIssueCommand),
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct OpsIssueCommand {
-    #[command(subcommand)]
-    pub(crate) command: OpsIssueSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub(crate) enum OpsIssueSubcommand {
-    /// Read an operator issue.
-    Read(OpsIssueReadArgs),
-    /// Acknowledge an operator issue.
-    Ack(OpsIssueReadArgs),
-    /// Resolve an operator issue and mail the originating fin.
-    Resolve(OpsIssueResolutionArgs),
-    /// Dismiss an operator issue and mail the originating fin.
-    Dismiss(OpsIssueResolutionArgs),
 }
 
 #[derive(Debug, Args)]
@@ -590,60 +568,11 @@ pub(crate) struct MailMessageArgs {
     pub(crate) message: String,
 }
 
-#[derive(Debug, Args)]
+#[derive(Debug, Args, Default)]
 pub(crate) struct OpsReportArgs {
     /// Include only records at or after this time. Accepts Unix seconds or relative durations like 30m, 2h, 1d.
     #[arg(long)]
     pub(crate) since: Option<String>,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct OpsIssueListArgs {
-    /// Include resolved and dismissed issues.
-    #[arg(long)]
-    pub(crate) all: bool,
-    /// Filter by pod slug.
-    #[arg(long)]
-    pub(crate) pod: Option<String>,
-    /// Filter by originating fin slug.
-    #[arg(long)]
-    pub(crate) fin: Option<String>,
-    /// Filter by issue status front matter.
-    #[arg(long)]
-    pub(crate) status: Option<String>,
-    /// Filter by issue severity front matter.
-    #[arg(long)]
-    pub(crate) severity: Option<String>,
-    /// Filter by issue kind front matter.
-    #[arg(long)]
-    pub(crate) kind: Option<String>,
-    /// Filter by arbitrary front matter field, as key=value.
-    #[arg(long = "field")]
-    pub(crate) fields: Vec<String>,
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    pub(crate) json: bool,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct OpsIssueReadArgs {
-    /// Issue id, filename, or path.
-    pub(crate) issue: String,
-    /// Emit machine-readable JSON.
-    #[arg(long)]
-    pub(crate) json: bool,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct OpsIssueResolutionArgs {
-    /// Issue id, filename, or path.
-    pub(crate) issue: String,
-    /// Resolution note mailed back to the originating fin.
-    #[arg(long)]
-    pub(crate) note: Option<String>,
-    /// Clear the originating fin's sleep marker after sending the resolution mail.
-    #[arg(long)]
-    pub(crate) wake: bool,
 }
 use std::{ffi::OsString, path::PathBuf};
 

@@ -5,7 +5,6 @@ use std::{fs, path::PathBuf};
 
 use crate::{
     cli::{FinRefArgs, MailListArgs, MailMessageArgs, SendMailArgs, SendTaskArgs, TaskListArgs},
-    issues::create_operator_issue,
     model::{FinRef, Orqa},
 };
 
@@ -16,7 +15,7 @@ pub(crate) use storage::{
 };
 pub(crate) use tasks::{
     TaskFilters, canonical_task_body, collect_tasks, field_value, mark_task_done, sort_tasks,
-    split_front_matter, upsert_field,
+    split_front_matter,
 };
 
 #[cfg(test)]
@@ -24,9 +23,17 @@ pub(crate) use storage::unique_mail_name;
 #[cfg(test)]
 pub(crate) use tasks::{priority_sort_value, quote_value};
 
+const OPS_POD: &str = "ops";
+const OPERATOR_FIN: &str = "operator";
+
 pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
     let from = resolve_sender(args.from.as_deref())?;
-    let to = resolve_address(&args.to, Some(&from.pod))?;
+    let requested_to = resolve_address(&args.to, Some(&from.pod))?;
+    let to = if is_operator_alias(&requested_to.fin) {
+        resolve_address("operator@ops.orqa", None)?
+    } else {
+        requested_to.clone()
+    };
 
     if from.pod != to.pod && !is_operator_mail_bridge(&from.pod, &to.pod) {
         return Err(format!(
@@ -41,26 +48,32 @@ pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
         None => read_stdin()?,
     };
 
-    if to.fin == "operator" {
-        let path = create_operator_issue(orqa, &from, &args.subject, &body)?;
-        println!("{}", path.display());
-        println!("opened operator issue for {}", from.pod);
-        return Ok(());
-    }
-
     let from_fin = FinRef::new(&from.pod, &from.fin)?;
     let to_fin = FinRef::new(&to.pod, &to.fin)?;
     ensure_target_fin(orqa, &to_fin)?;
     let mail_home = orqa.mail_home(&to_fin);
     ensure_maildir(&mail_home)?;
 
-    let message = format!(
-        "From: {}\nTo: {}\nSubject: {}\n\n{}\n",
-        from.label(),
-        to.label(),
-        args.subject,
-        body
-    );
+    let message = if is_operator_alias(&requested_to.fin) {
+        format!(
+            "From: {}\nTo: {}\nOriginal-To: {}\nSource-Pod: {}\nSource-Fin: {}\nSubject: {}\n\n{}\n",
+            from.label(),
+            to.label(),
+            requested_to.label(),
+            from.pod,
+            from.fin,
+            args.subject,
+            body
+        )
+    } else {
+        format!(
+            "From: {}\nTo: {}\nSubject: {}\n\n{}\n",
+            from.label(),
+            to.label(),
+            args.subject,
+            body
+        )
+    };
     let path = deliver_mail(&mail_home, &message)?;
 
     println!("{}", path.display());
@@ -127,11 +140,15 @@ pub(crate) fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
 }
 
 fn is_operator_bridge(pod: &str) -> bool {
-    pod == "operator"
+    pod == OPS_POD
 }
 
 fn is_operator_mail_bridge(from_pod: &str, to_pod: &str) -> bool {
-    from_pod == "operator" || to_pod == "operator"
+    from_pod == OPS_POD || to_pod == OPS_POD
+}
+
+fn is_operator_alias(fin: &str) -> bool {
+    fin == OPERATOR_FIN
 }
 
 fn ensure_target_fin(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {

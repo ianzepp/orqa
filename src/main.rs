@@ -2,7 +2,6 @@ mod cli;
 mod commands;
 mod config;
 mod doctor;
-mod issues;
 mod mailbox;
 mod model;
 mod report;

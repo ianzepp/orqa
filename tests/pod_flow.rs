@@ -607,11 +607,11 @@ fn task_done_marks_front_matter_status_done() {
 }
 
 #[test]
-fn operator_pod_can_bridge_mail_and_tasks_cross_pod() {
+fn ops_pod_can_bridge_mail_and_tasks_cross_pod() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "operator"]);
-    orqa(&root, ["fin", "create", "operator", "dispatcher"]);
+    orqa(&root, ["pod", "create", "ops"]);
+    orqa(&root, ["fin", "create", "ops", "operator"]);
     orqa(&root, ["pod", "create", "target-pod"]);
     orqa(&root, ["fin", "create", "target-pod", "ceo"]);
 
@@ -621,7 +621,7 @@ fn operator_pod_can_bridge_mail_and_tasks_cross_pod() {
             "mail",
             "send",
             "--from",
-            "dispatcher@operator.orqa",
+            "operator@ops.orqa",
             "--to",
             "ceo@target-pod.orqa",
             "--subject",
@@ -642,16 +642,13 @@ fn operator_pod_can_bridge_mail_and_tasks_cross_pod() {
             "--from",
             "ceo@target-pod.orqa",
             "--to",
-            "dispatcher@operator.orqa",
+            "operator@ops.orqa",
             "--subject",
             "Re: External update",
             "Status is ready.",
         ],
     );
-    let operator_mail = orqa_output(
-        &root,
-        ["mail", "list", "--pod", "operator", "--fin", "dispatcher"],
-    );
+    let operator_mail = orqa_output(&root, ["mail", "list", "--pod", "ops", "--fin", "operator"]);
     assert!(operator_mail.contains("Re: External update"));
 
     orqa(
@@ -660,7 +657,7 @@ fn operator_pod_can_bridge_mail_and_tasks_cross_pod() {
             "task",
             "send",
             "--from",
-            "dispatcher@operator.orqa",
+            "operator@ops.orqa",
             "--to",
             "ceo@target-pod.orqa",
             "--title",
@@ -682,7 +679,7 @@ fn operator_pod_can_bridge_mail_and_tasks_cross_pod() {
             "--from",
             "ceo@target-pod.orqa",
             "--to",
-            "dispatcher@operator.orqa",
+            "operator@ops.orqa",
             "--title",
             "Not allowed",
             "This should fail.",
@@ -893,9 +890,11 @@ fn service_run_scans_all_pods() {
 }
 
 #[test]
-fn mail_to_operator_opens_issue_and_resolution_mails_fin() {
+fn mail_to_operator_alias_delivers_to_ops_operator() {
     let root = temp_root();
 
+    orqa(&root, ["pod", "create", "ops"]);
+    orqa(&root, ["fin", "create", "ops", "operator"]);
     orqa(&root, ["pod", "create", "deploy"]);
     orqa(&root, ["fin", "create", "deploy", "release"]);
     orqa(
@@ -914,60 +913,8 @@ fn mail_to_operator_opens_issue_and_resolution_mails_fin() {
         ],
     );
 
-    let issues = orqa_output(&root, ["ops", "issues"]);
-    assert!(issues.contains("pod=deploy"));
-    assert!(issues.contains("fin=release"));
-    assert!(issues.contains("severity=blocked"));
-    assert!(issues.contains("kind=auth"));
-    assert!(issues.contains("title=\"Railway auth expired\""));
-    assert!(orqa_output(&root, ["ops", "issues", "--pod", "deploy"]).contains("pod=deploy"));
-    assert!(orqa_output(&root, ["ops", "issues", "--fin", "release"]).contains("fin=release"));
-    assert!(
-        orqa_output(&root, ["ops", "issues", "--severity", "blocked"]).contains("severity=blocked")
-    );
-    assert!(orqa_output(&root, ["ops", "issues", "--kind", "auth"]).contains("kind=auth"));
-    assert!(
-        orqa_output(&root, ["ops", "issues", "--field", "status=open"]).contains("status=open")
-    );
-    assert_eq!(
-        orqa_output(&root, ["ops", "issues", "--pod", "other-pod"]),
-        ""
-    );
-
-    let issue_id = issues
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .unwrap();
-    let issue = orqa_output(&root, ["ops", "issue", "read", issue_id]);
-    assert!(issue.contains("status: open"));
-    assert!(issue.contains("Railway CLI is not logged in."));
-
-    orqa(&root, ["fin", "sleep", "deploy", "release"]);
-    assert!(orqa_output(&root, ["fin", "status", "deploy", "release"]).contains("sleeping=true"));
-    orqa(
-        &root,
-        [
-            "ops",
-            "issue",
-            "resolve",
-            issue_id,
-            "--note",
-            "Re-authenticated Railway. Try deploy again.",
-            "--wake",
-        ],
-    );
-    assert!(orqa_output(&root, ["fin", "status", "deploy", "release"]).contains("sleeping=false"));
-
-    let closed = orqa_output(&root, ["ops", "issues", "--all"]);
-    assert!(closed.contains("closed"));
-    assert!(closed.contains("status=resolved"));
-
-    let mail = orqa_output(
-        &root,
-        ["mail", "list", "--pod", "deploy", "--fin", "release"],
-    );
-    assert!(mail.contains("Re: Railway auth expired"));
+    let mail = orqa_output(&root, ["mail", "list", "--pod", "ops", "--fin", "operator"]);
+    assert!(mail.contains("Railway auth expired"));
     let message_id = mail
         .lines()
         .next()
@@ -976,20 +923,27 @@ fn mail_to_operator_opens_issue_and_resolution_mails_fin() {
     let message = orqa_output(
         &root,
         [
-            "mail", "read", "--pod", "deploy", "--fin", "release", message_id,
+            "mail", "read", "--pod", "ops", "--fin", "operator", message_id,
         ],
     );
-    assert!(message.contains("From: operator@deploy.orqa"));
-    assert!(message.contains("Issue resolved."));
-    assert!(message.contains("Re-authenticated Railway. Try deploy again."));
+    assert!(message.contains("From: release@deploy.orqa"));
+    assert!(message.contains("To: operator@ops.orqa"));
+    assert!(message.contains("Original-To: operator@deploy.orqa"));
+    assert!(message.contains("Source-Pod: deploy"));
+    assert!(message.contains("Source-Fin: release"));
+    assert!(message.contains("severity: blocked"));
+    assert!(message.contains("kind: auth"));
+    assert!(message.contains("Railway CLI is not logged in."));
 
     fs::remove_dir_all(root).unwrap();
 }
 
 #[test]
-fn ops_report_prints_pods_tasks_mail_and_issues() {
+fn ops_report_prints_pods_tasks_and_mail() {
     let root = temp_root();
 
+    orqa(&root, ["pod", "create", "ops"]);
+    orqa(&root, ["fin", "create", "ops", "operator"]);
     orqa(&root, ["pod", "create", "deploy"]);
     orqa(&root, ["fin", "create", "deploy", "release"]);
     orqa(
@@ -1017,7 +971,7 @@ fn ops_report_prints_pods_tasks_mail_and_issues() {
             "release@deploy.orqa",
             "--subject",
             "Release note",
-            "Remember to summarize operator issues.",
+            "Remember to summarize operator mail.",
         ],
     );
     orqa(
@@ -1037,7 +991,8 @@ fn ops_report_prints_pods_tasks_mail_and_issues() {
 
     let report = orqa_output(&root, ["ops", "report", "--since", "1d"]);
     assert!(report.contains("# Orqa Ops Report"));
-    assert!(report.contains("## Operator Issues"));
+    assert!(report.contains("## Pod `ops`"));
+    assert!(report.contains("### Fin `operator`"));
     assert!(report.contains("## Pod `deploy`"));
     assert!(report.contains("### Fin `release`"));
     assert!(report.contains("#### Tasks"));
@@ -1045,66 +1000,12 @@ fn ops_report_prints_pods_tasks_mail_and_issues() {
     assert!(report.contains("Cut the next release and verify the service."));
     assert!(report.contains("#### Mail"));
     assert!(report.contains("subject=`Release note`"));
-    assert!(report.contains("Remember to summarize operator issues."));
+    assert!(report.contains("Remember to summarize operator mail."));
     assert!(report.contains("Cloudflare auth expired"));
+    assert!(report.contains("to=`operator@ops.orqa`"));
     assert!(report.contains("Need a human to refresh credentials."));
     assert!(report.contains(" id=`"));
     assert!(report.contains(" path=`"));
-
-    fs::remove_dir_all(root).unwrap();
-}
-
-#[test]
-fn operator_issue_ack_and_dismiss_move_issue_and_mail_fin() {
-    let root = temp_root();
-
-    orqa(&root, ["pod", "create", "support"]);
-    orqa(&root, ["fin", "create", "support", "helper"]);
-    orqa(
-        &root,
-        [
-            "mail",
-            "send",
-            "--from",
-            "helper@support.orqa",
-            "--to",
-            "operator@support.orqa",
-            "--subject",
-            "Need policy call",
-            "I need a human decision.",
-        ],
-    );
-
-    let issues = orqa_output(&root, ["ops", "issues"]);
-    let issue_id = issues
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .unwrap();
-    orqa(&root, ["ops", "issue", "ack", issue_id]);
-    let acknowledged = orqa_output(&root, ["ops", "issues", "--status", "acknowledged"]);
-    assert!(acknowledged.contains("status=acknowledged"));
-
-    orqa(
-        &root,
-        [
-            "ops",
-            "issue",
-            "dismiss",
-            issue_id,
-            "--note",
-            "Operator decided this is not needed.",
-        ],
-    );
-    let closed = orqa_output(&root, ["ops", "issues", "--all", "--status", "dismissed"]);
-    assert!(closed.contains("closed"));
-    assert!(closed.contains("status=dismissed"));
-
-    let mail = orqa_output(
-        &root,
-        ["mail", "list", "--pod", "support", "--fin", "helper"],
-    );
-    assert!(mail.contains("Re: Need policy call"));
 
     fs::remove_dir_all(root).unwrap();
 }

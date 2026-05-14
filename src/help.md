@@ -308,8 +308,8 @@ orqa mail delete <message-id>
 Unread messages live in `mail/new` and wake the receiving fin. Marking a message
 done moves it to `mail/cur`, clearing that wake signal.
 
-`operator@<pod>.orqa` is a reserved address. Mail sent there becomes an
-operator issue instead of normal fin mail:
+`operator@<pod>.orqa` is a reserved address. Mail sent there is forwarded to
+the real operator mailbox at `operator@ops.orqa`:
 
 ```sh
 orqa mail send \
@@ -375,32 +375,20 @@ orqa task delete <task-id>
 Open tasks live in `tasks/new` and wake the assignee. Marking a task done moves
 it to `tasks/cur`, clearing that wake signal.
 
-## Operator Issues
+## Ops
 
-Operator issues are task-like records for work that needs human or privileged
-operator action. Fins create them by mailing `operator@<pod>.orqa`.
-
-List, read, acknowledge, resolve, or dismiss issues:
+Use the `ops` namespace for human/operator visibility commands:
 
 ```sh
 orqa ops
 orqa ops report --since 1d
-orqa ops issues --pod sample-pod --severity blocked
-orqa ops issue read <issue-id>
-orqa ops issue ack <issue-id>
-orqa ops issue resolve <issue-id> --note "Re-authenticated Cloudflare." --wake
-orqa ops issue dismiss <issue-id> --note "No longer relevant."
 ```
 
-Resolving or dismissing an issue moves it to the closed issue store and sends a
-normal mail message back to the originating fin. That returned mail is a wake
-signal, so the fin can resume through the usual loop. Pass `--wake` to clear the
-originating fin's sleep marker at the same time.
+`orqa ops` is an alias for `orqa ops report`.
 
 Use `orqa ops report` to print a Markdown evidence bundle covering all pods,
-operator issues, task records, mail records, file paths, statuses, and clipped
-context. `--since` accepts Unix seconds or relative durations such as `30m`,
-`2h`, or `1d`.
+task records, mail records, file paths, statuses, and clipped context. `--since`
+accepts Unix seconds or relative durations such as `30m`, `2h`, or `1d`.
 
 ## Sleep And Wake
 

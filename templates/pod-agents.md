@@ -46,7 +46,7 @@ If you are outside an Orqa-launched process, use full addresses such as
 Mail `operator@$ORQA_POD.orqa` when you are blocked on something that needs
 human or privileged operator action, such as expired auth, missing secrets,
 deploy permissions, billing/quota issues, or an unclear policy decision. Mail
-to that reserved address becomes an operator issue:
+to that reserved address is forwarded to `operator@ops.orqa`:
 
 ```sh
 orqa mail send \
@@ -71,7 +71,8 @@ make task bodies specific enough for another fin to act without guessing.
 ## Coordination
 
 - Prefer mail for conversation and tasks for commitments.
-- Escalate operator-owned blockers by mailing `operator@$ORQA_POD.orqa`.
+- Escalate operator-owned blockers by mailing `operator@$ORQA_POD.orqa`; Orqa
+  routes that mail to `operator@ops.orqa`.
 - If you have queued work but `orqa plan "$ORQA_POD"` reports `reason=debounced`,
   wait for the configured debounce interval instead of forcing another run.
 - Mark mail and tasks done when handled.

@@ -262,7 +262,7 @@ ORQA_POD=sample-pod ORQA_FIN=builder orqa mail done <message-id>
 ORQA_POD=sample-pod ORQA_FIN=planner orqa task send --to builder --title update-settings "please do this"
 ```
 
-Raise an operator issue by mailing the reserved operator address:
+Escalate to the human/operator pod by mailing the reserved operator address:
 
 ```sh
 orqa mail send \
@@ -270,7 +270,7 @@ orqa mail send \
   --to operator@sample-pod.orqa \
   --subject "Cloudflare auth expired" \
   "Cloudflare deploy is blocked until the operator logs in again."
-orqa ops issues
+orqa mail list --pod ops --fin operator
 ```
 
 Run one wake scan for the pod:
@@ -309,7 +309,6 @@ src/
   commands.rs         top-level command handlers
   config.rs           pod and fin config templates
   doctor.rs           pod readiness and backend connectivity checks
-  issues.rs           operator issue storage and lifecycle
   mailbox/
     mod.rs            mail and task command behavior
     storage.rs        Maildir storage, addresses, ids, and sleep markers
@@ -504,8 +503,8 @@ Messages can also be deleted from either `mail/new` or `mail/cur`:
 orqa mail delete <message-id>
 ```
 
-`operator@<pod>.orqa` is reserved. Mail sent to that address is promoted into
-an operator issue instead of being delivered to a fin inbox:
+`operator@<pod>.orqa` is reserved. Mail sent to that address is forwarded to
+the real operator mailbox at `operator@ops.orqa`:
 
 ```sh
 orqa mail send \
@@ -515,9 +514,9 @@ orqa mail send \
   "Railway CLI is not logged in."
 ```
 
-The issue keeps the original body and derives its pod, fin, and title from the
-mail. If the body starts with YAML front matter, fields such as `severity`,
-`kind`, or `related_run` are preserved.
+The forwarded mail keeps the original body and adds headers such as
+`Original-To`, `Source-Pod`, and `Source-Fin` so the ops pod can tell where the
+escalation came from.
 
 ### Short Addresses
 
@@ -653,7 +652,7 @@ Commands:
   fin     Create or operate fins inside a pod
   mail    Mail helpers for pod-local fin messages
   task    Task helpers for pod-local work items
-  ops     Human operator surface for cross-pod monitoring and issues
+  ops     Human operator surface for cross-pod monitoring
   loop    Run the wake loop for a pod
   plan    Show the wake plan for a pod without running fins
   service Manage the background wake-loop service
@@ -811,30 +810,15 @@ path. `task done` moves the task from `tasks/new` to `tasks/cur`.
 ```text
 orqa ops
 orqa ops report [--since <when>]
-orqa ops issues [--all] [--pod <pod>] [--fin <fin>]
-                [--status <status>] [--severity <severity>] [--kind <kind>]
-                [--field <key=value>] [--json]
-orqa ops issue read <issue> [--json]
-orqa ops issue ack <issue> [--json]
-orqa ops issue resolve <issue> [--note <note>] [--wake]
-orqa ops issue dismiss <issue> [--note <note>] [--wake]
 ```
 
-`orqa ops` prints operator issue counts. `ops issues` lists open and
-acknowledged issues from `operator/issues/new` and `operator/issues/cur`;
-`--all` also includes closed issues from `operator/issues/closed`.
-
-Issues are created when a fin mails `operator@<pod>.orqa`. Filters match issue
-front matter exactly, and `--field` can be repeated for custom fields such as
-`source=operator-mail` or `related_run=<run>`. `ops issue ack` moves an open
-issue from `new` to `cur`. `resolve` and `dismiss` move the issue to `closed`,
-record the operator note, and send a normal mail reply back to the originating
-fin. Pass `--wake` to clear that fin's sleep marker after sending the reply.
+`orqa ops` is an alias for `orqa ops report`. The `ops` namespace is reserved
+for human/operator visibility and control commands.
 
 `ops report` prints a Markdown evidence bundle for the operator: all pods and
-fins, operator issues, task records, mail records, file paths, statuses, and
-clipped context. `--since` accepts Unix seconds or relative durations such as
-`30m`, `2h`, or `1d`.
+fins, task records, mail records, file paths, statuses, and clipped context.
+`--since` accepts Unix seconds or relative durations such as `30m`, `2h`, or
+`1d`.
 
 ### Wake Loop
 
