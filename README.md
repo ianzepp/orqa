@@ -612,6 +612,7 @@ orqa service uninstall
 orqa service start
 orqa service stop
 orqa service status
+orqa service run [--interval <seconds>] [--force] [--framework <framework>] [-- <args>...]
 ```
 
 The service command manages one background wake-loop service for the active
@@ -627,6 +628,8 @@ after `--` are preserved in the service definition for each pod scan.
 Use `service start`, `service stop`, and `service status` to control the
 installed service through `launchctl` or `systemctl --user`. Use
 `service uninstall` to stop the service and remove its generated service file.
+Use `service run` to run the same foreground loop directly when debugging a
+service definition or watching scan output in a terminal.
 
 ## Status
 

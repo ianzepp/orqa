@@ -286,13 +286,15 @@ orqa service start
 orqa service status
 orqa service stop
 orqa service uninstall
+orqa service run --interval 60 -- "handle your open Orqa mail and tasks"
 ```
 
 On macOS, Orqa writes a user LaunchAgent and controls it with `launchctl`. On
 Linux, Orqa writes a user systemd unit and controls it with `systemctl --user`.
 The service repeatedly discovers all pods under `ORQA_HOME/pods/` and runs the
 equivalent of `orqa loop <pod>` for each pod at the interval chosen during
-install. New pods are picked up on the next scan.
+install. New pods are picked up on the next scan. Use `orqa service run` to run
+that same foreground loop directly while debugging.
 
 ## Runtime Locks
 

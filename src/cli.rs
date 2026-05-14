@@ -142,8 +142,7 @@ pub(crate) enum ServiceSubcommand {
     Stop,
     /// Print platform service status for ORQA_HOME.
     Status,
-    /// Run the service loop. Used by generated platform services.
-    #[command(hide = true)]
+    /// Run the foreground service loop for debugging.
     Run(ServiceRunArgs),
 }
 
