@@ -239,6 +239,29 @@ pub(crate) fn read_run_record_for(
     read_run_record(&orqa.run_home(fin, &run).join("status.json"))
 }
 
+pub(crate) fn latest_run_started_at(
+    orqa: &Orqa,
+    fin: &FinRef,
+) -> Result<Option<SystemTime>, String> {
+    let run = match fs::read_to_string(orqa.latest_run_path(fin)) {
+        Ok(run) => run.trim().to_string(),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => {
+            return Err(format!(
+                "failed to read latest run for {}: {error}",
+                fin.label()
+            ));
+        }
+    };
+    let micros = run
+        .split('.')
+        .next()
+        .ok_or_else(|| format!("latest run id {run:?} has no timestamp"))?
+        .parse::<u64>()
+        .map_err(|_| format!("latest run id {run:?} has invalid timestamp"))?;
+    Ok(Some(UNIX_EPOCH + Duration::from_micros(micros)))
+}
+
 pub(crate) fn read_run_logs(
     orqa: &Orqa,
     fin: &FinRef,

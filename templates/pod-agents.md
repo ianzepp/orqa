@@ -72,6 +72,8 @@ make task bodies specific enough for another fin to act without guessing.
 
 - Prefer mail for conversation and tasks for commitments.
 - Escalate operator-owned blockers by mailing `operator@$ORQA_POD.orqa`.
+- If you have queued work but `orqa plan "$ORQA_POD"` reports `reason=debounced`,
+  wait for the configured debounce interval instead of forcing another run.
 - Mark mail and tasks done when handled.
 - Before starting new work, check `orqa mail list` and `orqa task list`.
 - Use `orqa fin list` before addressing another fin by slug if you are unsure

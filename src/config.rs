@@ -1,4 +1,4 @@
-use std::{collections::BTreeMap, ffi::OsString, fs};
+use std::{collections::BTreeMap, ffi::OsString, fs, time::Duration};
 
 use toml::{Table, Value};
 
@@ -33,6 +33,12 @@ pub(crate) fn pod_config_template(pod: &PodRef) -> String {
 [pod]
 slug = "{slug}"
 default_backend = "codex"
+# Minimum interval between runs for each fin. A fin can override this in
+# fin.toml. Examples: "30s", "5m", "3h". Use "0" to run any time there is work.
+debounce = "5m"
+# Run idle fins at least this often even when they have no mail or tasks. A fin
+# can override this in fin.toml. Use "0" to run only when there is work.
+exec_always = "0"
 
 # Codex is enabled by default. Adjust command/exec_args/chat_args here if the
 # Codex CLI shape changes on this machine.
@@ -138,6 +144,10 @@ pub(crate) fn fin_config_template(fin: &FinRef) -> String {
 [fin]
 slug = "{slug}"
 # backend = "codex"
+# Use "0" to run any time there is work.
+# debounce = "5m"
+# Use "0" to run only when there is work.
+# exec_always = "3h"
 
 # Per-fin template values. These can be used by backend exec_args and chat_args
 # in pod.toml.
@@ -188,6 +198,24 @@ pub(crate) fn backend_command(
 
 pub(crate) fn backend_chat_command(orqa: &Orqa, fin: &FinRef) -> Result<BackendCommand, String> {
     backend_command_for(orqa, fin, &[], BackendMode::Chat)
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct RunPolicy {
+    pub(crate) debounce: Option<Duration>,
+    pub(crate) exec_always: Option<Duration>,
+}
+
+pub(crate) fn run_policy(orqa: &Orqa, fin: &FinRef) -> Result<RunPolicy, String> {
+    let pod_config = read_toml(&orqa.pod_home(&PodRef::new(&fin.pod)?).join("pod.toml"))?;
+    let fin_config = read_toml(&orqa.fin_home(fin).join("fin.toml"))?;
+    let pod = pod_config.get("pod").and_then(Value::as_table);
+    let fin_table = fin_config.get("fin").and_then(Value::as_table);
+
+    Ok(RunPolicy {
+        debounce: nonzero_duration(duration_override(pod, fin_table, "debounce")?),
+        exec_always: nonzero_duration(duration_override(pod, fin_table, "exec_always")?),
+    })
 }
 
 fn backend_command_for(
@@ -326,6 +354,49 @@ fn string_field(table: &Table, key: &str) -> Option<String> {
 
 fn bool_field(table: &Table, key: &str) -> Option<bool> {
     table.get(key)?.as_bool()
+}
+
+fn duration_override(
+    pod: Option<&Table>,
+    fin: Option<&Table>,
+    key: &str,
+) -> Result<Option<Duration>, String> {
+    match fin
+        .and_then(|table| string_field(table, key))
+        .or_else(|| pod.and_then(|table| string_field(table, key)))
+    {
+        Some(value) => parse_duration(&value)
+            .map(Some)
+            .map_err(|error| format!("invalid {key} {value:?}: {error}")),
+        None => Ok(None),
+    }
+}
+
+fn nonzero_duration(duration: Option<Duration>) -> Option<Duration> {
+    duration.filter(|duration| !duration.is_zero())
+}
+
+fn parse_duration(value: &str) -> Result<Duration, String> {
+    let value = value.trim();
+    if value.is_empty() {
+        return Err("duration cannot be empty".to_string());
+    }
+
+    let split = value
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(value.len());
+    let number = value[..split]
+        .parse::<u64>()
+        .map_err(|_| "duration must start with a positive integer".to_string())?;
+    let unit = value[split..].trim().to_ascii_lowercase();
+    let seconds = match unit.as_str() {
+        "" | "s" | "sec" | "secs" | "second" | "seconds" => number,
+        "m" | "min" | "mins" | "minute" | "minutes" => number * 60,
+        "h" | "hr" | "hrs" | "hour" | "hours" => number * 60 * 60,
+        "d" | "day" | "days" => number * 60 * 60 * 24,
+        _ => return Err("use a duration like 30s, 5m, 3h, or 1 day".to_string()),
+    };
+    Ok(Duration::from_secs(seconds))
 }
 
 fn required_string_array_field(table: &Table, key: &str) -> Result<Vec<String>, String> {

@@ -110,6 +110,8 @@ orqa fin exec sample-pod planner -- "handle your open mail and tasks"
 
 `orqa loop` scans a pod for fins with wake signals. Unread mail and open tasks
 are wake signals. Each wakeable fin is launched through its configured backend.
+The run policy in `pod.toml` and `fin.toml` can debounce repeated runs or wake
+idle fins periodically with `exec_always`.
 
 ```sh
 orqa loop sample-pod
@@ -208,6 +210,8 @@ orqa pod tail sample-pod --fin planner --follow
 [pod]
 slug = "sample-pod"
 default_backend = "codex"
+debounce = "5m"
+exec_always = "0"
 
 [backends.codex]
 enabled = true
@@ -239,10 +243,20 @@ Hermes, Pi, and custom runners.
 [fin]
 slug = "planner"
 # backend = "codex"
+# debounce = "5m"
+# exec_always = "3h"
 
 [backend]
 model = "gpt-5.3-codex"
 ```
+
+`debounce` and `exec_always` are run policy durations. `debounce` prevents a fin
+from running more often than the configured interval when work is waiting.
+`exec_always` wakes an idle fin after the configured interval even when there is
+no mail or task. Pod values are defaults; fin values override them. Durations
+accept plain seconds or units such as `30s`, `5m`, `3h`, or `1d`. Use
+`debounce = "0"` to run any time there is work, and `exec_always = "0"` to run
+only when there is work.
 
 Backend `exec_args` and `chat_args` are argv arrays, not shell strings.
 Template values include `{orqa_home}`, `{pod}`, `{pod_home}`, `{fin}`,

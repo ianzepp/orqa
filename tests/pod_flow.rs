@@ -340,7 +340,17 @@ fn plan_ignores_backend_errors_until_fin_is_wakeable() {
 
     orqa(&root, ["pod", "create", "test-pod"]);
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
-    fs::remove_file(root.join("pods/test-pod/pod.toml")).unwrap();
+    fs::write(
+        root.join("pods/test-pod/pod.toml"),
+        r#"
+[pod]
+slug = "test-pod"
+default_backend = "missing"
+debounce = "0"
+exec_always = "0"
+"#,
+    )
+    .unwrap();
 
     let idle = orqa_output(&root, ["plan", "test-pod"]);
     assert!(idle.contains("decision=would-skip"));
@@ -361,6 +371,100 @@ fn plan_ignores_backend_errors_until_fin_is_wakeable() {
     let wakeable = orqa_output(&root, ["plan", "test-pod"]);
     assert!(wakeable.contains("decision=would-skip"));
     assert!(wakeable.contains("reason=backend-error"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn plan_debounces_recent_runs_even_with_queued_work() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_echo_backend(&root, "test-pod");
+    set_pod_run_policy(&root, "test-pod", "debounce = \"1h\"\n");
+
+    orqa_output(&root, ["fin", "exec", "test-pod", "amy", "--", "recent"]);
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "amy@test-pod.orqa",
+            "--to",
+            "amy@test-pod.orqa",
+            "wake",
+        ],
+    );
+
+    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    assert!(plan.contains("decision=would-skip"));
+    assert!(plan.contains("reason=debounced"));
+    assert!(plan.contains("debounce=1h"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn zero_debounce_allows_queued_work_after_recent_runs() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_echo_backend(&root, "test-pod");
+    set_pod_run_policy(&root, "test-pod", "debounce = \"0\"\n");
+
+    orqa_output(&root, ["fin", "exec", "test-pod", "amy", "--", "recent"]);
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "amy@test-pod.orqa",
+            "--to",
+            "amy@test-pod.orqa",
+            "wake",
+        ],
+    );
+
+    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    assert!(plan.contains("decision=would-wake"));
+    assert!(plan.contains("reason=mail"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn plan_wakes_idle_fin_when_exec_always_is_due() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_echo_backend(&root, "test-pod");
+    set_pod_run_policy(&root, "test-pod", "exec_always = \"3h\"\n");
+
+    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    assert!(plan.contains("decision=would-wake"));
+    assert!(plan.contains("reason=exec-always"));
+    assert!(plan.contains("exec_always=3h"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn zero_exec_always_does_not_wake_idle_fin() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_echo_backend(&root, "test-pod");
+    set_pod_run_policy(&root, "test-pod", "exec_always = \"0\"\n");
+
+    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    assert!(plan.contains("decision=would-skip"));
+    assert!(plan.contains("reason=no-action"));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -828,6 +932,14 @@ exec_args = ["{{prompt}}"]
         ),
     )
     .unwrap();
+}
+
+fn set_pod_run_policy(root: &Path, pod: &str, policy: &str) {
+    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let config = fs::read_to_string(&pod_config).unwrap();
+    let config = config.replace("exec_always = \"0\"\n", "");
+    let config = config.replace("debounce = \"5m\"\n", policy);
+    fs::write(&pod_config, config).unwrap();
 }
 
 fn set_pwd_backend(root: &Path, pod: &str) {

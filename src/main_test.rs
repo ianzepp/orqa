@@ -185,6 +185,8 @@ fn pod_config_template_includes_commented_backend_examples() {
 
     assert!(toml.contains("[pod]"));
     assert!(toml.contains("slug = \"sample-pod\""));
+    assert!(toml.contains("debounce = \"5m\""));
+    assert!(toml.contains("exec_always = \"0\""));
     assert!(toml.contains("[backends.codex]"));
     assert!(toml.contains("command = \"codex\""));
     assert!(toml.contains("\"--skip-git-repo-check\""));
@@ -222,6 +224,8 @@ fn fin_config_template_inherits_pod_backend_by_default() {
     assert!(toml.contains("[fin]"));
     assert!(toml.contains("slug = \"amy\""));
     assert!(toml.contains("# backend = \"codex\""));
+    assert!(toml.contains("# debounce = \"5m\""));
+    assert!(toml.contains("# exec_always = \"3h\""));
 }
 
 #[test]

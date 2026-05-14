@@ -4,16 +4,17 @@ use std::{
     fs, io,
     path::PathBuf,
     process::{Command as ProcessCommand, Stdio},
+    time::Duration,
 };
 
 use serde::Serialize;
 
 use crate::{
     cli::{ChatArgs, ExecArgs, LoopArgs, PlanArgs, SuperviseArgs},
-    config::{BackendCommand, BackendMode, backend_chat_command, backend_command},
+    config::{BackendCommand, BackendMode, backend_chat_command, backend_command, run_policy},
     mailbox::unread_count,
     model::{FinRef, Orqa, PodRef},
-    runs::RunFiles,
+    runs::{RunFiles, latest_run_started_at},
     runtime_home::ensure_fin_runtime_homes,
     status::print_json,
 };
@@ -65,6 +66,9 @@ pub(crate) enum WakeReason {
     FinSleeping,
     AlreadyRunning,
     NoAction,
+    Debounced,
+    ExecAlways,
+    ConfigError,
     BackendError,
 }
 
@@ -78,6 +82,9 @@ impl std::fmt::Display for WakeReason {
             Self::FinSleeping => formatter.write_str("fin-sleeping"),
             Self::AlreadyRunning => formatter.write_str("already-running"),
             Self::NoAction => formatter.write_str("no-action"),
+            Self::Debounced => formatter.write_str("debounced"),
+            Self::ExecAlways => formatter.write_str("exec-always"),
+            Self::ConfigError => formatter.write_str("config-error"),
             Self::BackendError => formatter.write_str("backend-error"),
         }
     }
@@ -163,21 +170,47 @@ fn plan_fin(
     let lock = FinLock::try_existing(orqa, fin)?;
     let pid = lock.as_ref().map(|lock| lock.pid);
     let running = lock.as_ref().is_some_and(FinLock::is_live);
+    let policy = match run_policy(orqa, fin) {
+        Ok(policy) => policy,
+        Err(error) => {
+            return Ok(FinWakePlan {
+                fin: fin.fin.clone(),
+                decision: WakeDecision::WouldSkip,
+                reason: WakeReason::ConfigError,
+                fin_sleeping,
+                running,
+                pid,
+                unread_mail,
+                open_tasks,
+                backend: None,
+                detail: Some(error),
+            });
+        }
+    };
+    let last_run_age = latest_run_age(orqa, fin)?;
 
-    let (decision, reason) = if pod_sleeping && !force {
-        (WakeDecision::WouldSkip, WakeReason::PodSleeping)
+    let (decision, reason, detail) = if pod_sleeping && !force {
+        (WakeDecision::WouldSkip, WakeReason::PodSleeping, None)
     } else if fin_sleeping && !force {
-        (WakeDecision::WouldSkip, WakeReason::FinSleeping)
+        (WakeDecision::WouldSkip, WakeReason::FinSleeping, None)
     } else if running {
-        (WakeDecision::WouldSkip, WakeReason::AlreadyRunning)
-    } else if unread_mail > 0 && open_tasks > 0 {
-        (WakeDecision::WouldWake, WakeReason::MailAndTask)
-    } else if unread_mail > 0 {
-        (WakeDecision::WouldWake, WakeReason::Mail)
-    } else if open_tasks > 0 {
-        (WakeDecision::WouldWake, WakeReason::Task)
+        (WakeDecision::WouldSkip, WakeReason::AlreadyRunning, None)
+    } else if let Some(debounce) = policy.debounce {
+        if has_work(unread_mail, open_tasks) && last_run_age.is_some_and(|age| age < debounce) {
+            (
+                WakeDecision::WouldSkip,
+                WakeReason::Debounced,
+                Some(format!(
+                    "age={} debounce={}",
+                    format_duration(last_run_age.unwrap_or_default()),
+                    format_duration(debounce)
+                )),
+            )
+        } else {
+            work_or_idle_decision(unread_mail, open_tasks, policy.exec_always, last_run_age)
+        }
     } else {
-        (WakeDecision::WouldSkip, WakeReason::NoAction)
+        work_or_idle_decision(unread_mail, open_tasks, policy.exec_always, last_run_age)
     };
     let backend = if decision == WakeDecision::WouldWake {
         match resolve_exec_command(orqa, fin, args) {
@@ -211,8 +244,65 @@ fn plan_fin(
         unread_mail,
         open_tasks,
         backend,
-        detail: None,
+        detail,
     })
+}
+
+fn work_or_idle_decision(
+    unread_mail: usize,
+    open_tasks: usize,
+    exec_always: Option<Duration>,
+    last_run_age: Option<Duration>,
+) -> (WakeDecision, WakeReason, Option<String>) {
+    if unread_mail > 0 && open_tasks > 0 {
+        (WakeDecision::WouldWake, WakeReason::MailAndTask, None)
+    } else if unread_mail > 0 {
+        (WakeDecision::WouldWake, WakeReason::Mail, None)
+    } else if open_tasks > 0 {
+        (WakeDecision::WouldWake, WakeReason::Task, None)
+    } else if let Some(exec_always) = exec_always {
+        if last_run_age.is_none_or(|age| age >= exec_always) {
+            (
+                WakeDecision::WouldWake,
+                WakeReason::ExecAlways,
+                Some(format!("exec_always={}", format_duration(exec_always))),
+            )
+        } else {
+            (
+                WakeDecision::WouldSkip,
+                WakeReason::NoAction,
+                Some(format!(
+                    "age={} exec_always={}",
+                    format_duration(last_run_age.unwrap_or_default()),
+                    format_duration(exec_always)
+                )),
+            )
+        }
+    } else {
+        (WakeDecision::WouldSkip, WakeReason::NoAction, None)
+    }
+}
+
+fn has_work(unread_mail: usize, open_tasks: usize) -> bool {
+    unread_mail > 0 || open_tasks > 0
+}
+
+fn latest_run_age(orqa: &Orqa, fin: &FinRef) -> Result<Option<Duration>, String> {
+    let Some(started_at) = latest_run_started_at(orqa, fin)? else {
+        return Ok(None);
+    };
+    Ok(started_at.elapsed().ok())
+}
+
+fn format_duration(duration: Duration) -> String {
+    let seconds = duration.as_secs();
+    if seconds >= 60 * 60 && seconds % (60 * 60) == 0 {
+        format!("{}h", seconds / (60 * 60))
+    } else if seconds >= 60 && seconds % 60 == 0 {
+        format!("{}m", seconds / 60)
+    } else {
+        format!("{seconds}s")
+    }
 }
 
 fn print_plan(plan: &WakePlan, json: bool) -> Result<(), String> {
@@ -224,8 +314,13 @@ fn print_plan(plan: &WakePlan, json: bool) -> Result<(), String> {
         println!("pod {} sleeping=true", plan.pod);
     }
     for fin in &plan.fins {
+        let detail = fin
+            .detail
+            .as_ref()
+            .map(|detail| format!(" detail={detail}"))
+            .unwrap_or_default();
         println!(
-            "pod={} fin={} decision={} reason={} unread_mail={} open_tasks={} sleeping={} running={}",
+            "pod={} fin={} decision={} reason={} unread_mail={} open_tasks={} sleeping={} running={}{}",
             plan.pod,
             fin.fin,
             fin.decision,
@@ -233,7 +328,8 @@ fn print_plan(plan: &WakePlan, json: bool) -> Result<(), String> {
             fin.unread_mail,
             fin.open_tasks,
             fin.fin_sleeping,
-            fin.running
+            fin.running,
+            detail
         );
     }
     Ok(())

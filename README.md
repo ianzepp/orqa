@@ -115,6 +115,8 @@ and writes commented examples for OpenCode, Hermes, Pi, and a custom runner:
 [pod]
 slug = "sample-pod"
 default_backend = "codex"
+debounce = "5m"
+exec_always = "0"
 
 # Codex is enabled by default.
 [backends.codex]
@@ -170,10 +172,20 @@ backend unless `fin.backend` is uncommented:
 [fin]
 slug = "planner"
 # backend = "codex"
+# debounce = "5m"
+# exec_always = "3h"
 
 [backend]
 model = "gpt-5.3-codex"
 ```
+
+`debounce` and `exec_always` are run policy durations. `debounce` prevents a fin
+from running more often than the configured interval when mail or tasks are
+waiting. `exec_always` wakes an idle fin after the configured interval even when
+there is no mail or task. Pod values are defaults; fin values override them.
+Durations accept plain seconds or units such as `30s`, `5m`, `3h`, or `1d`.
+Use `debounce = "0"` to run any time there is work, and `exec_always = "0"` to
+run only when there is work.
 
 Backend argument lists are stored as argv arrays instead of shell strings. That
 keeps quoting behavior predictable when prompts or paths contain spaces.
@@ -800,7 +812,9 @@ orqa loop [--force] <pod> [-- <args>...]
 ```
 
 `orqa loop` scans a pod for fins with unread mail or open tasks. Wakeable fins
-are launched through their configured backend.
+are launched through their configured backend. The run policy in `pod.toml` and
+`fin.toml` can debounce repeated runs or wake idle fins periodically with
+`exec_always`.
 
 ```sh
 orqa loop sample-pod
