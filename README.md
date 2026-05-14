@@ -77,7 +77,7 @@ default_backend = "codex"
 [backends.codex]
 enabled = true
 command = "codex"
-args = ["{{prompt}}"]
+args = ["{prompt}"]
 
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
@@ -87,17 +87,17 @@ model = "gpt-5.3-codex"
 # [backends.opencode]
 # enabled = true
 # command = "opencode"
-# args = ["run", "--model", "{{model}}", "{{prompt}}"]
+# args = ["run", "--model", "{model}", "{prompt}"]
 
 # [backends.pi]
 # enabled = true
 # command = "pi"
 # args = [
 #     "exec",
-#     "--home", "{{fin_home}}",
-#     "--pod", "{{pod}}",
-#     "--fin", "{{fin}}",
-#     "{{prompt}}",
+#     "--home", "{fin_home}",
+#     "--pod", "{pod}",
+#     "--fin", "{fin}",
+#     "{prompt}",
 # ]
 ```
 
@@ -116,11 +116,9 @@ model = "gpt-5.3-codex"
 Backend argument lists are stored as argv arrays instead of shell strings. That
 keeps quoting behavior predictable when prompts or paths contain spaces.
 
-The config files are seeded by `pod create` and `fin create`. They are not wired
-into execution yet; current execution still uses `orqa fin run --framework ...`
-and `orqa loop --framework ...` while the backend command surface is being
-designed. For now, edit these files directly when backend policy or argv shapes
-need to change.
+The config files are seeded by `pod create` and `fin create`. `orqa fin run`
+and `orqa loop` use them when `--framework` is omitted. `--framework` remains
+an explicit command override for quick smoke tests and one-off runs.
 
 ## Quick Start
 
@@ -150,7 +148,7 @@ Run one wake scan for the pod:
 orqa loop sample-pod
 ```
 
-Run a fin directly through the default framework, currently `codex`:
+Run a fin directly through the configured backend:
 
 ```sh
 orqa fin run sample-pod amy -- --help
@@ -193,14 +191,15 @@ cargo test
 
 ## Fin Execution
 
-`orqa fin run` shells out to a framework. By default, that executable
-is `codex`.
+`orqa fin run` shells out to the backend selected by `pod.toml` and
+`fin.toml`. A fin inherits `[pod].default_backend` unless `fin.toml` sets
+`fin.backend`.
 
 ```sh
 orqa fin run sample-pod amy -- "work on the next task"
 ```
 
-Use `--framework` to run another executable:
+Use `--framework` to bypass config and run another executable:
 
 ```sh
 orqa fin run --framework /bin/echo sample-pod amy -- "hello"
@@ -460,8 +459,9 @@ orqa fin run [--framework <framework>] <pod> <fin> [-- <args>...]
 ```
 
 `fin create` creates the fin home, `.codex/`, `mail/`, `tasks/`, `fin.txt`,
-and `fin.toml`. `fin run` launches the framework executable, defaulting to
-`codex`, and passes any arguments after `--` directly to that executable:
+and `fin.toml`. `fin run` launches the configured backend unless `--framework`
+is provided, and passes any arguments after `--` as the `{prompt}` template
+value:
 
 ```sh
 orqa fin run sample-pod amy -- "work on the next task"
@@ -553,7 +553,7 @@ orqa loop [--force] [--framework <framework>] <pod> [-- <args>...]
 ```
 
 `orqa loop` scans a pod for fins with unread mail or open tasks. Wakeable fins
-are launched through the framework executable, defaulting to `codex`.
+are launched through their configured backend unless `--framework` is provided.
 
 ```sh
 orqa loop sample-pod

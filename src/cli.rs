@@ -122,8 +122,8 @@ pub(crate) struct LoopArgs {
     #[arg(long)]
     pub(crate) force: bool,
     /// Framework executable.
-    #[arg(long, default_value = "codex")]
-    pub(crate) framework: OsString,
+    #[arg(long)]
+    pub(crate) framework: Option<OsString>,
     /// Arguments passed to the framework.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
@@ -170,8 +170,8 @@ pub(crate) struct RunArgs {
     /// Fin slug inside the pod.
     pub(crate) fin: String,
     /// Framework executable.
-    #[arg(long, default_value = "codex")]
-    pub(crate) framework: OsString,
+    #[arg(long)]
+    pub(crate) framework: Option<OsString>,
     /// Arguments passed to the framework.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,

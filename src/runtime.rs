@@ -1,3 +1,17 @@
+use std::{
+    ffi::OsString,
+    fs,
+    path::PathBuf,
+    process::{Command as ProcessCommand, Stdio},
+};
+
+use crate::{
+    cli::{LoopArgs, RunArgs},
+    config::{BackendCommand, backend_command},
+    mailbox::unread_count,
+    model::{FinRef, Orqa, PodRef},
+};
+
 pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
     let pod = PodRef::new(&args.pod)?;
     if !args.force && orqa.pod_sleep_path(&pod).exists() {
@@ -34,7 +48,8 @@ pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
                 unread_mail,
                 open_tasks,
             };
-            wake_fin(orqa, &fin, &args.framework, &args.args, wake)?;
+            let command = resolve_run_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
+            wake_fin(orqa, &fin, &command.command, &command.args, wake)?;
         }
     }
 
@@ -43,7 +58,25 @@ pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
 
 pub(crate) fn run_fin(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
-    run_fin_foreground(orqa, &fin, &args.framework, &args.args)
+    let command = resolve_run_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
+    run_fin_foreground(orqa, &fin, &command.command, &command.args)
+}
+
+fn resolve_run_command(
+    orqa: &Orqa,
+    fin: &FinRef,
+    framework: Option<&OsString>,
+    args: &[OsString],
+) -> Result<BackendCommand, String> {
+    if let Some(framework) = framework {
+        return Ok(BackendCommand {
+            backend: "override".to_string(),
+            command: framework.clone(),
+            args: args.to_vec(),
+        });
+    }
+
+    backend_command(orqa, fin, args)
 }
 
 pub(crate) fn run_fin_foreground(
@@ -252,15 +285,3 @@ pub(crate) fn process_is_alive(pid: u32) -> bool {
 pub(crate) fn process_is_alive(_pid: u32) -> bool {
     false
 }
-use std::{
-    ffi::OsString,
-    fs,
-    path::PathBuf,
-    process::{Command as ProcessCommand, Stdio},
-};
-
-use crate::{
-    cli::{LoopArgs, RunArgs},
-    mailbox::unread_count,
-    model::{FinRef, Orqa, PodRef},
-};
