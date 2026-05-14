@@ -16,9 +16,9 @@ A pod is a collection of fins, or agents, that should share a goal, communicate
 with each other, and be woken by the same scan loop.
 
 A fin is one agent runtime identity inside one pod. In practice, a fin can be
-backed by runtimes such as Claude, Codex, OpenClaw, Hermes, Pi, or a custom
-command. Each fin has its own home directory, runtime state directories, mail
-inbox, and task queue.
+backed by runtimes such as Claude, Codex, OpenClaw, Hermes, Pi, an Ollama-backed
+agent integration, or a custom command. Each fin has its own home directory,
+runtime state directories, mail inbox, and task queue.
 
 `ORQA_HOME` is the root for all pods. It defaults to `~/.orqa`.
 
@@ -235,7 +235,11 @@ model = "gpt-5.3-codex"
 ```
 
 Generated `pod.toml` files also include commented examples for OpenCode,
-Hermes, Pi, and custom runners.
+Hermes, Pi, Ollama, and custom runners.
+
+The generated Ollama example uses `ollama launch codex` rather than raw
+`ollama run`, so Codex still provides the tool loop, working directory,
+sandboxing, and fin-local `CODEX_HOME` while Ollama supplies the model.
 
 `fin.toml` can override the backend or backend values for one fin:
 

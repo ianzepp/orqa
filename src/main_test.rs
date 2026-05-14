@@ -200,6 +200,9 @@ fn pod_config_template_includes_commented_backend_examples() {
     assert!(toml.contains("# exec_args = [\"--model\", \"{model}\", \"--oneshot\", \"{prompt}\"]"));
     assert!(toml.contains("# [backends.pi]"));
     assert!(toml.contains("#     \"--session-dir\", \"{fin_home}/.pi/sessions\","));
+    assert!(toml.contains("# [backends.ollama_codex]"));
+    assert!(toml.contains("#     \"launch\", \"codex\","));
+    assert!(toml.contains("# [backends.ollama_codex.defaults]"));
     assert!(toml.contains("# [backends.custom]"));
 }
 

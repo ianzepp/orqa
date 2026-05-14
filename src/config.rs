@@ -27,8 +27,8 @@ pub(crate) fn pod_config_template(pod: &PodRef) -> String {
 # Backend exec_args and chat_args are argv arrays, not shell strings. Supported
 # template values
 # include:
-#   {{orqa_home}}, {{pod}}, {{pod_home}}, {{fin}}, {{fin_home}}, {{codex_home}},
-#   {{mail_home}}, {{task_home}}, {{model}}, {{prompt}}
+#   {{orqa_home}}, {{pod}}, {{pod_home}}, {{fin}}, {{fin_home}},
+#   {{codex_home}}, {{mail_home}}, {{task_home}}, {{model}}, {{prompt}}
 
 [pod]
 slug = "{slug}"
@@ -98,6 +98,33 @@ model = "gpt-5.3-codex"
 #
 # [backends.pi.defaults]
 # model = "provider/model"
+
+# Ollama is most useful through a coding-agent integration. This runs Codex
+# against an Ollama model while keeping Codex's tool loop and fin-local
+# CODEX_HOME.
+# [backends.ollama_codex]
+# enabled = true
+# command = "ollama"
+# exec_args = [
+#     "launch", "codex",
+#     "--model", "{{model}}",
+#     "--",
+#     "exec",
+#     "--skip-git-repo-check",
+#     "--sandbox", "workspace-write",
+#     "--cd", "{{pod_home}}",
+#     "{{prompt}}",
+# ]
+# chat_args = [
+#     "launch", "codex",
+#     "--model", "{{model}}",
+#     "--",
+#     "--sandbox", "workspace-write",
+#     "--cd", "{{pod_home}}",
+# ]
+#
+# [backends.ollama_codex.defaults]
+# model = "gpt-oss:120b"
 
 # [backends.custom]
 # enabled = true

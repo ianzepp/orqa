@@ -14,10 +14,10 @@ with each other around a common goal. The pod owns the shared local namespace,
 backend definitions, and pod-local mail/task channels.
 
 A **fin** is one agent runtime identity inside a pod. In practice, a fin can be
-backed by runtimes such as Claude, Codex, OpenClaw, Hermes, Pi, or any custom
-command you configure. Each fin has its own home directory inside the pod,
-including isolated runtime state, a Maildir inbox for pod-local messages, and a
-Maildir-style task queue.
+backed by runtimes such as Claude, Codex, OpenClaw, Hermes, Pi, an Ollama-backed
+agent integration, or any custom command you configure. Each fin has its own
+home directory inside the pod, including isolated runtime state, a Maildir inbox
+for pod-local messages, and a Maildir-style task queue.
 
 `ORQA_HOME` is the root directory for all pods. It defaults to `~/.orqa`.
 
@@ -107,7 +107,8 @@ ORQA_HOME/pods/<pod>/fins/<fin>/fin.toml
 
 `pod.toml` owns backend definitions. This keeps command formats and backend
 policy in one place for the whole pod. `pod create` enables Codex by default
-and writes commented examples for OpenCode, Hermes, Pi, and a custom runner:
+and writes commented examples for OpenCode, Hermes, Pi, Ollama, and a custom
+runner:
 
 ```toml
 # Orqa pod configuration.
@@ -163,6 +164,27 @@ model = "gpt-5.3-codex"
 #     "{prompt}",
 # ]
 # chat_args = ["--model", "{model}", "--session-dir", "{fin_home}/.pi/sessions"]
+
+# [backends.ollama_codex]
+# enabled = true
+# command = "ollama"
+# exec_args = [
+#     "launch", "codex",
+#     "--model", "{model}",
+#     "--",
+#     "exec",
+#     "--skip-git-repo-check",
+#     "--sandbox", "workspace-write",
+#     "--cd", "{pod_home}",
+#     "{prompt}",
+# ]
+# chat_args = [
+#     "launch", "codex",
+#     "--model", "{model}",
+#     "--",
+#     "--sandbox", "workspace-write",
+#     "--cd", "{pod_home}",
+# ]
 ```
 
 `fin.toml` records per-fin backend values. A fin inherits the pod default
@@ -198,14 +220,17 @@ Codex     codex exec --skip-git... <prompt> codex --sandbox ...
 OpenCode  opencode run ... <prompt>          opencode ...
 Hermes    hermes --oneshot <prompt>          hermes chat ...
 Pi        pi --print <prompt>                pi ...
+Ollama    ollama launch codex -- exec ...    ollama launch codex -- ...
 ```
 
 Runtime state is fin-local where the backend exposes a simple home variable:
 Codex uses `.codex/` through `CODEX_HOME`, Hermes uses `.hermes/` through
 `HERMES_HOME`, and Pi uses `.pi/agent/` through `PI_CODING_AGENT_DIR` plus
-`.pi/sessions/` through the generated `--session-dir` args. OpenCode currently
-uses its normal user-level config and data locations unless you customize its
-backend definition.
+`.pi/sessions/` through the generated `--session-dir` args. The generated
+Ollama example uses `ollama launch codex` so Codex still owns the tool loop,
+working directory, sandbox, and fin-local `CODEX_HOME` while Ollama supplies the
+model. OpenCode and raw Ollama server state use their normal user-level config,
+data, and server locations unless you customize their backend definitions.
 
 When `~/.codex/auth.json` exists, Orqa symlinks it into a fin's `.codex/`
 directory as `auth.json` if the fin does not already have one. This lets Codex
