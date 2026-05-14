@@ -95,6 +95,70 @@ args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{fin_h
 }
 
 #[test]
+fn plan_and_dry_run_explain_wake_decisions_without_running() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_writer_backend(&root, "test-pod");
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "amy@test-pod.orqa",
+            "--to",
+            "amy@test-pod.orqa",
+            "wake",
+        ],
+    );
+
+    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    assert!(plan.contains("decision=would-wake"));
+    assert!(plan.contains("reason=mail"));
+
+    let dry_run = orqa_output(&root, ["loop", "--dry-run", "test-pod"]);
+    assert!(dry_run.contains("decision=would-wake"));
+    assert!(!root.join("pods/test-pod/fins/amy/ran.txt").exists());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn fin_run_records_status_and_tail_output() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+
+    orqa_output(
+        &root,
+        [
+            "fin",
+            "run",
+            "--framework",
+            "/bin/echo",
+            "test-pod",
+            "amy",
+            "--",
+            "from-run",
+        ],
+    );
+
+    let runs = orqa_output(&root, ["fin", "runs", "test-pod", "amy"]);
+    assert!(runs.contains("status=finished"));
+
+    let status = orqa_output(&root, ["fin", "status", "test-pod", "amy"]);
+    assert!(status.contains("last_status=finished"));
+
+    let tail = orqa_output(&root, ["fin", "tail", "test-pod", "amy"]);
+    assert!(tail.contains("from-run"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn pod_and_fin_list_print_sorted_slugs() {
     let root = temp_root();
 

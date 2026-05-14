@@ -98,6 +98,13 @@ orqa loop sample-pod
 orqa loop sample-pod -- "handle your open Orqa mail and tasks"
 ```
 
+Preview the same wake decisions without launching anything:
+
+```sh
+orqa plan sample-pod
+orqa loop --dry-run sample-pod
+```
+
 Use `--framework` to bypass config for a one-off smoke test:
 
 ```sh
@@ -116,6 +123,43 @@ CODEX_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.codex
 
 An agent can use `ORQA_POD` and `ORQA_FIN` to call mail and task commands with
 short addresses. Codex uses `CODEX_HOME` for fin-specific state.
+
+## Status And Runs
+
+Inspect the current runtime state:
+
+```sh
+orqa pod status sample-pod
+orqa fin status sample-pod amy
+```
+
+Each fin run records a small run directory under the fin home:
+
+```text
+ORQA_HOME/pods/<pod>/fins/<fin>/runs/<run-id>/
+  stdout.log
+  stderr.log
+  events.jsonl
+  command.txt
+  status.json
+```
+
+Read recent run history and logs:
+
+```sh
+orqa fin runs sample-pod amy
+orqa fin run-status sample-pod amy
+orqa fin run-log sample-pod amy
+```
+
+Tail recent output. `fin tail` defaults to the latest run for that fin; `pod
+tail` reads the latest run for each fin in the pod:
+
+```sh
+orqa fin tail sample-pod amy
+orqa pod tail sample-pod
+orqa pod tail sample-pod --fin amy --follow
+```
 
 ## Backend Config
 

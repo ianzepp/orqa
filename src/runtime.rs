@@ -1,33 +1,142 @@
 use std::{
     ffi::OsString,
-    fs,
+    fs, io,
     path::PathBuf,
     process::{Command as ProcessCommand, Stdio},
 };
 
+use serde::Serialize;
+
 use crate::{
-    cli::{LoopArgs, RunArgs},
+    cli::{LoopArgs, PlanArgs, RunArgs},
     config::{BackendCommand, backend_command},
     mailbox::unread_count,
     model::{FinRef, Orqa, PodRef},
+    runs::RunFiles,
+    status::print_json,
 };
 
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct WakePlan {
+    pub(crate) pod: String,
+    pub(crate) pod_sleeping: bool,
+    pub(crate) fins: Vec<FinWakePlan>,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub(crate) struct FinWakePlan {
+    pub(crate) fin: String,
+    pub(crate) decision: WakeDecision,
+    pub(crate) reason: WakeReason,
+    pub(crate) fin_sleeping: bool,
+    pub(crate) running: bool,
+    pub(crate) pid: Option<u32>,
+    pub(crate) unread_mail: usize,
+    pub(crate) open_tasks: usize,
+    pub(crate) backend: Option<String>,
+    pub(crate) detail: Option<String>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum WakeDecision {
+    WouldWake,
+    WouldSkip,
+}
+
+impl std::fmt::Display for WakeDecision {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::WouldWake => formatter.write_str("would-wake"),
+            Self::WouldSkip => formatter.write_str("would-skip"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "kebab-case")]
+pub(crate) enum WakeReason {
+    Mail,
+    Task,
+    MailAndTask,
+    PodSleeping,
+    FinSleeping,
+    AlreadyRunning,
+    NoAction,
+    BackendError,
+}
+
+impl std::fmt::Display for WakeReason {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Mail => formatter.write_str("mail"),
+            Self::Task => formatter.write_str("task"),
+            Self::MailAndTask => formatter.write_str("mail-and-task"),
+            Self::PodSleeping => formatter.write_str("pod-sleeping"),
+            Self::FinSleeping => formatter.write_str("fin-sleeping"),
+            Self::AlreadyRunning => formatter.write_str("already-running"),
+            Self::NoAction => formatter.write_str("no-action"),
+            Self::BackendError => formatter.write_str("backend-error"),
+        }
+    }
+}
+
 pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
-    let pod = PodRef::new(&args.pod)?;
-    if !args.force && orqa.pod_sleep_path(&pod).exists() {
-        println!("skip {} sleeping=true", pod.slug);
-        return Ok(());
+    let plan = plan_pod(
+        orqa,
+        &args.pod,
+        args.force,
+        args.framework.as_ref(),
+        &args.args,
+    )?;
+    if args.dry_run {
+        return print_plan(&plan, args.json);
     }
 
+    for fin in &plan.fins {
+        if fin.decision != WakeDecision::WouldWake {
+            if fin.reason != WakeReason::NoAction {
+                println!(
+                    "skip {} reason={} unread_mail={} open_tasks={}",
+                    fin.fin, fin.reason, fin.unread_mail, fin.open_tasks
+                );
+            }
+            continue;
+        }
+
+        let fin_ref = FinRef::new(&plan.pod, &fin.fin)?;
+        let command = resolve_run_command(orqa, &fin_ref, args.framework.as_ref(), &args.args)?;
+        spawn_supervised_wake(orqa, &fin_ref, &command, fin)?;
+    }
+
+    Ok(())
+}
+
+pub(crate) fn plan(orqa: &Orqa, args: PlanArgs) -> Result<(), String> {
+    let plan = plan_pod(orqa, &args.pod, args.force, None, &[])?;
+    print_plan(&plan, args.json)
+}
+
+pub(crate) fn plan_pod(
+    orqa: &Orqa,
+    pod: &str,
+    force: bool,
+    framework: Option<&OsString>,
+    args: &[OsString],
+) -> Result<WakePlan, String> {
+    let pod = PodRef::new(pod)?;
+    let pod_sleeping = orqa.pod_sleep_path(&pod).exists();
+    let mut fins = Vec::new();
     let fins_dir = orqa.pod_home(&pod).join("fins");
-    let fins = fs::read_dir(&fins_dir).map_err(|error| {
+
+    let entries = fs::read_dir(&fins_dir).map_err(|error| {
         format!(
             "failed to read fins directory {}: {error}",
             fins_dir.display()
         )
     })?;
 
-    for entry in fins {
+    for entry in entries {
         let entry = entry.map_err(|error| format!("failed to read fin directory: {error}"))?;
         if !entry.path().is_dir() {
             continue;
@@ -35,34 +144,196 @@ pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
 
         let fin_slug = entry.file_name().to_string_lossy().to_string();
         let fin = FinRef::new(&pod.slug, &fin_slug)?;
-        if !args.force && orqa.fin_sleep_path(&fin).exists() {
-            println!("skip {} sleeping=true", fin.label());
-            continue;
-        }
+        fins.push(plan_fin(orqa, &fin, pod_sleeping, force, framework, args)?);
+    }
+    fins.sort_by(|left, right| left.fin.cmp(&right.fin));
 
-        let unread_mail = unread_count(&orqa.mail_home(&fin))?;
-        let open_tasks = unread_count(&orqa.task_home(&fin))?;
+    Ok(WakePlan {
+        pod: pod.slug,
+        pod_sleeping,
+        fins,
+    })
+}
 
-        if unread_mail > 0 || open_tasks > 0 {
-            let wake = Wake {
+fn plan_fin(
+    orqa: &Orqa,
+    fin: &FinRef,
+    pod_sleeping: bool,
+    force: bool,
+    framework: Option<&OsString>,
+    args: &[OsString],
+) -> Result<FinWakePlan, String> {
+    let fin_sleeping = orqa.fin_sleep_path(fin).exists();
+    let unread_mail = unread_count(&orqa.mail_home(fin))?;
+    let open_tasks = unread_count(&orqa.task_home(fin))?;
+    let lock = FinLock::try_existing(orqa, fin)?;
+    let pid = lock.as_ref().map(|lock| lock.pid);
+    let running = lock.as_ref().is_some_and(FinLock::is_live);
+    let backend = match resolve_run_command(orqa, fin, framework, args) {
+        Ok(command) => Some(command.backend),
+        Err(error) => {
+            return Ok(FinWakePlan {
+                fin: fin.fin.clone(),
+                decision: WakeDecision::WouldSkip,
+                reason: WakeReason::BackendError,
+                fin_sleeping,
+                running,
+                pid,
                 unread_mail,
                 open_tasks,
-            };
-            let command = resolve_run_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
-            wake_fin(orqa, &fin, &command.command, &command.args, wake)?;
+                backend: None,
+                detail: Some(error),
+            });
         }
+    };
+
+    let (decision, reason) = if pod_sleeping && !force {
+        (WakeDecision::WouldSkip, WakeReason::PodSleeping)
+    } else if fin_sleeping && !force {
+        (WakeDecision::WouldSkip, WakeReason::FinSleeping)
+    } else if running {
+        (WakeDecision::WouldSkip, WakeReason::AlreadyRunning)
+    } else if unread_mail > 0 && open_tasks > 0 {
+        (WakeDecision::WouldWake, WakeReason::MailAndTask)
+    } else if unread_mail > 0 {
+        (WakeDecision::WouldWake, WakeReason::Mail)
+    } else if open_tasks > 0 {
+        (WakeDecision::WouldWake, WakeReason::Task)
+    } else {
+        (WakeDecision::WouldSkip, WakeReason::NoAction)
+    };
+
+    Ok(FinWakePlan {
+        fin: fin.fin.clone(),
+        decision,
+        reason,
+        fin_sleeping,
+        running,
+        pid,
+        unread_mail,
+        open_tasks,
+        backend,
+        detail: None,
+    })
+}
+
+fn print_plan(plan: &WakePlan, json: bool) -> Result<(), String> {
+    if json {
+        return print_json(plan);
     }
 
+    if plan.pod_sleeping {
+        println!("pod {} sleeping=true", plan.pod);
+    }
+    for fin in &plan.fins {
+        println!(
+            "pod={} fin={} decision={} reason={} unread_mail={} open_tasks={} sleeping={} running={}",
+            plan.pod,
+            fin.fin,
+            fin.decision,
+            fin.reason,
+            fin.unread_mail,
+            fin.open_tasks,
+            fin.fin_sleeping,
+            fin.running
+        );
+    }
     Ok(())
 }
 
 pub(crate) fn run_fin(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
     let command = resolve_run_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
-    run_fin_foreground(orqa, &fin, &command.command, &command.args)
+    run_fin_foreground(orqa, &fin, &command)
 }
 
-fn resolve_run_command(
+pub(crate) fn supervise_fin(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
+    let fin = FinRef::new(&args.pod, &args.fin)?;
+    let command = resolve_run_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
+    let outcome = run_fin_logged(orqa, &fin, &command, false)?;
+    if outcome.success {
+        Ok(())
+    } else {
+        Err(format!(
+            "{:?} exited with {}",
+            command.command,
+            outcome
+                .code
+                .map_or_else(|| "signal".to_string(), |code| code.to_string())
+        ))
+    }
+}
+
+fn spawn_supervised_wake(
+    orqa: &Orqa,
+    fin: &FinRef,
+    command: &BackendCommand,
+    wake: &FinWakePlan,
+) -> Result<(), String> {
+    let exe = std::env::current_exe()
+        .map_err(|error| format!("failed to resolve current executable: {error}"))?;
+    let mut child = ProcessCommand::new(exe)
+        .arg("--home")
+        .arg(&orqa.home)
+        .arg("fin")
+        .arg("supervise")
+        .arg(&fin.pod)
+        .arg(&fin.fin)
+        .args(supervisor_args(command))
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|error| {
+            format!(
+                "failed to spawn supervised wake for {}: {error}",
+                fin.label()
+            )
+        })?;
+    let pid = child.id();
+    let _ = child.try_wait();
+    println!(
+        "wake {} pid={} unread_mail={} open_tasks={}",
+        fin.label(),
+        pid,
+        wake.unread_mail,
+        wake.open_tasks
+    );
+    Ok(())
+}
+
+fn supervisor_args(command: &BackendCommand) -> Vec<OsString> {
+    let mut args = Vec::new();
+    args.push(OsString::from("--framework"));
+    args.push(command.command.clone());
+    if !command.args.is_empty() {
+        args.push(OsString::from("--"));
+        args.extend(command.args.clone());
+    }
+    args
+}
+
+fn run_fin_foreground(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> Result<(), String> {
+    let outcome = run_fin_logged(orqa, fin, command, true)?;
+    io::copy(&mut outcome.stdout.as_slice(), &mut io::stdout())
+        .map_err(|error| format!("failed to write stdout: {error}"))?;
+    io::copy(&mut outcome.stderr.as_slice(), &mut io::stderr())
+        .map_err(|error| format!("failed to write stderr: {error}"))?;
+
+    if outcome.success {
+        return Ok(());
+    }
+
+    Err(format!(
+        "{:?} exited with {}",
+        command.command,
+        outcome
+            .code
+            .map_or_else(|| "signal".to_string(), |code| code.to_string())
+    ))
+}
+
+pub(crate) fn resolve_run_command(
     orqa: &Orqa,
     fin: &FinRef,
     framework: Option<&OsString>,
@@ -79,12 +350,12 @@ fn resolve_run_command(
     backend_command(orqa, fin, args)
 }
 
-pub(crate) fn run_fin_foreground(
+pub(crate) fn run_fin_logged(
     orqa: &Orqa,
     fin: &FinRef,
-    framework: &OsString,
-    args: &[OsString],
-) -> Result<(), String> {
+    command: &BackendCommand,
+    capture_output: bool,
+) -> Result<RunOutcome, String> {
     if let Some(lock) = FinLock::try_existing(orqa, fin)? {
         if lock.is_live() {
             return Err(format!(
@@ -98,6 +369,7 @@ pub(crate) fn run_fin_foreground(
 
     let home = orqa.fin_home(fin);
     let codex_home = home.join(".codex");
+    let run = RunFiles::create(orqa, fin, &command.backend, &command.command, &command.args)?;
 
     fs::create_dir_all(&codex_home).map_err(|error| {
         format!(
@@ -106,101 +378,73 @@ pub(crate) fn run_fin_foreground(
         )
     })?;
 
-    let mut child = ProcessCommand::new(framework)
+    let mut process = ProcessCommand::new(&command.command);
+    process
         .env("ORQA_HOME", &orqa.home)
         .env("ORQA_POD", &fin.pod)
         .env("ORQA_FIN", &fin.fin)
         .env("CODEX_HOME", &codex_home)
-        .args(args)
-        .spawn()
-        .map_err(|error| format!("failed to run {framework:?}: {error}"))?;
-    let lock = FinLock::write(orqa, fin, child.id(), framework)?;
-    let status = child
-        .wait()
-        .map_err(|error| format!("failed to wait for {framework:?}: {error}"));
-    lock.release();
-    let status = status?;
+        .args(&command.args);
 
-    if status.success() {
-        Ok(())
+    let output = if capture_output {
+        let child = process
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| {
+                let _ = run.mark_spawn_failed(&error.to_string());
+                format!("failed to run {:?}: {error}", command.command)
+            })?;
+        let lock = FinLock::write(orqa, fin, child.id(), &command.command)?;
+        run.mark_spawned(child.id())?;
+        let output = child
+            .wait_with_output()
+            .map_err(|error| format!("failed to wait for {:?}: {error}", command.command));
+        lock.release();
+        let output = output?;
+        run.mark_finished(&output)?;
+        RunOutcome {
+            success: output.status.success(),
+            code: output.status.code(),
+            stdout: output.stdout,
+            stderr: output.stderr,
+        }
     } else {
-        Err(format!(
-            "{framework:?} exited with {}",
-            status
-                .code()
-                .map_or_else(|| "signal".to_string(), |code| code.to_string())
-        ))
-    }
-}
-
-#[derive(Clone, Copy)]
-pub(crate) struct Wake {
-    unread_mail: usize,
-    open_tasks: usize,
-}
-
-pub(crate) fn wake_fin(
-    orqa: &Orqa,
-    fin: &FinRef,
-    framework: &OsString,
-    args: &[OsString],
-    wake: Wake,
-) -> Result<(), String> {
-    match FinLock::try_existing(orqa, fin)? {
-        Some(lock) if lock.is_live() => {
-            println!(
-                "skip {} pid={} unread_mail={} open_tasks={}",
-                fin.label(),
-                lock.pid,
-                wake.unread_mail,
-                wake.open_tasks
-            );
-            Ok(())
+        let stdout = run.stdout_file()?;
+        let stderr = run.stderr_file()?;
+        let mut child = process
+            .stdin(Stdio::null())
+            .stdout(Stdio::from(stdout))
+            .stderr(Stdio::from(stderr))
+            .spawn()
+            .map_err(|error| {
+                let _ = run.mark_spawn_failed(&error.to_string());
+                format!("failed to spawn {:?}: {error}", command.command)
+            })?;
+        let lock = FinLock::write(orqa, fin, child.id(), &command.command)?;
+        run.mark_spawned(child.id())?;
+        let status = child
+            .wait()
+            .map_err(|error| format!("failed to wait for {:?}: {error}", command.command));
+        lock.release();
+        let status = status?;
+        run.mark_finished_status(status)?;
+        RunOutcome {
+            success: status.success(),
+            code: status.code(),
+            stdout: Vec::new(),
+            stderr: Vec::new(),
         }
-        Some(lock) => {
-            lock.remove()?;
-            spawn_wake_fin(orqa, fin, framework, args, wake)
-        }
-        None => spawn_wake_fin(orqa, fin, framework, args, wake),
-    }
+    };
+
+    Ok(output)
 }
 
-pub(crate) fn spawn_wake_fin(
-    orqa: &Orqa,
-    fin: &FinRef,
-    framework: &OsString,
-    args: &[OsString],
-    wake: Wake,
-) -> Result<(), String> {
-    let home = orqa.fin_home(fin);
-    let codex_home = home.join(".codex");
-    fs::create_dir_all(&codex_home).map_err(|error| {
-        format!(
-            "failed to create fin codex home {}: {error}",
-            codex_home.display()
-        )
-    })?;
-
-    let child = ProcessCommand::new(framework)
-        .env("ORQA_HOME", &orqa.home)
-        .env("ORQA_POD", &fin.pod)
-        .env("ORQA_FIN", &fin.fin)
-        .env("CODEX_HOME", &codex_home)
-        .args(args)
-        .spawn()
-        .map_err(|error| format!("failed to spawn {framework:?}: {error}"))?;
-    let pid = child.id();
-
-    FinLock::write(orqa, fin, pid, framework)?;
-    println!(
-        "wake {} pid={} unread_mail={} open_tasks={}",
-        fin.label(),
-        pid,
-        wake.unread_mail,
-        wake.open_tasks
-    );
-
-    Ok(())
+pub(crate) struct RunOutcome {
+    success: bool,
+    code: Option<i32>,
+    stdout: Vec<u8>,
+    stderr: Vec<u8>,
 }
 
 pub(crate) struct FinLock {
@@ -209,7 +453,7 @@ pub(crate) struct FinLock {
 }
 
 impl FinLock {
-    fn try_existing(orqa: &Orqa, fin: &FinRef) -> Result<Option<Self>, String> {
+    pub(crate) fn try_existing(orqa: &Orqa, fin: &FinRef) -> Result<Option<Self>, String> {
         let path = orqa.lock_path(fin);
         if !path.exists() {
             return Ok(None);
@@ -245,11 +489,15 @@ impl FinLock {
         Ok(Self { path, pid })
     }
 
-    fn is_live(&self) -> bool {
+    pub(crate) fn pid(&self) -> u32 {
+        self.pid
+    }
+
+    pub(crate) fn is_live(&self) -> bool {
         process_is_alive(self.pid)
     }
 
-    fn remove(&self) -> Result<(), String> {
+    pub(crate) fn remove(&self) -> Result<(), String> {
         if self.path.exists() {
             fs::remove_file(&self.path).map_err(|error| {
                 format!("failed to remove lock {}: {error}", self.path.display())
@@ -259,7 +507,7 @@ impl FinLock {
         Ok(())
     }
 
-    fn release(self) {
+    pub(crate) fn release(self) {
         let _ = self.remove();
     }
 }

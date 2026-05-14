@@ -186,6 +186,8 @@ fn loop_all_pods(orqa: &Orqa, args: &ServiceRunArgs) -> Result<(), String> {
             LoopArgs {
                 pod: pod.slug,
                 force: args.force,
+                dry_run: false,
+                json: false,
                 framework: args.framework.clone(),
                 args: args.args.clone(),
             },

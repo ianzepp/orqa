@@ -33,6 +33,22 @@ impl Orqa {
         self.fin_home(fin).join("run.lock")
     }
 
+    pub(crate) fn runs_home(&self, fin: &FinRef) -> PathBuf {
+        self.fin_home(fin).join("runs")
+    }
+
+    pub(crate) fn run_home(&self, fin: &FinRef, run: &str) -> PathBuf {
+        self.runs_home(fin).join(run)
+    }
+
+    pub(crate) fn runs_ledger_path(&self, fin: &FinRef) -> PathBuf {
+        self.fin_home(fin).join("runs.jsonl")
+    }
+
+    pub(crate) fn latest_run_path(&self, fin: &FinRef) -> PathBuf {
+        self.fin_home(fin).join("latest-run")
+    }
+
     pub(crate) fn pod_sleep_path(&self, pod: &PodRef) -> PathBuf {
         self.pod_home(pod).join("sleep.lock")
     }

@@ -32,6 +32,8 @@ pub(crate) enum Command {
     Task(TaskCommand),
     /// Run the wake loop for a pod.
     Loop(LoopArgs),
+    /// Show the wake plan for a pod without running fins.
+    Plan(PlanArgs),
     /// Manage the background wake-loop service.
     Service(ServiceCommand),
 }
@@ -50,6 +52,10 @@ pub(crate) enum PodSubcommand {
     Create(SlugArgs),
     /// Print the home directory for a pod.
     Home(SlugArgs),
+    /// Print pod runtime status.
+    Status(PodStatusArgs),
+    /// Print recent run output for fins in a pod.
+    Tail(PodTailArgs),
     /// Pause all wake-loop runs for a pod.
     Sleep(SlugArgs),
     /// Clear a pod sleep marker.
@@ -70,12 +76,27 @@ pub(crate) enum FinSubcommand {
     Create(FinRefArgs),
     /// Print the home directory for a fin.
     Home(FinRefArgs),
+    /// Print fin runtime status.
+    Status(FinStatusArgs),
+    /// List recorded runs for a fin.
+    Runs(FinRunsArgs),
+    /// Print recorded run status for a fin.
+    #[command(name = "run-status")]
+    RunStatus(FinRunReadArgs),
+    /// Print recorded run logs for a fin.
+    #[command(name = "run-log")]
+    RunLog(FinRunReadArgs),
+    /// Print recent run output for a fin.
+    Tail(FinTailArgs),
     /// Pause wake-loop runs for a fin.
     Sleep(FinRefArgs),
     /// Clear a fin sleep marker.
     Wake(FinWakeArgs),
     /// Run a fin through the configured framework.
     Run(RunArgs),
+    /// Internal supervised runner used by wake loops.
+    #[command(hide = true)]
+    Supervise(RunArgs),
 }
 
 #[derive(Debug, Args)]
@@ -153,12 +174,30 @@ pub(crate) struct LoopArgs {
     /// Ignore pod and fin sleep markers for this scan.
     #[arg(long)]
     pub(crate) force: bool,
+    /// Print wake decisions without running fins.
+    #[arg(long)]
+    pub(crate) dry_run: bool,
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
     /// Framework executable.
     #[arg(long)]
     pub(crate) framework: Option<OsString>,
     /// Arguments passed to the framework.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PlanArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Ignore pod and fin sleep markers while planning.
+    #[arg(long)]
+    pub(crate) force: bool,
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
 }
 
 #[derive(Debug, Args)]
@@ -211,6 +250,81 @@ pub(crate) struct FinRefArgs {
     pub(crate) pod: String,
     /// Fin slug inside the pod.
     pub(crate) fin: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodStatusArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FinStatusArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Fin slug inside the pod.
+    pub(crate) fin: String,
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FinRunsArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Fin slug inside the pod.
+    pub(crate) fin: String,
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FinRunReadArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Fin slug inside the pod.
+    pub(crate) fin: String,
+    /// Run id. Defaults to latest.
+    pub(crate) run: Option<String>,
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FinTailArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Fin slug inside the pod.
+    pub(crate) fin: String,
+    /// Run id. Defaults to latest.
+    pub(crate) run: Option<String>,
+    /// Number of lines per stream.
+    #[arg(long, default_value_t = 80)]
+    pub(crate) lines: usize,
+    /// Continue printing as logs grow.
+    #[arg(short = 'f', long)]
+    pub(crate) follow: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodTailArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Restrict output to one fin.
+    #[arg(long)]
+    pub(crate) fin: Option<String>,
+    /// Number of lines per stream.
+    #[arg(long, default_value_t = 80)]
+    pub(crate) lines: usize,
+    /// Continue printing as logs grow.
+    #[arg(short = 'f', long)]
+    pub(crate) follow: bool,
 }
 
 #[derive(Debug, Args)]

@@ -12,7 +12,9 @@ use crate::{
         write_if_missing, write_sleep_marker,
     },
     model::{FinRef, Orqa, PodRef},
-    runtime::run_fin,
+    runs::{list_runs, read_run_logs, read_run_record_for, tail_fin, tail_pod},
+    runtime::{run_fin, supervise_fin},
+    status::{fin_status, pod_status, print_fin_status, print_json, print_pod_status},
 };
 
 pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
@@ -33,6 +35,29 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
             let pod = PodRef::new(&args.slug)?;
             println!("{}", orqa.pod_home(&pod).display());
             Ok(())
+        }
+        PodSubcommand::Status(args) => {
+            let pod = PodRef::new(&args.pod)?;
+            let status = pod_status(orqa, &pod)?;
+            if args.json {
+                print_json(&status)
+            } else {
+                print_pod_status(&status);
+                Ok(())
+            }
+        }
+        PodSubcommand::Tail(args) => {
+            let pod = PodRef::new(&args.pod)?;
+            if let Some(fin) = &args.fin {
+                FinRef::new(&pod.slug, fin)?;
+            }
+            tail_pod(
+                orqa,
+                &pod.slug,
+                args.fin.as_deref(),
+                args.lines,
+                args.follow,
+            )
         }
         PodSubcommand::Sleep(args) => {
             let pod = PodRef::new(&args.slug)?;
@@ -81,6 +106,70 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             println!("{}", orqa.fin_home(&fin).display());
             Ok(())
         }
+        FinSubcommand::Status(args) => {
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            let status = fin_status(orqa, &fin)?;
+            if args.json {
+                print_json(&status)
+            } else {
+                print_fin_status(&status);
+                Ok(())
+            }
+        }
+        FinSubcommand::Runs(args) => {
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            let runs = list_runs(orqa, &fin)?;
+            if args.json {
+                print_json(&runs)
+            } else {
+                for run in runs.runs {
+                    println!(
+                        "{} status={} exit_code={} backend={} command={}",
+                        run.id,
+                        run.status,
+                        run.exit_code
+                            .map_or_else(|| "-".to_string(), |code| code.to_string()),
+                        run.backend,
+                        run.command
+                    );
+                }
+                Ok(())
+            }
+        }
+        FinSubcommand::RunStatus(args) => {
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            let run = read_run_record_for(orqa, &fin, args.run.as_deref())?;
+            if args.json {
+                print_json(&run)
+            } else {
+                println!("run {}", run.id);
+                println!("fin={}", run.fin);
+                println!("status={}", run.status);
+                println!("backend={}", run.backend);
+                println!("command={}", run.command);
+                if let Some(exit_code) = run.exit_code {
+                    println!("exit_code={exit_code}");
+                }
+                println!("run_dir={}", run.run_dir.display());
+                Ok(())
+            }
+        }
+        FinSubcommand::RunLog(args) => {
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            let logs = read_run_logs(orqa, &fin, args.run.as_deref())?;
+            if args.json {
+                print_json(&logs)
+            } else {
+                print!("{}", logs.stdout);
+                eprint!("{}", logs.stderr);
+                print!("{}", logs.events);
+                Ok(())
+            }
+        }
+        FinSubcommand::Tail(args) => {
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            tail_fin(orqa, &fin, args.run.as_deref(), args.lines, args.follow)
+        }
         FinSubcommand::Sleep(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
             write_sleep_marker(&orqa.fin_sleep_path(&fin))?;
@@ -97,6 +186,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             Ok(())
         }
         FinSubcommand::Run(args) => run_fin(orqa, args),
+        FinSubcommand::Supervise(args) => supervise_fin(orqa, args),
     }
 }
 

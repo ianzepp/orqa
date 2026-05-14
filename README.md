@@ -177,6 +177,13 @@ Run one wake scan for the pod:
 orqa loop sample-pod
 ```
 
+Preview wake decisions without launching fins:
+
+```sh
+orqa plan sample-pod
+orqa loop --dry-run sample-pod
+```
+
 Run a fin directly through the configured backend:
 
 ```sh
@@ -277,6 +284,44 @@ removing them:
 
 ```sh
 orqa loop --force sample-pod
+```
+
+## Status, Runs, And Tail
+
+Runtime status commands summarize wake signals, sleep state, live locks, and
+the latest recorded run:
+
+```sh
+orqa pod status sample-pod
+orqa fin status sample-pod amy
+```
+
+Each direct or loop-launched fin run records logs and status under the fin:
+
+```text
+ORQA_HOME/pods/<pod>/fins/<fin>/runs/<run-id>/
+  stdout.log
+  stderr.log
+  events.jsonl
+  command.txt
+  status.json
+```
+
+Inspect run history and logs:
+
+```sh
+orqa fin runs sample-pod amy
+orqa fin run-status sample-pod amy
+orqa fin run-log sample-pod amy
+```
+
+`fin tail` prints the latest run output for one fin. `pod tail` prints the
+latest run output for every fin in a pod, or one fin with `--fin`:
+
+```sh
+orqa fin tail sample-pod amy
+orqa pod tail sample-pod
+orqa pod tail sample-pod --fin amy --follow
 ```
 
 ## Mail
@@ -460,6 +505,7 @@ Commands:
   mail    Mail helpers for pod-local fin messages
   task    Task helpers for pod-local work items
   loop    Run the wake loop for a pod
+  plan    Show the wake plan for a pod without running fins
   service Manage the background wake-loop service
 ```
 
@@ -475,6 +521,8 @@ who need the runtime overview without install or development notes.
 orqa pod create <slug>
 orqa pod list
 orqa pod home <slug>
+orqa pod status <slug>
+orqa pod tail <slug> [--fin <fin>] [--lines <n>] [--follow]
 orqa pod sleep <slug>
 orqa pod wake <slug> --force
 ```
@@ -490,6 +538,11 @@ before it removes that marker.
 orqa fin create <pod> <fin>
 orqa fin list [pod]
 orqa fin home <pod> <fin>
+orqa fin status <pod> <fin>
+orqa fin runs <pod> <fin>
+orqa fin run-status <pod> <fin> [run-id|latest]
+orqa fin run-log <pod> <fin> [run-id|latest]
+orqa fin tail <pod> <fin> [run-id|latest] [--lines <n>] [--follow]
 orqa fin sleep <pod> <fin>
 orqa fin wake <pod> <fin> --force
 orqa fin run [--framework <framework>] <pod> <fin> [-- <args>...]
