@@ -22,9 +22,11 @@ ORQA_HOME/
   pods/
     sample-pod/
       pod.txt
+      pod.toml
       fins/
         amy/
           fin.txt
+          fin.toml
           .codex/
           mail/
             cur/
@@ -36,6 +38,7 @@ ORQA_HOME/
             tmp/
         bob-jones/
           fin.txt
+          fin.toml
           .codex/
           mail/
             cur/
@@ -49,6 +52,61 @@ ORQA_HOME/
 
 Pods and fins are referenced by slug. Slugs may contain lowercase letters,
 digits, and hyphens.
+
+## Configuration
+
+Pods and fins have TOML config files:
+
+```text
+ORQA_HOME/pods/<pod>/pod.toml
+ORQA_HOME/pods/<pod>/fins/<fin>/fin.toml
+```
+
+`pod.toml` owns backend definitions. This keeps command formats and framework
+policy in one place for the whole pod:
+
+```toml
+[pod]
+slug = "sample-pod"
+default_backend = "codex"
+
+[backends.codex]
+enabled = true
+command = "codex"
+args = ["{prompt}"]
+
+[backends.codex.defaults]
+model = "gpt-5.3-codex"
+
+[backends.opencode]
+enabled = false
+command = "opencode"
+args = ["run", "--model", "{model}", "{prompt}"]
+
+[backends.pi]
+enabled = false
+command = "pi"
+args = ["exec", "--home", "{fin_home}", "--pod", "{pod}", "--fin", "{fin}", "{prompt}"]
+```
+
+`fin.toml` records the fin's backend choice and per-fin backend values:
+
+```toml
+[fin]
+slug = "amy"
+backend = "codex"
+
+[backend]
+model = "gpt-5.3-codex"
+```
+
+Backend argument lists are stored as argv arrays instead of shell strings. That
+keeps quoting behavior predictable when prompts or paths contain spaces.
+
+The config files are seeded by `pod create` and `fin create`. They are not wired
+into execution yet; current execution still uses `orqa fin run --framework ...`
+and `orqa loop --framework ...` while the backend command surface is being
+designed.
 
 ## Quick Start
 
