@@ -1,4 +1,5 @@
 use std::{
+    env,
     ffi::OsString,
     fs, io,
     path::PathBuf,
@@ -515,7 +516,20 @@ fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCo
         .env("HERMES_HOME", fin_home.join(".hermes"))
         .env("PI_CODING_AGENT_DIR", fin_home.join(".pi/agent"))
         .args(&command.args);
+    if let Some(path) = child_path_with_orqa_bin() {
+        process.env("PATH", path);
+    }
     process
+}
+
+fn child_path_with_orqa_bin() -> Option<OsString> {
+    let exe = env::current_exe().ok()?;
+    let bin_dir = exe.parent()?;
+    let mut paths = vec![bin_dir.to_path_buf()];
+    if let Some(path) = env::var_os("PATH") {
+        paths.extend(env::split_paths(&path));
+    }
+    env::join_paths(paths).ok()
 }
 
 fn write_child_lock(

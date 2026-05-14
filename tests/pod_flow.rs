@@ -79,6 +79,34 @@ fn fin_exec_runs_from_fin_home_for_agents_discovery() {
 }
 
 #[test]
+fn fin_exec_adds_orqa_binary_directory_to_child_path() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_path_backend(&root, "test-pod");
+
+    let output = command(&root, ["fin", "exec", "test-pod", "amy"])
+        .env("PATH", "/usr/bin")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "orqa failed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let path = fs::read_to_string(root.join("pods/test-pod/fins/amy/path.txt")).unwrap();
+    let orqa_bin_dir = Path::new(env!("CARGO_BIN_EXE_orqa")).parent().unwrap();
+    let child_paths = env::split_paths(path.trim()).collect::<Vec<_>>();
+    assert_eq!(child_paths.first().unwrap(), orqa_bin_dir);
+    assert!(child_paths.iter().any(|path| path == Path::new("/usr/bin")));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn loop_uses_generated_pod_config_backend_for_wakeable_fin() {
     let root = temp_root();
 
@@ -464,6 +492,25 @@ fn set_pwd_backend(root: &Path, pod: &str) {
 enabled = true
 command = "/bin/sh"
 exec_args = ["-c", "pwd > {{fin_home}}/cwd.txt"]
+"#
+        ),
+    )
+    .unwrap();
+}
+
+fn set_path_backend(root: &Path, pod: &str) {
+    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let config = fs::read_to_string(&pod_config).unwrap();
+    let config = config.replace("default_backend = \"codex\"", "default_backend = \"path\"");
+    fs::write(
+        &pod_config,
+        format!(
+            r#"{config}
+
+[backends.path]
+enabled = true
+command = "/bin/sh"
+exec_args = ["-c", "printf '%s' \"$PATH\" > {{fin_home}}/path.txt"]
 "#
         ),
     )
