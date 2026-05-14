@@ -49,12 +49,124 @@ fn pod_and_fin_create_seed_agents_files() {
 
     let pod_agents = fs::read_to_string(root.join("pods/test-pod/AGENTS.md")).unwrap();
     let fin_agents = fs::read_to_string(root.join("pods/test-pod/fins/planner/AGENTS.md")).unwrap();
+    let charter = fs::read_to_string(root.join("pods/test-pod/CHARTER.md")).unwrap();
+    let role = fs::read_to_string(root.join("pods/test-pod/fins/planner/ROLE.md")).unwrap();
 
+    assert!(charter.contains("No pod charter has been set yet."));
+    assert!(role.contains("No fin role has been set yet."));
+    assert!(pod_agents.contains("No pod charter has been set yet."));
     assert!(pod_agents.contains("orqa fin list"));
     assert!(pod_agents.contains("orqa mail send --to <fin>"));
     assert!(pod_agents.contains("orqa task send --to <fin>"));
     assert!(fin_agents.contains("You are the `planner` fin"));
-    assert!(fin_agents.contains("Describe this fin's purpose here."));
+    assert!(fin_agents.contains("No fin role has been set yet."));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn pod_create_and_charter_commands_manage_charter_agents_injection() {
+    let root = temp_root();
+
+    orqa(
+        &root,
+        [
+            "pod",
+            "create",
+            "test-pod",
+            "--charter",
+            "Build a tiny orchestration tool.",
+        ],
+    );
+
+    let charter_path = root.join("pods/test-pod/CHARTER.md");
+    let agents_path = root.join("pods/test-pod/AGENTS.md");
+    assert_eq!(
+        fs::read_to_string(&charter_path).unwrap(),
+        "Build a tiny orchestration tool.\n"
+    );
+    assert!(
+        fs::read_to_string(&agents_path)
+            .unwrap()
+            .contains("Build a tiny orchestration tool.")
+    );
+
+    let get = orqa_output(&root, ["pod", "charter", "get", "test-pod"]);
+    assert_eq!(get, "Build a tiny orchestration tool.\n");
+
+    let charter_source = root.join("charter.md");
+    fs::write(
+        &charter_source,
+        "Keep the fins aligned around product work.\n",
+    )
+    .unwrap();
+    let charter_arg = format!("@{}", charter_source.display());
+    orqa(&root, ["pod", "charter", "set", "test-pod", &charter_arg]);
+    assert_eq!(
+        fs::read_to_string(&charter_path).unwrap(),
+        "Keep the fins aligned around product work.\n"
+    );
+    assert!(
+        fs::read_to_string(&agents_path)
+            .unwrap()
+            .contains("Keep the fins aligned around product work.")
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn fin_create_and_role_commands_manage_role_agents_injection() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(
+        &root,
+        [
+            "fin",
+            "create",
+            "test-pod",
+            "planner",
+            "--role",
+            "Turn charter goals into concrete tasks.",
+        ],
+    );
+
+    let role_path = root.join("pods/test-pod/fins/planner/ROLE.md");
+    let agents_path = root.join("pods/test-pod/fins/planner/AGENTS.md");
+    assert_eq!(
+        fs::read_to_string(&role_path).unwrap(),
+        "Turn charter goals into concrete tasks.\n"
+    );
+    assert!(
+        fs::read_to_string(&agents_path)
+            .unwrap()
+            .contains("Turn charter goals into concrete tasks.")
+    );
+
+    let get = orqa_output(&root, ["fin", "role", "get", "test-pod", "planner"]);
+    assert_eq!(get, "Turn charter goals into concrete tasks.\n");
+
+    orqa(
+        &root,
+        [
+            "fin",
+            "role",
+            "set",
+            "test-pod",
+            "planner",
+            "Review work and send precise follow-up mail.",
+        ],
+    );
+    assert_eq!(
+        fs::read_to_string(&role_path).unwrap(),
+        "Review work and send precise follow-up mail.\n"
+    );
+    assert!(
+        fs::read_to_string(&agents_path)
+            .unwrap()
+            .contains("Review work and send precise follow-up mail.")
+    );
 
     fs::remove_dir_all(root).unwrap();
 }

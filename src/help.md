@@ -27,10 +27,12 @@ ORQA_HOME/
   pods/
     sample-pod/
       AGENTS.md
+      CHARTER.md
       pod.toml
       fins/
         planner/
           AGENTS.md
+          ROLE.md
           fin.toml
           .codex/       # Codex state
           .hermes/      # Hermes state
@@ -54,13 +56,23 @@ Create a pod:
 
 ```sh
 orqa pod create sample-pod
+orqa pod create sample-pod --charter "Build a focused launch plan."
 ```
 
 Create fins inside it:
 
 ```sh
-orqa fin create sample-pod planner
+orqa fin create sample-pod planner --role "Turn the charter into tasks."
 orqa fin create sample-pod builder
+```
+
+Manage the durable pod charter and fin role files:
+
+```sh
+orqa pod charter get sample-pod
+orqa pod charter set sample-pod @charter.md
+orqa fin role get sample-pod planner
+orqa fin role set sample-pod planner -
 ```
 
 Print homes when an agent needs to inspect paths:

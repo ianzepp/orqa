@@ -49,7 +49,9 @@ pub(crate) enum PodSubcommand {
     /// List pods.
     List,
     /// Create a pod home directory.
-    Create(SlugArgs),
+    Create(PodCreateArgs),
+    /// Get or set a pod charter.
+    Charter(PodCharterCommand),
     /// Print the home directory for a pod.
     Home(SlugArgs),
     /// Print pod runtime status.
@@ -73,7 +75,9 @@ pub(crate) enum FinSubcommand {
     /// List fins inside a pod.
     List(FinListArgs),
     /// Create a fin inside a pod.
-    Create(FinRefArgs),
+    Create(FinCreateArgs),
+    /// Get or set a fin role.
+    Role(FinRoleCommand),
     /// Print the home directory for a fin.
     Home(FinRefArgs),
     /// Print fin runtime status.
@@ -117,6 +121,34 @@ pub(crate) struct TaskCommand {
 pub(crate) struct ServiceCommand {
     #[command(subcommand)]
     pub(crate) command: ServiceSubcommand,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodCharterCommand {
+    #[command(subcommand)]
+    pub(crate) command: PodCharterSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PodCharterSubcommand {
+    /// Print the pod charter.
+    Get(SlugArgs),
+    /// Replace the pod charter.
+    Set(PodCharterSetArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FinRoleCommand {
+    #[command(subcommand)]
+    pub(crate) command: FinRoleSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum FinRoleSubcommand {
+    /// Print the fin role.
+    Get(FinRefArgs),
+    /// Replace the fin role.
+    Set(FinRoleSetArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -232,9 +264,49 @@ pub(crate) struct SlugArgs {
 }
 
 #[derive(Debug, Args)]
+pub(crate) struct PodCreateArgs {
+    /// Pod slug.
+    pub(crate) slug: String,
+    /// Pod charter text, @file path, or - for stdin.
+    #[arg(long, value_name = "PROMPT|@FILE|-")]
+    pub(crate) charter: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodCharterSetArgs {
+    /// Pod slug.
+    pub(crate) slug: String,
+    /// Pod charter text, @file path, or - for stdin.
+    #[arg(value_name = "PROMPT|@FILE|-")]
+    pub(crate) charter: String,
+}
+
+#[derive(Debug, Args)]
 pub(crate) struct FinListArgs {
     /// Pod slug. Defaults to ORQA_POD.
     pub(crate) pod: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FinCreateArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Fin slug inside the pod.
+    pub(crate) fin: String,
+    /// Fin role text, @file path, or - for stdin.
+    #[arg(long, value_name = "PROMPT|@FILE|-")]
+    pub(crate) role: Option<String>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FinRoleSetArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Fin slug inside the pod.
+    pub(crate) fin: String,
+    /// Fin role text, @file path, or - for stdin.
+    #[arg(value_name = "PROMPT|@FILE|-")]
+    pub(crate) role: String,
 }
 
 #[derive(Debug, Args)]

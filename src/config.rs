@@ -4,8 +4,17 @@ use toml::{Table, Value};
 
 use crate::model::{FinRef, Orqa, PodRef};
 
-pub(crate) fn pod_agents_template(pod: &PodRef) -> String {
-    render_agents_template(include_str!("../templates/pod-agents.md"), &pod.slug, "")
+pub(crate) const DEFAULT_CHARTER: &str = "No pod charter has been set yet.";
+pub(crate) const DEFAULT_ROLE: &str = "No fin role has been set yet.";
+
+pub(crate) fn pod_agents_template(pod: &PodRef, charter: &str) -> String {
+    render_agents_template(
+        include_str!("../templates/pod-agents.md"),
+        &pod.slug,
+        "",
+        charter,
+        "",
+    )
 }
 
 pub(crate) fn pod_config_template(pod: &PodRef) -> String {
@@ -83,16 +92,28 @@ model = "gpt-5.3-codex"
     )
 }
 
-pub(crate) fn fin_agents_template(fin: &FinRef) -> String {
+pub(crate) fn fin_agents_template(fin: &FinRef, role: &str) -> String {
     render_agents_template(
         include_str!("../templates/fin-agents.md"),
         &fin.pod,
         &fin.fin,
+        "",
+        role,
     )
 }
 
-fn render_agents_template(template: &str, pod: &str, fin: &str) -> String {
-    template.replace("{pod}", pod).replace("{fin}", fin)
+fn render_agents_template(
+    template: &str,
+    pod: &str,
+    fin: &str,
+    charter: &str,
+    role: &str,
+) -> String {
+    template
+        .replace("{pod}", pod)
+        .replace("{fin}", fin)
+        .replace("{charter}", charter.trim())
+        .replace("{role}", role.trim())
 }
 
 pub(crate) fn fin_config_template(fin: &FinRef) -> String {

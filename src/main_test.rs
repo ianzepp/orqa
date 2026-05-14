@@ -199,9 +199,10 @@ fn pod_config_template_includes_commented_backend_examples() {
 #[test]
 fn pod_agents_template_documents_orqa_commands() {
     let pod = PodRef::new("sample-pod").unwrap();
-    let markdown = pod_agents_template(&pod);
+    let markdown = pod_agents_template(&pod, "Build the thing.");
 
     assert!(markdown.contains("sample-pod"));
+    assert!(markdown.contains("Build the thing."));
     assert!(markdown.contains("orqa fin list"));
     assert!(markdown.contains("orqa mail send --to <fin>"));
     assert!(markdown.contains("orqa task send --to <fin>"));
@@ -220,9 +221,9 @@ fn fin_config_template_inherits_pod_backend_by_default() {
 #[test]
 fn fin_agents_template_names_fin_role_stub() {
     let fin = FinRef::new("sample-pod", "planner").unwrap();
-    let markdown = fin_agents_template(&fin);
+    let markdown = fin_agents_template(&fin, "Plan the work.");
 
     assert!(markdown.contains("planner"));
     assert!(markdown.contains("sample-pod"));
-    assert!(markdown.contains("Describe this fin's purpose here."));
+    assert!(markdown.contains("Plan the work."));
 }

@@ -1,11 +1,18 @@
-use std::{env, fs, path::Path};
+use std::{
+    env, fs,
+    io::{self, Read},
+    path::Path,
+};
 
 use crate::{
     cli::{
-        FinCommand, FinSubcommand, MailCommand, MailSubcommand, PodCommand, PodSubcommand,
-        TaskCommand, TaskSubcommand,
+        FinCommand, FinRoleSubcommand, FinSubcommand, MailCommand, MailSubcommand,
+        PodCharterSubcommand, PodCommand, PodSubcommand, TaskCommand, TaskSubcommand,
     },
-    config::{fin_agents_template, fin_config_template, pod_agents_template, pod_config_template},
+    config::{
+        DEFAULT_CHARTER, DEFAULT_ROLE, fin_agents_template, fin_config_template,
+        pod_agents_template, pod_config_template,
+    },
     mailbox::{
         ItemKind, delete_item, delete_mail, done_item, done_mail, ensure_maildir, list_mail,
         list_tasks, read_item, read_mail, remove_sleep_marker, send_mail, send_task, unread_mail,
@@ -26,12 +33,35 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
             fs::create_dir_all(home.join("fins")).map_err(|error| {
                 format!("failed to create pod directory {}: {error}", home.display())
             })?;
+            let charter = read_optional_markdown_source(args.charter.as_deref(), DEFAULT_CHARTER)?;
             write_if_missing(&home.join("pod.txt"), &format!("slug={}\n", pod.slug))?;
             write_if_missing(&home.join("pod.toml"), &pod_config_template(&pod))?;
-            write_if_missing(&home.join("AGENTS.md"), &pod_agents_template(&pod))?;
+            write_if_missing(&home.join("CHARTER.md"), &charter)?;
+            write_if_missing(
+                &home.join("AGENTS.md"),
+                &pod_agents_template(&pod, &charter),
+            )?;
             println!("{}", home.display());
             Ok(())
         }
+        PodSubcommand::Charter(command) => match command.command {
+            PodCharterSubcommand::Get(args) => {
+                let pod = PodRef::new(&args.slug)?;
+                print_file(&orqa.pod_home(&pod).join("CHARTER.md"))
+            }
+            PodCharterSubcommand::Set(args) => {
+                let pod = PodRef::new(&args.slug)?;
+                let charter = read_markdown_source(&args.charter)?;
+                let home = orqa.pod_home(&pod);
+                write_text(&home.join("CHARTER.md"), &charter)?;
+                write_text(
+                    &home.join("AGENTS.md"),
+                    &pod_agents_template(&pod, &charter),
+                )?;
+                println!("{}", home.join("CHARTER.md").display());
+                Ok(())
+            }
+        },
         PodSubcommand::Home(args) => {
             let pod = PodRef::new(&args.slug)?;
             println!("{}", orqa.pod_home(&pod).display());
@@ -97,14 +127,31 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
                     format!("failed to create fin directory {}: {error}", home.display())
                 })?;
             }
+            let role = read_optional_markdown_source(args.role.as_deref(), DEFAULT_ROLE)?;
             ensure_maildir(&orqa.mail_home(&fin))?;
             ensure_maildir(&orqa.task_home(&fin))?;
             write_if_missing(&home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
             write_if_missing(&home.join("fin.toml"), &fin_config_template(&fin))?;
-            write_if_missing(&home.join("AGENTS.md"), &fin_agents_template(&fin))?;
+            write_if_missing(&home.join("ROLE.md"), &role)?;
+            write_if_missing(&home.join("AGENTS.md"), &fin_agents_template(&fin, &role))?;
             println!("{}", home.display());
             Ok(())
         }
+        FinSubcommand::Role(command) => match command.command {
+            FinRoleSubcommand::Get(args) => {
+                let fin = FinRef::new(&args.pod, &args.fin)?;
+                print_file(&orqa.fin_home(&fin).join("ROLE.md"))
+            }
+            FinRoleSubcommand::Set(args) => {
+                let fin = FinRef::new(&args.pod, &args.fin)?;
+                let role = read_markdown_source(&args.role)?;
+                let home = orqa.fin_home(&fin);
+                write_text(&home.join("ROLE.md"), &role)?;
+                write_text(&home.join("AGENTS.md"), &fin_agents_template(&fin, &role))?;
+                println!("{}", home.join("ROLE.md").display());
+                Ok(())
+            }
+        },
         FinSubcommand::Home(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
             println!("{}", orqa.fin_home(&fin).display());
@@ -224,6 +271,55 @@ fn print_dirs(dir: &Path) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn print_file(path: &Path) -> Result<(), String> {
+    let contents = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    print!("{contents}");
+    Ok(())
+}
+
+fn write_text(path: &Path, contents: &str) -> Result<(), String> {
+    fs::write(path, contents)
+        .map_err(|error| format!("failed to write {}: {error}", path.display()))
+}
+
+fn read_optional_markdown_source(
+    source: Option<&str>,
+    default_contents: &str,
+) -> Result<String, String> {
+    match source {
+        Some(source) => read_markdown_source(source),
+        None => Ok(markdown_with_trailing_newline(default_contents)),
+    }
+}
+
+fn read_markdown_source(source: &str) -> Result<String, String> {
+    let contents = if source == "-" {
+        let mut contents = String::new();
+        io::stdin()
+            .read_to_string(&mut contents)
+            .map_err(|error| format!("failed to read stdin: {error}"))?;
+        contents
+    } else if let Some(path) = source.strip_prefix('@') {
+        if path.is_empty() {
+            return Err("expected a file path after @".to_string());
+        }
+        fs::read_to_string(path).map_err(|error| format!("failed to read {path}: {error}"))?
+    } else {
+        source.to_string()
+    };
+
+    Ok(markdown_with_trailing_newline(&contents))
+}
+
+fn markdown_with_trailing_newline(contents: &str) -> String {
+    if contents.ends_with('\n') {
+        contents.to_string()
+    } else {
+        format!("{contents}\n")
+    }
 }
 
 pub(crate) fn mail(orqa: &Orqa, command: MailCommand) -> Result<(), String> {

@@ -55,11 +55,13 @@ ORQA_HOME/
   pods/
     sample-pod/
       AGENTS.md      # pod-level runtime instructions
+      CHARTER.md     # shared goal and operating charter
       pod.txt
       pod.toml
       fins/
         planner/
           AGENTS.md  # fin-specific role instructions
+          ROLE.md    # fin purpose inside the pod
           fin.txt
           fin.toml
           .codex/       # Codex state
@@ -75,6 +77,7 @@ ORQA_HOME/
             tmp/
         builder/
           AGENTS.md
+          ROLE.md
           fin.txt
           fin.toml
           .codex/       # Codex state
@@ -566,8 +569,11 @@ who need the runtime overview without install or development notes.
 
 ```text
 orqa pod create <slug>
+orqa pod create <slug> --charter <prompt|@file|->
 orqa pod list
 orqa pod home <slug>
+orqa pod charter get <slug>
+orqa pod charter set <slug> <prompt|@file|->
 orqa pod status <slug>
 orqa pod tail <slug> [--fin <fin>] [--lines <n>] [--follow]
 orqa pod sleep <slug>
@@ -575,18 +581,24 @@ orqa pod wake <slug> --force
 ```
 
 `pod create` creates `ORQA_HOME/pods/<slug>/`, its `fins/` directory,
-`AGENTS.md`, `pod.txt`, and `pod.toml`. The pod-level `AGENTS.md` tells backend
+`CHARTER.md`, `AGENTS.md`, `pod.txt`, and `pod.toml`. The charter is the shared
+goal and operating context for the pod; pass it inline, from `@file.md`, or from
+stdin with `-`. The pod-level `AGENTS.md` injects that charter and tells backend
 runtimes how to use Orqa mail, tasks, status, and fin discovery from inside the
-pod. `pod list` prints known pod slugs, one per line. `pod sleep` writes a
-pod-level sleep marker, and `pod wake` requires `--force` before it removes that
-marker.
+pod. `pod charter set` replaces both `CHARTER.md` and the generated pod
+`AGENTS.md`. `pod list` prints known pod slugs, one per line. `pod sleep` writes
+a pod-level sleep marker, and `pod wake` requires `--force` before it removes
+that marker.
 
 ### Fin Commands
 
 ```text
 orqa fin create <pod> <fin>
+orqa fin create <pod> <fin> --role <prompt|@file|->
 orqa fin list [pod]
 orqa fin home <pod> <fin>
+orqa fin role get <pod> <fin>
+orqa fin role set <pod> <fin> <prompt|@file|->
 orqa fin status <pod> <fin>
 orqa fin runs <pod> <fin>
 orqa fin run-status <pod> <fin> [run-id|latest]
@@ -598,12 +610,15 @@ orqa fin exec <pod> <fin> [-- <args>...]
 orqa fin chat <pod> <fin> [-- <args>...]
 ```
 
-`fin create` creates the fin home, fin-level `AGENTS.md`, runtime state
+`fin create` creates the fin home, `ROLE.md`, fin-level `AGENTS.md`, runtime state
 directories such as `.codex/`, `.hermes/`, and `.pi/`, `mail/`, `tasks/`,
-`fin.txt`, and `fin.toml`. The fin-level `AGENTS.md` is a role stub for that
-specific fin. `fin list` prints fin slugs for the provided pod, or for
-`ORQA_POD` when the pod argument is omitted. `fin exec` launches the configured
-backend and passes any arguments after `--` as the `{prompt}` template value:
+`fin.txt`, and `fin.toml`. The role is the fin-specific purpose inside the pod;
+pass it inline, from `@file.md`, or from stdin with `-`. The fin-level
+`AGENTS.md` injects that role for the backend runtime. `fin role set` replaces
+both `ROLE.md` and the generated fin `AGENTS.md`. `fin list` prints fin slugs for
+the provided pod, or for `ORQA_POD` when the pod argument is omitted. `fin exec`
+launches the configured backend and passes any arguments after `--` as the
+`{prompt}` template value:
 
 ```sh
 orqa fin exec sample-pod planner -- "work on the next task"

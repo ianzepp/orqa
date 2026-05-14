@@ -6,6 +6,10 @@ Orqa is the local coordination tool for this pod. The pod is a group of fins
 working around a shared goal. Each fin is an agent runtime identity with its own
 home directory, mail inbox, task queue, and run history.
 
+## Charter
+
+{charter}
+
 ## Runtime Context
 
 Orqa sets these environment variables when it launches you:

@@ -8,7 +8,7 @@ status, and fin discovery.
 
 ## Role
 
-Describe this fin's purpose here.
+{role}
 
 ## Operating Notes
 
