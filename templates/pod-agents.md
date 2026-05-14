@@ -21,6 +21,9 @@ Orqa sets these environment variables when it launches you:
 You usually do not need to pass `--pod` or `--fin` when a command can infer
 them from the environment.
 
+If your runtime starts in the pod home, read your fin-specific instructions at
+`fins/$ORQA_FIN/AGENTS.md` and `fins/$ORQA_FIN/ROLE.md` before acting.
+
 ## Pod And Fin Discovery
 
 - List pods: `orqa pod list`

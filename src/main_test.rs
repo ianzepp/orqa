@@ -187,9 +187,9 @@ fn pod_config_template_includes_commented_backend_examples() {
     assert!(toml.contains("slug = \"sample-pod\""));
     assert!(toml.contains("[backends.codex]"));
     assert!(toml.contains("command = \"codex\""));
-    assert!(toml.contains(
-        "exec_args = [\"exec\", \"--skip-git-repo-check\", \"--model\", \"{model}\", \"{prompt}\"]"
-    ));
+    assert!(toml.contains("\"--skip-git-repo-check\""));
+    assert!(toml.contains("\"--sandbox\", \"workspace-write\""));
+    assert!(toml.contains("\"--cd\", \"{pod_home}\""));
     assert!(toml.contains("# [backends.opencode]"));
     assert!(toml.contains("# [backends.hermes]"));
     assert!(toml.contains("# exec_args = [\"--model\", \"{model}\", \"--oneshot\", \"{prompt}\"]"));

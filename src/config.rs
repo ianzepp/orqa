@@ -39,8 +39,19 @@ default_backend = "codex"
 [backends.codex]
 enabled = true
 command = "codex"
-exec_args = ["exec", "--skip-git-repo-check", "--model", "{{model}}", "{{prompt}}"]
-chat_args = ["--model", "{{model}}"]
+exec_args = [
+    "exec",
+    "--skip-git-repo-check",
+    "--sandbox", "workspace-write",
+    "--cd", "{{pod_home}}",
+    "--model", "{{model}}",
+    "{{prompt}}",
+]
+chat_args = [
+    "--sandbox", "workspace-write",
+    "--cd", "{{pod_home}}",
+    "--model", "{{model}}",
+]
 
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
