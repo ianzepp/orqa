@@ -77,7 +77,7 @@ default_backend = "codex"
 [backends.codex]
 enabled = true
 command = "codex"
-args = ["{prompt}"]
+args = ["{{prompt}}"]
 
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
@@ -87,12 +87,18 @@ model = "gpt-5.3-codex"
 # [backends.opencode]
 # enabled = true
 # command = "opencode"
-# args = ["run", "--model", "{model}", "{prompt}"]
+# args = ["run", "--model", "{{model}}", "{{prompt}}"]
 
 # [backends.pi]
 # enabled = true
 # command = "pi"
-# args = ["exec", "--home", "{fin_home}", "--pod", "{pod}", "--fin", "{fin}", "{prompt}"]
+# args = [
+#     "exec",
+#     "--home", "{{fin_home}}",
+#     "--pod", "{{pod}}",
+#     "--fin", "{{fin}}",
+#     "{{prompt}}",
+# ]
 ```
 
 `fin.toml` records per-fin backend values. A fin inherits the pod default
@@ -181,7 +187,7 @@ Run the normal checks with:
 
 ```sh
 cargo fmt
-cargo clippy -- -D warnings
+cargo clippy --all-targets -- -D warnings
 cargo test
 ```
 
@@ -197,7 +203,7 @@ orqa fin run sample-pod amy -- "work on the next task"
 Use `--framework` to run another executable:
 
 ```sh
-orqa fin run sample-pod amy --framework /bin/echo -- "hello"
+orqa fin run --framework /bin/echo sample-pod amy -- "hello"
 ```
 
 When a fin runs, `orqa` sets these environment variables:
@@ -242,7 +248,7 @@ Use `loop --force` to run one wake scan while ignoring sleep markers without
 removing them:
 
 ```sh
-orqa loop sample-pod --force
+orqa loop --force sample-pod
 ```
 
 ## Mail
@@ -275,7 +281,7 @@ Unread messages in `mail/new` are wake signals. `orqa loop sample-pod` scans
 fin inboxes and prints fins that should run:
 
 ```text
-wake sample-pod/bob-jones unread=1
+wake sample-pod/bob-jones pid=12345 unread_mail=1 open_tasks=0
 ```
 
 When a fin finishes handling a message, it can mark that message done. This
@@ -410,228 +416,126 @@ This moves the task from `tasks/new` to `tasks/cur` and clears that wake signal.
 
 ## Commands
 
-### `orqa doctor`
+All commands accept the global `--home <DIR>` option to override `ORQA_HOME`.
+With no command, `orqa` runs `doctor`.
 
-Prints basic runtime information, including the active `ORQA_HOME`.
+### Top Level
 
-```sh
-orqa doctor
+```text
+Usage: orqa [OPTIONS] [COMMAND]
+
+Commands:
+  doctor  Show basic runtime information
+  pod     Create or inspect pods
+  fin     Create or run fins inside a pod
+  mail    Mail helpers for pod-local fin messages
+  task    Task helpers for pod-local work items
+  loop    Run the wake loop for a pod
 ```
 
-### `orqa pod create <pod>`
+`orqa doctor` prints basic runtime information, including the active
+`ORQA_HOME`.
 
-Creates a pod home directory and its `fins` directory.
+### Pod Commands
 
-```sh
-orqa pod create sample-pod
+```text
+orqa pod create <slug>
+orqa pod home <slug>
+orqa pod sleep <slug>
+orqa pod wake <slug> --force
 ```
 
-### `orqa pod home <pod>`
+`pod create` creates `ORQA_HOME/pods/<slug>/`, its `fins/` directory,
+`pod.txt`, and `pod.toml`. `pod sleep` writes a pod-level sleep marker, and
+`pod wake` requires `--force` before it removes that marker.
 
-Prints the filesystem path for a pod.
+### Fin Commands
 
-```sh
-orqa pod home sample-pod
+```text
+orqa fin create <pod> <fin>
+orqa fin home <pod> <fin>
+orqa fin sleep <pod> <fin>
+orqa fin wake <pod> <fin> --force
+orqa fin run [--framework <framework>] <pod> <fin> [-- <args>...]
 ```
 
-### `orqa pod sleep <pod>`
-
-Writes a pod-level sleep marker. The wake loop skips the whole pod while this
-marker exists.
-
-```sh
-orqa pod sleep sample-pod
-```
-
-### `orqa pod wake <pod> --force`
-
-Clears a pod-level sleep marker.
-
-```sh
-orqa pod wake sample-pod --force
-```
-
-### `orqa fin create <pod> <fin>`
-
-Creates a fin home directory, its `.codex` directory, its Maildir inbox, and
-its task queue.
-
-```sh
-orqa fin create sample-pod amy
-```
-
-### `orqa fin home <pod> <fin>`
-
-Prints the filesystem path for a fin.
-
-```sh
-orqa fin home sample-pod amy
-```
-
-### `orqa fin sleep <pod> <fin>`
-
-Writes a fin-level sleep marker. The wake loop skips that fin while this marker
-exists.
-
-```sh
-orqa fin sleep sample-pod amy
-```
-
-### `orqa fin wake <pod> <fin> --force`
-
-Clears a fin-level sleep marker.
-
-```sh
-orqa fin wake sample-pod amy --force
-```
-
-### `orqa fin run <pod> <fin>`
-
-Runs a fin through the configured framework.
+`fin create` creates the fin home, `.codex/`, `mail/`, `tasks/`, `fin.txt`,
+and `fin.toml`. `fin run` launches the framework executable, defaulting to
+`codex`, and passes any arguments after `--` directly to that executable:
 
 ```sh
 orqa fin run sample-pod amy -- "work on the next task"
-orqa fin run sample-pod amy --framework codex -- "work on the next task"
+orqa fin run --framework /bin/echo sample-pod amy -- "hello"
 ```
 
-Arguments after `--` are passed through to the framework.
+`fin wake` requires `--force` before it removes a fin-level sleep marker.
 
-### `orqa mail home <pod> <fin>`
+### Mail Commands
 
-Prints the Maildir path for a fin.
-
-```sh
-orqa mail home sample-pod amy
+```text
+orqa mail home <pod> <fin>
+orqa mail send [--from <from>] --to <to> [--subject <subject>] [body]
+orqa mail list [--pod <pod>] [--fin <fin>] [--all]
+orqa mail read [--pod <pod>] [--fin <fin>] <message>
+orqa mail done [--pod <pod>] [--fin <fin>] <message>
+orqa mail delete [--pod <pod>] [--fin <fin>] <message>
+orqa mail unread <pod> <fin>
 ```
 
-### `orqa mail send`
-
-Sends a pod-local message.
+`mail send` requires `--to`. `--from` defaults to
+`ORQA_FIN@ORQA_POD.orqa`; `--subject` defaults to `(no subject)`. If `body` is
+omitted, `orqa` reads the message body from stdin:
 
 ```sh
 orqa mail send --from amy@sample-pod.orqa --to bob-jones@sample-pod.orqa "hello"
-orqa mail send --to bob-jones --subject hello "hello from fin context"
-```
-
-If no message body is provided as an argument, `orqa` reads the body from stdin:
-
-```sh
 cat message.txt | orqa mail send --to bob-jones --subject hello
 ```
 
-### `orqa mail list`
+`mail list` lists unread messages from `mail/new`; `--all` also includes done
+messages from `mail/cur`. `mail read`, `mail done`, and `mail delete` accept a
+message id, filename, or full path. `mail unread` is a lower-level helper that
+prints unread message file paths.
 
-Lists unread messages for the current fin context. Use `--all` to include
-done messages from `mail/cur`.
-
-```sh
-orqa mail list
-orqa mail list --all
-orqa mail list --pod sample-pod --fin bob-jones
-```
-
-The output includes the mail state, message id, and subject:
+### Task Commands
 
 ```text
-new 1778757271046041.31124.0.orqa update-settings
+orqa task home <pod> <fin>
+orqa task send [--from <from>] --to <to> [--title <title>] [body]
+orqa task list [--pod <pod>] [--fin <fin>] [--all]
+               [--status <status>] [--priority <priority>] [--kind <kind>]
+               [--field <key=value>] [--sort <key>] [--reverse]
+orqa task read [--pod <pod>] [--fin <fin>] <message>
+orqa task done [--pod <pod>] [--fin <fin>] <message>
+orqa task delete [--pod <pod>] [--fin <fin>] <message>
 ```
 
-### `orqa mail read <message>`
+`task send` requires `--to`. `--from` defaults to
+`ORQA_FIN@ORQA_POD.orqa`. If `body` is omitted, `orqa` reads the task body from
+stdin. Task bodies are normalized into Markdown with YAML front matter. If
+`--title` is omitted, `orqa` uses `title:` from the provided front matter or
+falls back to `(untitled task)`.
 
-Prints a message. `<message>` may be the id from `mail list` or a full path.
-
-```sh
-orqa mail read 1778757271046041.31124.0.orqa
-orqa mail read --pod sample-pod --fin bob-jones 1778757271046041.31124.0.orqa
-```
-
-### `orqa mail done <message>`
-
-Marks an unread message done by moving it from `mail/new` to `mail/cur`.
-
-```sh
-orqa mail done 1778757271046041.31124.0.orqa
-```
-
-### `orqa mail delete <message>`
-
-Deletes a message from `mail/new` or `mail/cur`.
-
-```sh
-orqa mail delete 1778757271046041.31124.0.orqa
-```
-
-### `orqa mail unread <pod> <fin>`
-
-Lists unread message file paths in a fin's `mail/new` inbox. This is a
-lower-level helper; fins usually want `orqa mail list`.
-
-```sh
-orqa mail unread sample-pod bob-jones
-```
-
-### `orqa task home <pod> <fin>`
-
-Prints the task queue path for a fin.
-
-```sh
-orqa task home sample-pod amy
-```
-
-### `orqa task send`
-
-Assigns a pod-local task.
-
-```sh
-orqa task send --from amy@sample-pod.orqa --to bob-jones@sample-pod.orqa --title update-settings "please do this"
-orqa task send --to bob-jones --title update-settings "please do this"
-cat task.md | orqa task send --to bob-jones
-```
-
-If no task body is provided as an argument, `orqa` reads the body from stdin:
-
-```sh
-cat task.md | orqa task send --to bob-jones --title update-settings
-```
-
-Task bodies are normalized into Markdown with YAML front matter. If `--title` is
-omitted, `orqa` uses `title:` from the provided front matter or falls back to
-`(untitled task)`.
-
-### `orqa task list`
-
-Lists open tasks for the current fin context. Use `--all` to include done
-tasks from `tasks/cur`. Output is shell-friendly: state, id, and front matter
+`task list` lists open tasks from `tasks/new`; `--all` also includes done tasks
+from `tasks/cur`. Its output is shell-friendly: state, id, and front matter
 properties as `key=value` fields.
-
-```sh
-orqa task list
-orqa task list --all
-orqa task list --pod sample-pod --fin bob-jones
-```
-
-Example output:
 
 ```text
 new 1778757936473943.33536.0.orqa priority=high status=blocked kind=want title="urgent task"
 ```
 
-Filter by common task properties:
+Filters match front matter exactly. `--field` can be repeated because it is a
+normal option list:
 
 ```sh
 orqa task list --status open
 orqa task list --priority high
 orqa task list --kind need
-```
-
-Filter by custom front matter with `--field key=value`:
-
-```sh
 orqa task list --field owner=amy
 orqa task list --status blocked --field owner=amy
 ```
 
-Sort by a front matter key, or by `state` or `id`:
+Sort keys may be front matter keys, `state`, or `id`. Known priorities sort by
+severity: `critical`/`urgent`, `high`, `normal`/`medium`, then `low`.
 
 ```sh
 orqa task list --sort priority
@@ -639,49 +543,28 @@ orqa task list --sort title
 orqa task list --sort priority --reverse
 ```
 
-Known priorities sort by severity: `critical`/`urgent`, `high`,
-`normal`/`medium`, then `low`.
+`task read`, `task done`, and `task delete` accept a task id, filename, or full
+path. `task done` moves the task from `tasks/new` to `tasks/cur`.
 
-### `orqa task read <task>`
+### Wake Loop
 
-Prints a task. `<task>` may be the id from `task list` or a full path.
-
-```sh
-orqa task read 1778757485781904.31898.0.orqa
+```text
+orqa loop [--force] [--framework <framework>] <pod> [-- <args>...]
 ```
 
-### `orqa task done <task>`
-
-Marks an open task done by moving it from `tasks/new` to `tasks/cur`.
-
-```sh
-orqa task done 1778757485781904.31898.0.orqa
-```
-
-### `orqa task delete <task>`
-
-Deletes a task from `tasks/new` or `tasks/cur`.
-
-```sh
-orqa task delete 1778757485781904.31898.0.orqa
-```
-
-### `orqa loop <pod>`
-
-Scans a pod for fins with unread mail or open tasks. Wakeable fins are
-launched through the configured framework.
+`orqa loop` scans a pod for fins with unread mail or open tasks. Wakeable fins
+are launched through the framework executable, defaulting to `codex`.
 
 ```sh
 orqa loop sample-pod
-orqa loop sample-pod --framework codex -- "handle your open Orqa mail and tasks"
-orqa loop sample-pod --force
+orqa loop --framework codex sample-pod -- "handle your open Orqa mail and tasks"
+orqa loop --force sample-pod
 ```
 
 For each wakeable fin, `orqa loop` creates `run.lock` with the spawned process
 PID. Later scans skip that fin while the PID is alive. Stale locks are removed
-when the PID no longer exists.
-
-Sleeping pods and fins are skipped unless `--force` is used.
+when the PID no longer exists. Sleeping pods and fins are skipped unless
+`--force` is used.
 
 ## Status
 
