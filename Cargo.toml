@@ -2,6 +2,14 @@
 name = "orqa"
 version = "0.1.0"
 edition = "2024"
+rust-version = "1.85"
+description = "A small local coordinator for background agents organized as pods and fins."
+license = "MIT"
+repository = "https://github.com/ianzepp/orqa"
+homepage = "https://github.com/ianzepp/orqa"
+readme = "README.md"
+keywords = ["agents", "cli", "coordination", "local"]
+categories = ["command-line-utilities", "development-tools"]
 
 [dependencies]
 clap = { version = "4.5.38", features = ["derive"] }
