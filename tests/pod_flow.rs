@@ -866,14 +866,15 @@ fn ops_report_prints_pods_tasks_mail_and_issues() {
     assert!(report.contains("## Pod `deploy`"));
     assert!(report.contains("### Fin `release`"));
     assert!(report.contains("#### Tasks"));
-    assert!(report.contains("title: `Ship the release`"));
+    assert!(report.contains("title=`Ship the release`"));
     assert!(report.contains("Cut the next release and verify the service."));
     assert!(report.contains("#### Mail"));
-    assert!(report.contains("subject: `Release note`"));
+    assert!(report.contains("subject=`Release note`"));
     assert!(report.contains("Remember to summarize operator issues."));
     assert!(report.contains("Cloudflare auth expired"));
     assert!(report.contains("Need a human to refresh credentials."));
-    assert!(report.contains("- path: `"));
+    assert!(report.contains(" id=`"));
+    assert!(report.contains(" path=`"));
 
     fs::remove_dir_all(root).unwrap();
 }

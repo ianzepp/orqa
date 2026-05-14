@@ -127,16 +127,17 @@ fn print_tasks(orqa: &Orqa, fin: &FinRef, since: Option<&SinceFilter>) -> Result
             let contents = read_to_string(&path)?;
             let (fields, body) = split_front_matter(&contents);
             let id = message_id(&path)?;
-            println!();
-            println!("- `{id}`");
-            println!("  - state: `{state}`");
-            println!("  - path: `{}`", path.display());
-            for key in ["status", "priority", "kind", "title", "from", "to"] {
-                if let Some(value) = field_value(&fields, key) {
-                    println!("  - {key}: `{}`", inline(&value));
-                }
-            }
-            print_nested_context(body);
+            println!(
+                "- state=`{state}` status=`{}` priority=`{}` kind=`{}` from=`{}` to=`{}` title=`{}`",
+                inline_field(&fields, "status"),
+                inline_field(&fields, "priority"),
+                inline_field(&fields, "kind"),
+                inline_field(&fields, "from"),
+                inline_field(&fields, "to"),
+                inline_field(&fields, "title"),
+            );
+            print_compact_context(body);
+            println!("  id=`{id}` path=`{}`", path.display());
             count += 1;
         }
     }
@@ -159,16 +160,14 @@ fn print_mail(orqa: &Orqa, fin: &FinRef, since: Option<&SinceFilter>) -> Result<
             let contents = read_to_string(&path)?;
             let (headers, body) = split_headers(&contents);
             let id = message_id(&path)?;
-            println!();
-            println!("- `{id}`");
-            println!("  - state: `{state}`");
-            println!("  - path: `{}`", path.display());
-            for key in ["From", "To", "Subject"] {
-                if let Some(value) = header_value(&headers, key) {
-                    println!("  - {}: `{}`", key.to_ascii_lowercase(), inline(value));
-                }
-            }
-            print_nested_context(body);
+            println!(
+                "- state=`{state}` from=`{}` to=`{}` subject=`{}`",
+                inline(header_value(&headers, "From").unwrap_or("-")),
+                inline(header_value(&headers, "To").unwrap_or("-")),
+                inline(header_value(&headers, "Subject").unwrap_or("(no subject)")),
+            );
+            print_compact_context(body);
+            println!("  id=`{id}` path=`{}`", path.display());
             count += 1;
         }
     }
@@ -212,17 +211,12 @@ fn print_context(body: &str) {
     println!("```");
 }
 
-fn print_nested_context(body: &str) {
+fn print_compact_context(body: &str) {
     let context = clip(body);
     if context.is_empty() {
         return;
     }
-    println!("  - context:");
-    println!("    ```text");
-    for line in context.lines() {
-        println!("    {line}");
-    }
-    println!("    ```");
+    println!("  context=`{}`", inline(&context));
 }
 
 fn clip(value: &str) -> String {
@@ -244,6 +238,12 @@ fn clip(value: &str) -> String {
 
 fn inline(value: &str) -> String {
     value.replace('`', "'").replace('\n', " ")
+}
+
+fn inline_field(fields: &[(String, String)], key: &str) -> String {
+    field_value(fields, key)
+        .map(|value| inline(&value))
+        .unwrap_or_else(|| "-".to_string())
 }
 
 fn read_to_string(path: &Path) -> Result<String, String> {
