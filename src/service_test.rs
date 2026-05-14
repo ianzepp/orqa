@@ -15,7 +15,6 @@ fn install_args() -> ServiceInstallArgs {
     ServiceInstallArgs {
         interval: 30,
         force: true,
-        framework: Some(OsString::from("/bin/echo")),
         args: vec![OsString::from("handle work")],
     }
 }
@@ -30,7 +29,6 @@ fn macos_plist_runs_service_loop() {
     assert!(!plist.contains("<string>sample-pod</string>"));
     assert!(plist.contains("<string>--interval</string>"));
     assert!(plist.contains("<string>30</string>"));
-    assert!(plist.contains("<string>--framework</string>"));
     assert!(plist.contains("<string>handle work</string>"));
 }
 

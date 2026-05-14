@@ -8,7 +8,7 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    cli::{ChatArgs, ExecArgs, LoopArgs, PlanArgs},
+    cli::{ChatArgs, ExecArgs, LoopArgs, PlanArgs, SuperviseArgs},
     config::{BackendCommand, BackendMode, backend_chat_command, backend_command},
     mailbox::unread_count,
     model::{FinRef, Orqa, PodRef},
@@ -82,13 +82,7 @@ impl std::fmt::Display for WakeReason {
 }
 
 pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
-    let plan = plan_pod(
-        orqa,
-        &args.pod,
-        args.force,
-        args.framework.as_ref(),
-        &args.args,
-    )?;
+    let plan = plan_pod(orqa, &args.pod, args.force, &args.args)?;
     if args.dry_run {
         return print_plan(&plan, args.json);
     }
@@ -105,7 +99,7 @@ pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
         }
 
         let fin_ref = FinRef::new(&plan.pod, &fin.fin)?;
-        let command = resolve_exec_command(orqa, &fin_ref, args.framework.as_ref(), &args.args)?;
+        let command = resolve_exec_command(orqa, &fin_ref, &args.args)?;
         spawn_supervised_wake(orqa, &fin_ref, &command, fin)?;
     }
 
@@ -113,7 +107,7 @@ pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
 }
 
 pub(crate) fn plan(orqa: &Orqa, args: PlanArgs) -> Result<(), String> {
-    let plan = plan_pod(orqa, &args.pod, args.force, None, &[])?;
+    let plan = plan_pod(orqa, &args.pod, args.force, &[])?;
     print_plan(&plan, args.json)
 }
 
@@ -121,7 +115,6 @@ pub(crate) fn plan_pod(
     orqa: &Orqa,
     pod: &str,
     force: bool,
-    framework: Option<&OsString>,
     args: &[OsString],
 ) -> Result<WakePlan, String> {
     let pod = PodRef::new(pod)?;
@@ -144,7 +137,7 @@ pub(crate) fn plan_pod(
 
         let fin_slug = entry.file_name().to_string_lossy().to_string();
         let fin = FinRef::new(&pod.slug, &fin_slug)?;
-        fins.push(plan_fin(orqa, &fin, pod_sleeping, force, framework, args)?);
+        fins.push(plan_fin(orqa, &fin, pod_sleeping, force, args)?);
     }
     fins.sort_by(|left, right| left.fin.cmp(&right.fin));
 
@@ -160,7 +153,6 @@ fn plan_fin(
     fin: &FinRef,
     pod_sleeping: bool,
     force: bool,
-    framework: Option<&OsString>,
     args: &[OsString],
 ) -> Result<FinWakePlan, String> {
     let fin_sleeping = orqa.fin_sleep_path(fin).exists();
@@ -186,7 +178,7 @@ fn plan_fin(
         (WakeDecision::WouldSkip, WakeReason::NoAction)
     };
     let backend = if decision == WakeDecision::WouldWake {
-        match resolve_exec_command(orqa, fin, framework, args) {
+        match resolve_exec_command(orqa, fin, args) {
             Ok(command) => Some(command.backend),
             Err(error) => {
                 return Ok(FinWakePlan {
@@ -247,19 +239,24 @@ fn print_plan(plan: &WakePlan, json: bool) -> Result<(), String> {
 
 pub(crate) fn exec_fin(orqa: &Orqa, args: ExecArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
-    let command = resolve_exec_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
+    let command = resolve_exec_command(orqa, &fin, &args.args)?;
     exec_fin_foreground(orqa, &fin, &command)
 }
 
 pub(crate) fn chat_fin(orqa: &Orqa, args: ChatArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
-    let command = resolve_chat_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
+    let command = resolve_chat_command(orqa, &fin, &args.args)?;
     fin_chat_interactive(orqa, &fin, &command)
 }
 
-pub(crate) fn supervise_fin(orqa: &Orqa, args: ExecArgs) -> Result<(), String> {
+pub(crate) fn supervise_fin(orqa: &Orqa, args: SuperviseArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
-    let command = resolve_exec_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
+    let command = BackendCommand {
+        backend: args.backend,
+        command: args.backend_command,
+        args: args.args,
+        mode: BackendMode::Exec,
+    };
     let outcome = exec_fin_logged(orqa, &fin, &command, false)?;
     if outcome.success {
         Ok(())
@@ -307,9 +304,12 @@ fn spawn_supervised_wake(
 }
 
 fn supervisor_args(command: &BackendCommand) -> Vec<OsString> {
-    let mut args = Vec::new();
-    args.push(OsString::from("--framework"));
-    args.push(command.command.clone());
+    let mut args = vec![
+        OsString::from("--backend"),
+        OsString::from(&command.backend),
+        OsString::from("--backend-command"),
+        command.command.clone(),
+    ];
     if !command.args.is_empty() {
         args.push(OsString::from("--"));
         args.extend(command.args.clone());
@@ -341,36 +341,16 @@ fn exit_error(command: &OsString, code: Option<i32>) -> String {
 pub(crate) fn resolve_exec_command(
     orqa: &Orqa,
     fin: &FinRef,
-    framework: Option<&OsString>,
     args: &[OsString],
 ) -> Result<BackendCommand, String> {
-    if let Some(framework) = framework {
-        return Ok(BackendCommand {
-            backend: "override".to_string(),
-            command: framework.clone(),
-            args: args.to_vec(),
-            mode: BackendMode::Exec,
-        });
-    }
-
     backend_command(orqa, fin, args)
 }
 
 fn resolve_chat_command(
     orqa: &Orqa,
     fin: &FinRef,
-    framework: Option<&OsString>,
     args: &[OsString],
 ) -> Result<BackendCommand, String> {
-    if let Some(framework) = framework {
-        return Ok(BackendCommand {
-            backend: "override".to_string(),
-            command: framework.clone(),
-            args: args.to_vec(),
-            mode: BackendMode::Chat,
-        });
-    }
-
     let mut command = backend_chat_command(orqa, fin)?;
     if !args.is_empty() {
         command.args.extend(args.iter().cloned());
@@ -574,7 +554,7 @@ impl FinLock {
         Ok(Some(Self { path, pid }))
     }
 
-    fn write(orqa: &Orqa, fin: &FinRef, pid: u32, framework: &OsString) -> Result<Self, String> {
+    fn write(orqa: &Orqa, fin: &FinRef, pid: u32, command: &OsString) -> Result<Self, String> {
         let path = orqa.lock_path(fin);
         let parent = path
             .parent()
@@ -587,8 +567,8 @@ impl FinLock {
         })?;
 
         let contents = format!(
-            "pid={pid}\npod={}\nfin={}\nframework={:?}\n",
-            fin.pod, fin.fin, framework
+            "pid={pid}\npod={}\nfin={}\ncommand={:?}\n",
+            fin.pod, fin.fin, command
         );
         fs::write(&path, contents)
             .map_err(|error| format!("failed to write lock {}: {error}", path.display()))?;

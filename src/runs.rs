@@ -67,7 +67,7 @@ impl RunFiles {
         fin: &FinRef,
         mode: &str,
         backend: &str,
-        framework: &OsString,
+        command: &OsString,
         args: &[OsString],
     ) -> Result<Self, String> {
         let id = run_id()?;
@@ -84,7 +84,7 @@ impl RunFiles {
             fin: fin.label(),
             backend: backend.to_string(),
             mode: mode.to_string(),
-            command: framework.to_string_lossy().to_string(),
+            command: command.to_string_lossy().to_string(),
             args: args
                 .iter()
                 .map(|arg| arg.to_string_lossy().to_string())
@@ -100,7 +100,7 @@ impl RunFiles {
         write_file(&record.stdout_log, "")?;
         write_file(&record.stderr_log, "")?;
         write_file(&record.events_log, "")?;
-        let command_text = command_text(framework, args);
+        let command_text = command_text(command, args);
         write_file(&run_dir.join("command.txt"), &command_text)?;
         write_latest(orqa, fin, &record.id)?;
 
@@ -355,8 +355,8 @@ fn now_epoch() -> u64 {
         .unwrap_or_default()
 }
 
-fn command_text(framework: &OsString, args: &[OsString]) -> String {
-    let mut parts = vec![framework.to_string_lossy().to_string()];
+fn command_text(command: &OsString, args: &[OsString]) -> String {
+    let mut parts = vec![command.to_string_lossy().to_string()];
     parts.extend(args.iter().map(|arg| arg.to_string_lossy().to_string()));
     parts.join(" ")
 }

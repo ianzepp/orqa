@@ -5,7 +5,7 @@ goal-oriented group of agents a shared filesystem shape, names the group as a
 pod, names each runtime identity as a fin, and provides local mail and task
 queues that can wake fins when there is work to handle.
 
-Orqa does not decide what the agent should think or how the agent framework
+Orqa does not decide what the agent should think or how the agent runtime
 works. It creates the homes, inboxes, task queues, config files, and runtime
 environment that let an agent process understand where it is and how to talk to
 the other fins in its pod.
@@ -107,13 +107,6 @@ Preview the same wake decisions without launching anything:
 ```sh
 orqa plan sample-pod
 orqa loop --dry-run sample-pod
-```
-
-Use `--framework` to bypass config for a one-off smoke test:
-
-```sh
-orqa fin exec --framework /bin/echo sample-pod planner -- "hello"
-orqa loop --framework /bin/echo sample-pod -- "wake scan"
 ```
 
 Start an interactive backend chat as a fin with the backend's `chat_args`:

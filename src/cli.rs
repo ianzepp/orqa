@@ -98,7 +98,7 @@ pub(crate) enum FinSubcommand {
     Chat(ChatArgs),
     /// Internal supervised runner used by wake loops.
     #[command(hide = true)]
-    Supervise(ExecArgs),
+    Supervise(SuperviseArgs),
 }
 
 #[derive(Debug, Args)]
@@ -182,10 +182,7 @@ pub(crate) struct LoopArgs {
     /// Emit machine-readable JSON.
     #[arg(long)]
     pub(crate) json: bool,
-    /// Framework executable.
-    #[arg(long)]
-    pub(crate) framework: Option<OsString>,
-    /// Arguments passed to the framework.
+    /// Arguments used to build the backend prompt.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
 }
@@ -210,9 +207,6 @@ pub(crate) struct ServiceInstallArgs {
     /// Ignore pod and fin sleep markers for each scan.
     #[arg(long)]
     pub(crate) force: bool,
-    /// Framework executable override.
-    #[arg(long)]
-    pub(crate) framework: Option<OsString>,
     /// Arguments passed to each wake-loop scan.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
@@ -226,9 +220,6 @@ pub(crate) struct ServiceRunArgs {
     /// Ignore pod and fin sleep markers for each scan.
     #[arg(long)]
     pub(crate) force: bool,
-    /// Framework executable override.
-    #[arg(long)]
-    pub(crate) framework: Option<OsString>,
     /// Arguments passed to each wake-loop scan.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
@@ -355,10 +346,7 @@ pub(crate) struct ExecArgs {
     pub(crate) pod: String,
     /// Fin slug inside the pod.
     pub(crate) fin: String,
-    /// Framework executable.
-    #[arg(long)]
-    pub(crate) framework: Option<OsString>,
-    /// Arguments passed to the framework.
+    /// Arguments used to build the backend prompt.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
 }
@@ -369,10 +357,24 @@ pub(crate) struct ChatArgs {
     pub(crate) pod: String,
     /// Fin slug inside the pod.
     pub(crate) fin: String,
-    /// Framework executable.
+    /// Arguments appended to the configured chat command.
+    #[arg(last = true)]
+    pub(crate) args: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct SuperviseArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Fin slug inside the pod.
+    pub(crate) fin: String,
+    /// Resolved backend name.
     #[arg(long)]
-    pub(crate) framework: Option<OsString>,
-    /// Arguments passed to the framework.
+    pub(crate) backend: String,
+    /// Resolved backend executable.
+    #[arg(long = "backend-command")]
+    pub(crate) backend_command: OsString,
+    /// Resolved backend arguments.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
 }

@@ -165,20 +165,9 @@ fn fin_exec_records_status_and_tail_output() {
 
     orqa(&root, ["pod", "create", "test-pod"]);
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_echo_backend(&root, "test-pod");
 
-    orqa_output(
-        &root,
-        [
-            "fin",
-            "exec",
-            "--framework",
-            "/bin/echo",
-            "test-pod",
-            "amy",
-            "--",
-            "from-run",
-        ],
-    );
+    orqa_output(&root, ["fin", "exec", "test-pod", "amy", "--", "from-run"]);
 
     let runs = orqa_output(&root, ["fin", "runs", "test-pod", "amy"]);
     assert!(runs.contains("status=finished"));
@@ -198,21 +187,10 @@ fn repeated_fin_execs_get_distinct_finished_records() {
 
     orqa(&root, ["pod", "create", "test-pod"]);
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_echo_backend(&root, "test-pod");
 
     for body in ["first", "second"] {
-        orqa_output(
-            &root,
-            [
-                "fin",
-                "exec",
-                "--framework",
-                "/bin/echo",
-                "test-pod",
-                "amy",
-                "--",
-                body,
-            ],
-        );
+        orqa_output(&root, ["fin", "exec", "test-pod", "amy", "--", body]);
     }
 
     let runs = orqa_output(&root, ["fin", "runs", "test-pod", "amy"]);
@@ -410,6 +388,25 @@ fn set_writer_backend(root: &Path, pod: &str) {
 enabled = true
 command = "/bin/sh"
 exec_args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{fin_home}}/ran.txt"]
+"#
+        ),
+    )
+    .unwrap();
+}
+
+fn set_echo_backend(root: &Path, pod: &str) {
+    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let config = fs::read_to_string(&pod_config).unwrap();
+    let config = config.replace("default_backend = \"codex\"", "default_backend = \"echo\"");
+    fs::write(
+        &pod_config,
+        format!(
+            r#"{config}
+
+[backends.echo]
+enabled = true
+command = "/bin/echo"
+exec_args = ["{{prompt}}"]
 "#
         ),
     )

@@ -99,7 +99,7 @@ ORQA_HOME/pods/<pod>/pod.toml
 ORQA_HOME/pods/<pod>/fins/<fin>/fin.toml
 ```
 
-`pod.toml` owns backend definitions. This keeps command formats and framework
+`pod.toml` owns backend definitions. This keeps command formats and backend
 policy in one place for the whole pod. `pod create` enables Codex by default
 and writes commented examples for OpenCode, Hermes, Pi, and a custom runner:
 
@@ -179,8 +179,7 @@ uses its normal user-level config and data locations unless you customize its
 backend definition.
 
 The config files are seeded by `pod create` and `fin create`. `orqa fin exec`
-and `orqa loop` use them when `--framework` is omitted. `--framework` remains
-an explicit command override for quick smoke tests and one-off runs.
+and `orqa loop` use them to choose and launch each fin's backend.
 
 ## Quick Start
 
@@ -266,12 +265,6 @@ cargo test
 
 ```sh
 orqa fin exec sample-pod planner -- "work on the next task"
-```
-
-Use `--framework` to bypass config and run another executable:
-
-```sh
-orqa fin exec --framework /bin/echo sample-pod planner -- "hello"
 ```
 
 Start an interactive backend chat as a fin with the backend's `chat_args`:
@@ -591,19 +584,18 @@ orqa fin run-log <pod> <fin> [run-id|latest]
 orqa fin tail <pod> <fin> [run-id|latest] [--lines <n>] [--follow]
 orqa fin sleep <pod> <fin>
 orqa fin wake <pod> <fin> --force
-orqa fin exec [--framework <framework>] <pod> <fin> [-- <args>...]
-orqa fin chat [--framework <framework>] <pod> <fin> [-- <args>...]
+orqa fin exec <pod> <fin> [-- <args>...]
+orqa fin chat <pod> <fin> [-- <args>...]
 ```
 
 `fin create` creates the fin home, runtime state directories such as `.codex/`,
 `.hermes/`, and `.pi/`, `mail/`, `tasks/`, `fin.txt`, and `fin.toml`. `fin list`
 prints fin slugs for the provided pod, or for `ORQA_POD` when the pod argument
-is omitted. `fin exec` launches the configured backend unless `--framework` is
-provided, and passes any arguments after `--` as the `{prompt}` template value:
+is omitted. `fin exec` launches the configured backend and passes any arguments
+after `--` as the `{prompt}` template value:
 
 ```sh
 orqa fin exec sample-pod planner -- "work on the next task"
-orqa fin exec --framework /bin/echo sample-pod planner -- "hello"
 orqa fin chat sample-pod planner
 ```
 
@@ -688,15 +680,15 @@ path. `task done` moves the task from `tasks/new` to `tasks/cur`.
 ### Wake Loop
 
 ```text
-orqa loop [--force] [--framework <framework>] <pod> [-- <args>...]
+orqa loop [--force] <pod> [-- <args>...]
 ```
 
 `orqa loop` scans a pod for fins with unread mail or open tasks. Wakeable fins
-are launched through their configured backend unless `--framework` is provided.
+are launched through their configured backend.
 
 ```sh
 orqa loop sample-pod
-orqa loop --framework codex sample-pod -- "handle your open Orqa mail and tasks"
+orqa loop sample-pod -- "handle your open Orqa mail and tasks"
 orqa loop --force sample-pod
 ```
 
@@ -708,12 +700,12 @@ when the PID no longer exists. Sleeping pods and fins are skipped unless
 ### Service Commands
 
 ```text
-orqa service install [--interval <seconds>] [--force] [--framework <framework>] [-- <args>...]
+orqa service install [--interval <seconds>] [--force] [-- <args>...]
 orqa service uninstall
 orqa service start
 orqa service stop
 orqa service status
-orqa service run [--interval <seconds>] [--force] [--framework <framework>] [-- <args>...]
+orqa service run [--interval <seconds>] [--force] [-- <args>...]
 ```
 
 The service command manages one background wake-loop service for the active
@@ -723,8 +715,8 @@ The service command manages one background wake-loop service for the active
 `ORQA_HOME`: a user LaunchAgent on macOS, or a user systemd unit on Linux. The
 installed service repeatedly discovers all pods under `ORQA_HOME/pods/` and
 runs the equivalent of `orqa loop <pod>` for each pod at the configured
-interval. New pods are picked up on the next scan. `--framework` and arguments
-after `--` are preserved in the service definition for each pod scan.
+interval. New pods are picked up on the next scan. Arguments after `--` are
+preserved in the service definition for each pod scan.
 
 Use `service start`, `service stop`, and `service status` to control the
 installed service through `launchctl` or `systemctl --user`. Use
@@ -736,4 +728,4 @@ service definition or watching scan output in a terminal.
 
 This is intentionally early and small. The current implementation defines the
 filesystem contract, creates pods and fins, delivers local Maildir messages
-and tasks, detects wake signals, and shells out to a framework.
+and tasks, detects wake signals, and shells out to a configured backend.

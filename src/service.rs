@@ -188,7 +188,6 @@ fn loop_all_pods(orqa: &Orqa, args: &ServiceRunArgs) -> Result<(), String> {
                 force: args.force,
                 dry_run: false,
                 json: false,
-                framework: args.framework.clone(),
                 args: args.args.clone(),
             },
         )?;
@@ -322,11 +321,6 @@ fn service_args(spec: &ServiceSpec, args: &ServiceInstallArgs) -> Vec<String> {
 
     if args.force {
         command.push("--force".to_string());
-    }
-
-    if let Some(framework) = &args.framework {
-        command.push("--framework".to_string());
-        command.push(framework.to_string_lossy().to_string());
     }
 
     if !args.args.is_empty() {
