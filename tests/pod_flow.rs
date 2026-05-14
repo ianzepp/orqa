@@ -607,6 +607,74 @@ fn task_done_marks_front_matter_status_done() {
 }
 
 #[test]
+fn operator_pod_can_bridge_mail_and_tasks_cross_pod() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "operator"]);
+    orqa(&root, ["fin", "create", "operator", "dispatcher"]);
+    orqa(&root, ["pod", "create", "target-pod"]);
+    orqa(&root, ["fin", "create", "target-pod", "ceo"]);
+
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "dispatcher@operator.orqa",
+            "--to",
+            "ceo@target-pod.orqa",
+            "--subject",
+            "External update",
+            "Please summarize status.",
+        ],
+    );
+    let mail = orqa_output(
+        &root,
+        ["mail", "list", "--pod", "target-pod", "--fin", "ceo"],
+    );
+    assert!(mail.contains("External update"));
+
+    orqa(
+        &root,
+        [
+            "task",
+            "send",
+            "--from",
+            "dispatcher@operator.orqa",
+            "--to",
+            "ceo@target-pod.orqa",
+            "--title",
+            "External request",
+            "Reply to dispatcher.",
+        ],
+    );
+    let tasks = orqa_output(
+        &root,
+        ["task", "list", "--pod", "target-pod", "--fin", "ceo"],
+    );
+    assert!(tasks.contains("External request"));
+
+    let blocked = orqa_output_failing(
+        &root,
+        [
+            "task",
+            "send",
+            "--from",
+            "ceo@target-pod.orqa",
+            "--to",
+            "dispatcher@operator.orqa",
+            "--title",
+            "Not allowed",
+            "This should fail.",
+        ],
+    );
+    assert!(blocked.contains("cross-pod tasks are not supported"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn pod_doctor_checks_files_config_and_backend_probe() {
     let root = temp_root();
 
@@ -997,6 +1065,20 @@ fn orqa_output<const N: usize>(root: &Path, args: [&str; N]) -> String {
         String::from_utf8_lossy(&output.stderr)
     );
     String::from_utf8(output.stdout).unwrap()
+}
+
+fn orqa_output_failing<const N: usize>(root: &Path, args: [&str; N]) -> String {
+    let output = command(root, args).output().unwrap();
+    assert!(
+        !output.status.success(),
+        "orqa unexpectedly succeeded: {}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    format!(
+        "{}{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    )
 }
 
 fn command<const N: usize>(root: &Path, args: [&str; N]) -> Command {

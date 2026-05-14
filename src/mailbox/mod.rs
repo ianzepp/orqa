@@ -28,7 +28,7 @@ pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
     let from = resolve_sender(args.from.as_deref())?;
     let to = resolve_address(&args.to, Some(&from.pod))?;
 
-    if from.pod != to.pod {
+    if from.pod != to.pod && !is_operator_bridge(&from.pod) {
         return Err(format!(
             "cross-pod mail is not supported: {} -> {}",
             from.label(),
@@ -100,7 +100,7 @@ pub(crate) fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
     let from = resolve_sender(args.from.as_deref())?;
     let to = resolve_address(&args.to, Some(&from.pod))?;
 
-    if from.pod != to.pod {
+    if from.pod != to.pod && !is_operator_bridge(&from.pod) {
         return Err(format!(
             "cross-pod tasks are not supported: {} -> {}",
             from.label(),
@@ -122,6 +122,10 @@ pub(crate) fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
     println!("{}", path.display());
     println!("queued task for {}", to_fin.label());
     Ok(())
+}
+
+fn is_operator_bridge(pod: &str) -> bool {
+    pod == "operator"
 }
 
 pub(crate) fn list_tasks(orqa: &Orqa, args: TaskListArgs) -> Result<(), String> {
