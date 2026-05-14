@@ -1,7 +1,7 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    process::{Command as ProcessCommand, ExitStatus},
+    process::{Command as ProcessCommand, ExitStatus, Output},
     thread,
     time::Duration,
 };
@@ -81,11 +81,14 @@ fn install(orqa: &Orqa, args: ServiceInstallArgs) -> Result<(), String> {
 
 fn uninstall(orqa: &Orqa) -> Result<(), String> {
     let spec = ServiceSpec::new(orqa)?;
-    let _ = stop(orqa);
 
     match platform() {
-        Platform::Macos => remove_if_exists(&macos_plist_path(&spec)?)?,
+        Platform::Macos => {
+            stop_service(&spec, false)?;
+            remove_if_exists(&macos_plist_path(&spec)?)?;
+        }
         Platform::Linux => {
+            stop_service(&spec, false)?;
             remove_if_exists(&linux_unit_path(&spec)?)?;
             let _ = run_status(ProcessCommand::new("systemctl").args(["--user", "daemon-reload"]));
         }
@@ -123,25 +126,50 @@ fn start(orqa: &Orqa) -> Result<(), String> {
 
 fn stop(orqa: &Orqa) -> Result<(), String> {
     let spec = ServiceSpec::new(orqa)?;
+    stop_service(&spec, true)
+}
 
+fn stop_service(spec: &ServiceSpec, print_status: bool) -> Result<(), String> {
     match platform() {
         Platform::Macos => {
             let domain = launchctl_domain()?;
-            let _ = run_status(
+            let output = command_output(
                 ProcessCommand::new("launchctl")
                     .arg("bootout")
                     .arg(&domain)
-                    .arg(macos_plist_path(&spec)?),
-            );
+                    .arg(macos_plist_path(spec)?),
+            )?;
+            if output.status.success() {
+                if print_status {
+                    println!("stopped {}", spec.label);
+                }
+            } else if launchctl_service_not_loaded(&output) {
+                if print_status {
+                    println!("not running {}", spec.label);
+                }
+            } else {
+                return Err(command_failure("launchctl bootout", &output));
+            }
         }
         Platform::Linux => {
-            let _ =
-                run_status(ProcessCommand::new("systemctl").args(["--user", "stop", &spec.unit]));
+            let output = command_output(
+                ProcessCommand::new("systemctl").args(["--user", "stop", &spec.unit]),
+            )?;
+            if output.status.success() {
+                if print_status {
+                    println!("stopped {}", spec.label);
+                }
+            } else if systemd_unit_not_loaded(&output) {
+                if print_status {
+                    println!("not running {}", spec.label);
+                }
+            } else {
+                return Err(command_failure("systemctl --user stop", &output));
+            }
         }
         Platform::Unsupported(os) => return Err(format!("service stop is not supported on {os}")),
     }
 
-    println!("stopped {}", spec.label);
     Ok(())
 }
 
@@ -150,17 +178,39 @@ fn status(orqa: &Orqa) -> Result<(), String> {
 
     match platform() {
         Platform::Macos => {
+            let path = macos_plist_path(&spec)?;
+            if !path.exists() {
+                println!("not installed {}", spec.label);
+                return Ok(());
+            }
             let domain = launchctl_domain()?;
-            checked_status(
+            let output = command_output(
                 ProcessCommand::new("launchctl")
                     .arg("print")
                     .arg(format!("{domain}/{}", spec.label)),
             )?;
+            if output.status.success() {
+                print_command_output(&output);
+            } else if launchctl_service_not_loaded(&output) {
+                println!("installed {} loaded=false", spec.label);
+            } else {
+                return Err(command_failure("launchctl print", &output));
+            }
         }
         Platform::Linux => {
-            checked_status(
+            let path = linux_unit_path(&spec)?;
+            if !path.exists() {
+                println!("not installed {}", spec.label);
+                return Ok(());
+            }
+            let output = command_output(
                 ProcessCommand::new("systemctl").args(["--user", "status", &spec.unit]),
             )?;
+            if output.status.success() || systemd_unit_inactive(&output) {
+                print_command_output(&output);
+            } else {
+                return Err(command_failure("systemctl --user status", &output));
+            }
         }
         Platform::Unsupported(os) => {
             return Err(format!("service status is not supported on {os}"));
@@ -417,6 +467,12 @@ fn run_status(command: &mut ProcessCommand) -> Result<ExitStatus, String> {
         .map_err(|error| format!("failed to run {command:?}: {error}"))
 }
 
+fn command_output(command: &mut ProcessCommand) -> Result<Output, String> {
+    command
+        .output()
+        .map_err(|error| format!("failed to run {command:?}: {error}"))
+}
+
 fn checked_status(command: &mut ProcessCommand) -> Result<(), String> {
     let status = run_status(command)?;
     if status.success() {
@@ -424,6 +480,42 @@ fn checked_status(command: &mut ProcessCommand) -> Result<(), String> {
     } else {
         Err(format!("{command:?} exited with {status}"))
     }
+}
+
+fn print_command_output(output: &Output) {
+    print!("{}", String::from_utf8_lossy(&output.stdout));
+    eprint!("{}", String::from_utf8_lossy(&output.stderr));
+}
+
+fn command_failure(command: &str, output: &Output) -> String {
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    let detail = [stdout.trim(), stderr.trim()]
+        .into_iter()
+        .filter(|detail| !detail.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n");
+    if detail.is_empty() {
+        format!("{command} exited with {}", output.status)
+    } else {
+        format!("{command} exited with {}\n{detail}", output.status)
+    }
+}
+
+fn launchctl_service_not_loaded(output: &Output) -> bool {
+    let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+    stderr.contains("could not find service")
+        || stderr.contains("service is not loaded")
+        || stderr.contains("input/output error")
+}
+
+fn systemd_unit_not_loaded(output: &Output) -> bool {
+    let stderr = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+    stderr.contains("not loaded") || stderr.contains("not found")
+}
+
+fn systemd_unit_inactive(output: &Output) -> bool {
+    matches!(output.status.code(), Some(3) | Some(4)) || systemd_unit_not_loaded(output)
 }
 
 #[cfg(test)]

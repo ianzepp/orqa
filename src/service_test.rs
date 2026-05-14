@@ -1,4 +1,4 @@
-use std::{ffi::OsString, path::PathBuf};
+use std::{ffi::OsString, os::unix::process::ExitStatusExt, path::PathBuf, process::Output};
 
 use super::*;
 
@@ -50,4 +50,29 @@ fn linux_unit_runs_service_loop() {
 fn rejects_zero_interval() {
     assert!(validate_interval(0).is_err());
     assert!(validate_interval(1).is_ok());
+}
+
+#[test]
+fn recognizes_launchctl_missing_service_output() {
+    let output = Output {
+        status: std::process::ExitStatus::from_raw(113 << 8),
+        stdout: Vec::new(),
+        stderr: br#"Bad request.
+Could not find service "com.ianzepp.orqa.abc123" in domain for user gui: 501
+"#
+        .to_vec(),
+    };
+
+    assert!(launchctl_service_not_loaded(&output));
+}
+
+#[test]
+fn recognizes_launchctl_bootout_not_loaded_output() {
+    let output = Output {
+        status: std::process::ExitStatus::from_raw(5 << 8),
+        stdout: Vec::new(),
+        stderr: b"Boot-out failed: 5: Input/output error\n".to_vec(),
+    };
+
+    assert!(launchctl_service_not_loaded(&output));
 }
