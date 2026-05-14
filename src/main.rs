@@ -83,6 +83,14 @@ enum MailSubcommand {
     Home(AgentRefArgs),
     /// Send a pod-local message.
     Send(SendMailArgs),
+    /// List messages for an agent.
+    List(MailboxArgs),
+    /// Read a message for an agent.
+    Read(MailMessageArgs),
+    /// Mark an unread message as done.
+    Done(MailMessageArgs),
+    /// Delete a message.
+    Delete(MailMessageArgs),
     /// List unread messages for an agent.
     Unread(AgentRefArgs),
 }
@@ -134,6 +142,31 @@ struct SendMailArgs {
     subject: String,
     /// Message body. Reads stdin when omitted.
     body: Option<String>,
+}
+
+#[derive(Debug, Args)]
+struct MailboxArgs {
+    /// Pod slug. Defaults to ORQA_POD.
+    #[arg(long)]
+    pod: Option<String>,
+    /// Agent slug. Defaults to ORQA_AGENT.
+    #[arg(long)]
+    agent: Option<String>,
+    /// Include done messages from mail/cur.
+    #[arg(long)]
+    all: bool,
+}
+
+#[derive(Debug, Args)]
+struct MailMessageArgs {
+    /// Pod slug. Defaults to ORQA_POD.
+    #[arg(long)]
+    pod: Option<String>,
+    /// Agent slug. Defaults to ORQA_AGENT.
+    #[arg(long)]
+    agent: Option<String>,
+    /// Message id, filename, or path.
+    message: String,
 }
 
 struct Orqa {
@@ -224,6 +257,10 @@ fn mail(orqa: &Orqa, command: MailCommand) -> Result<(), String> {
             Ok(())
         }
         MailSubcommand::Send(args) => send_mail(orqa, args),
+        MailSubcommand::List(args) => list_mail(orqa, args),
+        MailSubcommand::Read(args) => read_mail(orqa, args),
+        MailSubcommand::Done(args) => done_mail(orqa, args),
+        MailSubcommand::Delete(args) => delete_mail(orqa, args),
         MailSubcommand::Unread(args) => unread_mail(orqa, args),
     }
 }
@@ -339,6 +376,67 @@ fn unread_mail(orqa: &Orqa, args: AgentRefArgs) -> Result<(), String> {
     Ok(())
 }
 
+fn list_mail(orqa: &Orqa, args: MailboxArgs) -> Result<(), String> {
+    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
+    let mail_home = orqa.mail_home(&agent);
+
+    for path in sorted_files(&mail_home.join("new"))? {
+        println!("new {} {}", message_id(&path)?, message_subject(&path)?);
+    }
+
+    if args.all {
+        for path in sorted_files(&mail_home.join("cur"))? {
+            println!("cur {} {}", message_id(&path)?, message_subject(&path)?);
+        }
+    }
+
+    Ok(())
+}
+
+fn read_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
+    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
+    let path = resolve_message_path(&orqa.mail_home(&agent), &args.message)?;
+    let message = fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+
+    print!("{message}");
+    Ok(())
+}
+
+fn done_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
+    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
+    let mail_home = orqa.mail_home(&agent);
+    let path = resolve_message_path(&mail_home, &args.message)?;
+    let id = message_id(&path)?;
+
+    if mail_state(&mail_home, &path)? == "cur" {
+        println!("{}", path.display());
+        return Ok(());
+    }
+
+    let done_path = mail_home.join("cur").join(id);
+    fs::rename(&path, &done_path).map_err(|error| {
+        format!(
+            "failed to mark message done {} -> {}: {error}",
+            path.display(),
+            done_path.display()
+        )
+    })?;
+
+    println!("{}", done_path.display());
+    Ok(())
+}
+
+fn delete_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
+    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
+    let path = resolve_message_path(&orqa.mail_home(&agent), &args.message)?;
+
+    fs::remove_file(&path)
+        .map_err(|error| format!("failed to delete message {}: {error}", path.display()))?;
+    println!("deleted {}", path.display());
+    Ok(())
+}
+
 fn ensure_maildir(mail_home: &Path) -> Result<(), String> {
     for dir in ["cur", "new", "tmp"] {
         fs::create_dir_all(mail_home.join(dir)).map_err(|error| {
@@ -388,6 +486,73 @@ fn sorted_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
 
     paths.sort();
     Ok(paths)
+}
+
+fn resolve_agent(pod: Option<&str>, agent: Option<&str>) -> Result<AgentRef, String> {
+    let pod = match pod {
+        Some(pod) => pod.to_string(),
+        None => env::var("ORQA_POD")
+            .map_err(|_| "missing pod; use --pod or run with ORQA_POD set".to_string())?,
+    };
+    let agent = match agent {
+        Some(agent) => agent.to_string(),
+        None => env::var("ORQA_AGENT")
+            .map_err(|_| "missing agent; use --agent or run with ORQA_AGENT set".to_string())?,
+    };
+
+    AgentRef::new(&pod, &agent)
+}
+
+fn resolve_message_path(mail_home: &Path, message: &str) -> Result<PathBuf, String> {
+    let path = PathBuf::from(message);
+    if path.exists() {
+        return Ok(path);
+    }
+
+    for state in ["new", "cur"] {
+        let candidate = mail_home.join(state).join(message);
+        if candidate.exists() {
+            return Ok(candidate);
+        }
+    }
+
+    Err(format!(
+        "message {message:?} not found in {}",
+        mail_home.display()
+    ))
+}
+
+fn message_id(path: &Path) -> Result<String, String> {
+    path.file_name()
+        .map(|name| name.to_string_lossy().to_string())
+        .ok_or_else(|| format!("message path has no filename: {}", path.display()))
+}
+
+fn message_subject(path: &Path) -> Result<String, String> {
+    let message = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+
+    for line in message.lines() {
+        if let Some(subject) = line.strip_prefix("Subject: ") {
+            return Ok(subject.to_string());
+        }
+    }
+
+    Ok("(no subject)".to_string())
+}
+
+fn mail_state(mail_home: &Path, path: &Path) -> Result<&'static str, String> {
+    if path.starts_with(mail_home.join("new")) {
+        Ok("new")
+    } else if path.starts_with(mail_home.join("cur")) {
+        Ok("cur")
+    } else {
+        Err(format!(
+            "message {} is not inside {}",
+            path.display(),
+            mail_home.display()
+        ))
+    }
 }
 
 fn unique_mail_name() -> Result<String, String> {
@@ -620,5 +785,18 @@ mod tests {
         assert!(MailAddress::parse("amy@example.com").is_err());
         assert!(MailAddress::parse("amy").is_err());
         assert!(MailAddress::parse("Amy@sample-pod.orqa").is_err());
+    }
+
+    #[test]
+    fn resolves_message_ids_in_maildir_states() {
+        let root = env::temp_dir().join(format!("orqa-test-{}", unique_mail_name().unwrap()));
+        let mail_home = root.join("mail");
+        ensure_maildir(&mail_home).unwrap();
+        let path = deliver_mail(&mail_home, "Subject: test\n\nbody\n").unwrap();
+        let id = message_id(&path).unwrap();
+
+        assert_eq!(resolve_message_path(&mail_home, &id).unwrap(), path);
+
+        fs::remove_dir_all(root).unwrap();
     }
 }

@@ -58,6 +58,9 @@ orqa mail send \
   --to bob-jones@sample-pod.orqa \
   --subject hello \
   "wake up"
+ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail list
+ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail read <message-id>
+ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail done <message-id>
 ```
 
 Scan the pod for agents with unread mail:
@@ -137,6 +140,19 @@ agent inboxes and prints agents that should run:
 
 ```text
 wake sample-pod/bob-jones unread=1
+```
+
+When an agent finishes handling a message, it can mark that message done. This
+moves the file from `mail/new` to `mail/cur`, which clears the wake signal:
+
+```sh
+orqa mail done <message-id>
+```
+
+Messages can also be deleted from either `mail/new` or `mail/cur`:
+
+```sh
+orqa mail delete <message-id>
 ```
 
 ### Short Addresses
@@ -245,9 +261,52 @@ If no message body is provided as an argument, `orqa` reads the body from stdin:
 cat message.txt | orqa mail send --to bob-jones --subject hello
 ```
 
+### `orqa mail list`
+
+Lists unread messages for the current agent context. Use `--all` to include
+done messages from `mail/cur`.
+
+```sh
+orqa mail list
+orqa mail list --all
+orqa mail list --pod sample-pod --agent bob-jones
+```
+
+The output includes the mail state, message id, and subject:
+
+```text
+new 1778757271046041.31124.0.orqa update-settings
+```
+
+### `orqa mail read <message>`
+
+Prints a message. `<message>` may be the id from `mail list` or a full path.
+
+```sh
+orqa mail read 1778757271046041.31124.0.orqa
+orqa mail read --pod sample-pod --agent bob-jones 1778757271046041.31124.0.orqa
+```
+
+### `orqa mail done <message>`
+
+Marks an unread message done by moving it from `mail/new` to `mail/cur`.
+
+```sh
+orqa mail done 1778757271046041.31124.0.orqa
+```
+
+### `orqa mail delete <message>`
+
+Deletes a message from `mail/new` or `mail/cur`.
+
+```sh
+orqa mail delete 1778757271046041.31124.0.orqa
+```
+
 ### `orqa mail unread <pod> <agent>`
 
-Lists unread message files in an agent's `mail/new` inbox.
+Lists unread message file paths in an agent's `mail/new` inbox. This is a
+lower-level helper; agents usually want `orqa mail list`.
 
 ```sh
 orqa mail unread sample-pod bob-jones
