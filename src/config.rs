@@ -39,7 +39,7 @@ default_backend = "codex"
 [backends.codex]
 enabled = true
 command = "codex"
-exec_args = ["exec", "--model", "{{model}}", "{{prompt}}"]
+exec_args = ["exec", "--skip-git-repo-check", "--model", "{{model}}", "{{prompt}}"]
 chat_args = ["--model", "{{model}}"]
 
 [backends.codex.defaults]

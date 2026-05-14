@@ -120,7 +120,7 @@ default_backend = "codex"
 [backends.codex]
 enabled = true
 command = "codex"
-exec_args = ["exec", "--model", "{model}", "{prompt}"]
+exec_args = ["exec", "--skip-git-repo-check", "--model", "{model}", "{prompt}"]
 chat_args = ["--model", "{model}"]
 
 [backends.codex.defaults]
@@ -171,7 +171,7 @@ The generated examples follow the installed CLI shapes on this machine:
 
 ```text
 Backend   exec_args shape                    chat_args shape
-Codex     codex exec ... <prompt>            codex ...
+Codex     codex exec --skip-git... <prompt> codex ...
 OpenCode  opencode run ... <prompt>          opencode ...
 Hermes    hermes --oneshot <prompt>          hermes chat ...
 Pi        pi --print <prompt>                pi ...
