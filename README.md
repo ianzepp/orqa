@@ -472,19 +472,22 @@ who need the runtime overview without install or development notes.
 
 ```text
 orqa pod create <slug>
+orqa pod list
 orqa pod home <slug>
 orqa pod sleep <slug>
 orqa pod wake <slug> --force
 ```
 
 `pod create` creates `ORQA_HOME/pods/<slug>/`, its `fins/` directory,
-`pod.txt`, and `pod.toml`. `pod sleep` writes a pod-level sleep marker, and
-`pod wake` requires `--force` before it removes that marker.
+`pod.txt`, and `pod.toml`. `pod list` prints known pod slugs, one per line.
+`pod sleep` writes a pod-level sleep marker, and `pod wake` requires `--force`
+before it removes that marker.
 
 ### Fin Commands
 
 ```text
 orqa fin create <pod> <fin>
+orqa fin list [pod]
 orqa fin home <pod> <fin>
 orqa fin sleep <pod> <fin>
 orqa fin wake <pod> <fin> --force
@@ -492,9 +495,10 @@ orqa fin run [--framework <framework>] <pod> <fin> [-- <args>...]
 ```
 
 `fin create` creates the fin home, `.codex/`, `mail/`, `tasks/`, `fin.txt`,
-and `fin.toml`. `fin run` launches the configured backend unless `--framework`
-is provided, and passes any arguments after `--` as the `{prompt}` template
-value:
+and `fin.toml`. `fin list` prints fin slugs for the provided pod, or for
+`ORQA_POD` when the pod argument is omitted. `fin run` launches the configured
+backend unless `--framework` is provided, and passes any arguments after `--` as
+the `{prompt}` template value:
 
 ```sh
 orqa fin run sample-pod amy -- "work on the next task"

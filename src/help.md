@@ -60,10 +60,19 @@ orqa fin create sample-pod bob-jones
 Print homes when an agent needs to inspect paths:
 
 ```sh
+orqa pod list
+orqa fin list sample-pod
 orqa pod home sample-pod
 orqa fin home sample-pod amy
 orqa mail home sample-pod amy
 orqa task home sample-pod amy
+```
+
+Inside a launched fin, `ORQA_POD` is already set, so a fin can list its
+siblings with:
+
+```sh
+orqa fin list
 ```
 
 Use `--home <DIR>` on any command to work against another Orqa root:

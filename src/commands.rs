@@ -1,4 +1,4 @@
-use std::fs;
+use std::{env, fs, path::Path};
 
 use crate::{
     cli::{
@@ -17,6 +17,7 @@ use crate::{
 
 pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
     match command.command {
+        PodSubcommand::List => list_dirs(&orqa.home.join("pods")),
         PodSubcommand::Create(args) => {
             let pod = PodRef::new(&args.slug)?;
             let home = orqa.pod_home(&pod);
@@ -53,6 +54,15 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
 
 pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
     match command.command {
+        FinSubcommand::List(args) => {
+            let pod = match args.pod {
+                Some(pod) => pod,
+                None => env::var("ORQA_POD")
+                    .map_err(|_| "missing pod; pass a pod or run with ORQA_POD set".to_string())?,
+            };
+            let pod = PodRef::new(&pod)?;
+            list_dirs(&orqa.pod_home(&pod).join("fins"))
+        }
         FinSubcommand::Create(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
             let home = orqa.fin_home(&fin);
@@ -88,6 +98,30 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
         }
         FinSubcommand::Run(args) => run_fin(orqa, args),
     }
+}
+
+fn list_dirs(dir: &Path) -> Result<(), String> {
+    if !dir.exists() {
+        return Ok(());
+    }
+
+    let mut names = Vec::new();
+    for entry in
+        fs::read_dir(dir).map_err(|error| format!("failed to read {}: {error}", dir.display()))?
+    {
+        let entry =
+            entry.map_err(|error| format!("failed to read {} entry: {error}", dir.display()))?;
+        if entry.path().is_dir() {
+            names.push(entry.file_name().to_string_lossy().to_string());
+        }
+    }
+
+    names.sort();
+    for name in names {
+        println!("{name}");
+    }
+
+    Ok(())
 }
 
 pub(crate) fn mail(orqa: &Orqa, command: MailCommand) -> Result<(), String> {

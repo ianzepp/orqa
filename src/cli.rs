@@ -42,6 +42,8 @@ pub(crate) struct PodCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum PodSubcommand {
+    /// List pods.
+    List,
     /// Create a pod home directory.
     Create(SlugArgs),
     /// Print the home directory for a pod.
@@ -60,6 +62,8 @@ pub(crate) struct FinCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum FinSubcommand {
+    /// List fins inside a pod.
+    List(FinListArgs),
     /// Create a fin inside a pod.
     Create(FinRefArgs),
     /// Print the home directory for a fin.
@@ -137,6 +141,12 @@ pub(crate) struct LoopArgs {
 pub(crate) struct SlugArgs {
     /// Pod slug.
     pub(crate) slug: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct FinListArgs {
+    /// Pod slug. Defaults to ORQA_POD.
+    pub(crate) pod: Option<String>,
 }
 
 #[derive(Debug, Args)]

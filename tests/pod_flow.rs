@@ -94,6 +94,48 @@ args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{fin_h
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn pod_and_fin_list_print_sorted_slugs() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "zeta-pod"]);
+    orqa(&root, ["pod", "create", "alpha-pod"]);
+    orqa(&root, ["fin", "create", "alpha-pod", "zoe"]);
+    orqa(&root, ["fin", "create", "alpha-pod", "amy"]);
+
+    assert_eq!(orqa_output(&root, ["pod", "list"]), "alpha-pod\nzeta-pod\n");
+    assert_eq!(
+        orqa_output(&root, ["fin", "list", "alpha-pod"]),
+        "amy\nzoe\n"
+    );
+
+    let output = command(&root, ["fin", "list"])
+        .env("ORQA_POD", "alpha-pod")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "orqa failed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert_eq!(String::from_utf8(output.stdout).unwrap(), "amy\nzoe\n");
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn fin_list_without_pod_context_explains_missing_pod() {
+    let root = temp_root();
+
+    let output = command(&root, ["fin", "list"]).output().unwrap();
+
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("missing pod"));
+
+    fs::remove_dir_all(root).unwrap_or(());
+}
+
 fn orqa<const N: usize>(root: &Path, args: [&str; N]) {
     let output = command(root, args).output().unwrap();
     assert!(
