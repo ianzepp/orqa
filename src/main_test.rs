@@ -1,0 +1,187 @@
+use std::{env, fs};
+
+use crate::{
+    cli::TaskListArgs,
+    config::{fin_config_template, pod_config_template},
+    mailbox::{
+        TaskFilters, canonical_task_body, deliver_mail, ensure_maildir, message_id,
+        priority_sort_value, quote_value, remove_sleep_marker, resolve_address,
+        resolve_message_path, unique_mail_name, write_sleep_marker,
+    },
+    model::{FinRef, MailAddress, PodRef, validate_slug},
+    runtime::lock_pid,
+};
+
+#[test]
+fn accepts_lowercase_slug_parts() {
+    assert!(validate_slug("sample-pod").is_ok());
+    assert!(validate_slug("bob-jones").is_ok());
+    assert!(validate_slug("amy2").is_ok());
+}
+
+#[test]
+fn rejects_path_like_slugs() {
+    assert!(validate_slug("../sample-pod").is_err());
+    assert!(validate_slug("SamplePod").is_err());
+    assert!(validate_slug("").is_err());
+}
+
+#[test]
+fn parses_local_mail_addresses() {
+    let address = MailAddress::parse("amy@sample-pod.orqa").unwrap();
+
+    assert_eq!(address.fin, "amy");
+    assert_eq!(address.pod, "sample-pod");
+    assert_eq!(address.label(), "amy@sample-pod.orqa");
+}
+
+#[test]
+fn qualifies_bare_mail_addresses_with_pod_hint() {
+    let address = resolve_address("bob-jones", Some("sample-pod")).unwrap();
+
+    assert_eq!(address.fin, "bob-jones");
+    assert_eq!(address.pod, "sample-pod");
+    assert_eq!(address.label(), "bob-jones@sample-pod.orqa");
+}
+
+#[test]
+fn bare_mail_addresses_need_pod_context() {
+    assert!(resolve_address("bob-jones", None).is_err());
+}
+
+#[test]
+fn rejects_non_orqa_mail_addresses() {
+    assert!(MailAddress::parse("amy@example.com").is_err());
+    assert!(MailAddress::parse("amy").is_err());
+    assert!(MailAddress::parse("Amy@sample-pod.orqa").is_err());
+}
+
+#[test]
+fn resolves_message_ids_in_maildir_states() {
+    let root = env::temp_dir().join(format!("orqa-test-{}", unique_mail_name().unwrap()));
+    let mail_home = root.join("mail");
+    ensure_maildir(&mail_home).unwrap();
+    let path = deliver_mail(&mail_home, "Subject: test\n\nbody\n").unwrap();
+    let id = message_id(&path).unwrap();
+
+    assert_eq!(resolve_message_path(&mail_home, &id).unwrap(), path);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn canonicalizes_plain_task_bodies() {
+    let from = MailAddress::parse("amy@sample-pod.orqa").unwrap();
+    let to = MailAddress::parse("bob-jones@sample-pod.orqa").unwrap();
+    let task = canonical_task_body(&from, &to, Some("update-settings"), "Do the thing.");
+
+    assert!(task.starts_with("---\n"));
+    assert!(task.contains("from: amy@sample-pod.orqa\n"));
+    assert!(task.contains("to: bob-jones@sample-pod.orqa\n"));
+    assert!(task.contains("title: update-settings\n"));
+    assert!(task.contains("priority: normal\n"));
+    assert!(task.contains("status: open\n"));
+    assert!(task.contains("kind: need\n"));
+    assert!(task.contains("depends_on: []\n"));
+    assert!(task.ends_with("Do the thing.\n"));
+}
+
+#[test]
+fn preserves_and_fills_task_front_matter() {
+    let from = MailAddress::parse("amy@sample-pod.orqa").unwrap();
+    let to = MailAddress::parse("bob-jones@sample-pod.orqa").unwrap();
+    let task = canonical_task_body(
+        &from,
+        &to,
+        None,
+        "---\ntitle: supplied-title\npriority: high\ncustom: keep-me\n---\n\nDetails.",
+    );
+
+    assert!(task.contains("title: supplied-title\n"));
+    assert!(task.contains("priority: high\n"));
+    assert!(task.contains("custom: keep-me\n"));
+    assert!(task.contains("status: open\n"));
+    assert!(task.contains("kind: need\n"));
+    assert!(task.ends_with("Details.\n"));
+}
+
+#[test]
+fn parses_task_field_filters() {
+    let args = TaskListArgs {
+        pod: None,
+        fin: None,
+        all: false,
+        status: Some("open".to_string()),
+        priority: Some("high".to_string()),
+        kind: None,
+        fields: vec!["owner=amy".to_string()],
+        sort: None,
+        reverse: false,
+    };
+    let filters = TaskFilters::new(&args).unwrap();
+
+    assert_eq!(
+        filters.fields,
+        vec![
+            ("status".to_string(), "open".to_string()),
+            ("priority".to_string(), "high".to_string()),
+            ("owner".to_string(), "amy".to_string())
+        ]
+    );
+}
+
+#[test]
+fn quotes_shell_unfriendly_values() {
+    assert_eq!(quote_value("high"), "high");
+    assert_eq!(quote_value("update settings"), "\"update settings\"");
+    assert_eq!(quote_value("say \"hi\""), "\"say \\\"hi\\\"\"");
+}
+
+#[test]
+fn sorts_known_priorities_by_severity() {
+    assert!(priority_sort_value("high") < priority_sort_value("normal"));
+    assert!(priority_sort_value("normal") < priority_sort_value("low"));
+}
+
+#[test]
+fn parses_lock_pid() {
+    assert_eq!(lock_pid("pid=123\nfin=amy\n"), Some(123));
+    assert_eq!(lock_pid("fin=amy\n"), None);
+}
+
+#[test]
+fn writes_and_removes_sleep_markers() {
+    let root = env::temp_dir().join(format!("orqa-test-{}", unique_mail_name().unwrap()));
+    let marker = root.join("sleep.lock");
+
+    write_sleep_marker(&marker).unwrap();
+    assert!(marker.exists());
+    remove_sleep_marker(&marker).unwrap();
+    assert!(!marker.exists());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn pod_config_template_includes_commented_backend_examples() {
+    let pod = PodRef::new("sample-pod").unwrap();
+    let toml = pod_config_template(&pod);
+
+    assert!(toml.contains("[pod]"));
+    assert!(toml.contains("slug = \"sample-pod\""));
+    assert!(toml.contains("[backends.codex]"));
+    assert!(toml.contains("command = \"codex\""));
+    assert!(toml.contains("# [backends.opencode]"));
+    assert!(toml.contains("# [backends.pi]"));
+    assert!(toml.contains("# [backends.custom]"));
+}
+
+#[test]
+fn fin_config_template_inherits_pod_backend_by_default() {
+    let fin = FinRef::new("sample-pod", "amy").unwrap();
+    let toml = fin_config_template(&fin);
+
+    assert!(toml.contains("[fin]"));
+    assert!(toml.contains("slug = \"amy\""));
+    assert!(toml.contains("# backend = \"codex\""));
+}

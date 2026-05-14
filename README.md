@@ -156,6 +156,35 @@ Everything can run against a temporary or alternate root with `--home`:
 orqa --home /tmp/orqa-demo pod create sample-pod
 ```
 
+## Development
+
+`orqa` is a single Rust binary crate. The command dispatcher stays in
+`src/main.rs`, while the implementation is split by responsibility:
+
+```text
+src/
+  cli.rs              clap command and argument definitions
+  commands.rs         top-level command handlers
+  config.rs           pod and fin config templates
+  mailbox/
+    mod.rs            mail and task command behavior
+    storage.rs        Maildir storage, addresses, ids, and sleep markers
+    tasks.rs          task front matter, filtering, sorting, and formatting
+  model.rs            Orqa paths plus pod, fin, and address types
+  runtime.rs          wake loop, process spawning, and run locks
+  main_test.rs        unit tests loaded from src/main.rs
+tests/
+  hygiene.rs          source hygiene ratchet
+```
+
+Run the normal checks with:
+
+```sh
+cargo fmt
+cargo clippy -- -D warnings
+cargo test
+```
+
 ## Fin Execution
 
 `orqa fin run` shells out to a framework. By default, that executable
