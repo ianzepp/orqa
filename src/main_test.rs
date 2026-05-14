@@ -190,6 +190,9 @@ fn pod_config_template_includes_commented_backend_examples() {
     assert!(toml.contains("\"--skip-git-repo-check\""));
     assert!(toml.contains("\"--sandbox\", \"workspace-write\""));
     assert!(toml.contains("\"--cd\", \"{pod_home}\""));
+    assert!(toml.contains(
+        "chat_args = [\n    \"--sandbox\", \"workspace-write\",\n    \"--cd\", \"{pod_home}\",\n    \"--model\", \"{model}\",\n]"
+    ));
     assert!(toml.contains("# [backends.opencode]"));
     assert!(toml.contains("# [backends.hermes]"));
     assert!(toml.contains("# exec_args = [\"--model\", \"{model}\", \"--oneshot\", \"{prompt}\"]"));
