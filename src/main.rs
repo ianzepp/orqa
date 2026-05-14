@@ -4,6 +4,7 @@ mod config;
 mod mailbox;
 mod model;
 mod runtime;
+mod service;
 
 use std::{env, ffi::OsStr, process::ExitCode};
 
@@ -13,6 +14,7 @@ use cli::{Cli, Command};
 use commands::{fin, mail, pod, task};
 use model::Orqa;
 use runtime::loop_pod;
+use service::service;
 
 #[cfg(test)]
 #[path = "main_test.rs"]
@@ -49,6 +51,7 @@ fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
         Command::Mail(command) => mail(orqa, command),
         Command::Task(command) => task(orqa, command),
         Command::Loop(args) => loop_pod(orqa, args),
+        Command::Service(command) => service(orqa, command),
     }
 }
 

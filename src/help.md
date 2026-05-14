@@ -275,6 +275,30 @@ Run one scan while ignoring sleep markers without removing them:
 orqa loop --force sample-pod
 ```
 
+## Background Service
+
+Use `orqa service` to install and control a background wake-loop service for a
+pod:
+
+```sh
+orqa service install sample-pod --interval 60 -- "handle your open Orqa mail and tasks"
+orqa service start sample-pod
+orqa service status sample-pod
+orqa service stop sample-pod
+orqa service uninstall sample-pod
+```
+
+Inside a launched fin, `ORQA_POD` is already set, so the pod can be omitted:
+
+```sh
+orqa service status
+```
+
+On macOS, Orqa writes a user LaunchAgent and controls it with `launchctl`. On
+Linux, Orqa writes a user systemd unit and controls it with `systemctl --user`.
+The service repeatedly runs the equivalent of `orqa loop <pod>` at the interval
+chosen during install.
+
 ## Runtime Locks
 
 Direct fin runs and loop-launched runs use a per-fin lock file:

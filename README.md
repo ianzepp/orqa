@@ -460,6 +460,7 @@ Commands:
   mail    Mail helpers for pod-local fin messages
   task    Task helpers for pod-local work items
   loop    Run the wake loop for a pod
+  service Manage the background wake-loop service
 ```
 
 `orqa doctor` prints basic runtime information, including the active
@@ -602,6 +603,29 @@ For each wakeable fin, `orqa loop` creates `run.lock` with the spawned process
 PID. Later scans skip that fin while the PID is alive. Stale locks are removed
 when the PID no longer exists. Sleeping pods and fins are skipped unless
 `--force` is used.
+
+### Service Commands
+
+```text
+orqa service install [--interval <seconds>] [--force] [--framework <framework>] [pod] [-- <args>...]
+orqa service uninstall [pod]
+orqa service start [pod]
+orqa service stop [pod]
+orqa service status [pod]
+```
+
+The service command manages a background wake-loop service for one pod. When the
+pod argument is omitted, commands use `ORQA_POD`.
+
+`service install` writes a platform service definition for the active
+`ORQA_HOME`: a user LaunchAgent on macOS, or a user systemd unit on Linux. The
+installed service repeatedly runs the equivalent of `orqa loop <pod>` at the
+configured interval. `--framework` and arguments after `--` are preserved in the
+service definition for each scan.
+
+Use `service start`, `service stop`, and `service status` to control the
+installed service through `launchctl` or `systemctl --user`. Use
+`service uninstall` to stop the service and remove its generated service file.
 
 ## Status
 

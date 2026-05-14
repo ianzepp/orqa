@@ -32,6 +32,8 @@ pub(crate) enum Command {
     Task(TaskCommand),
     /// Run the wake loop for a pod.
     Loop(LoopArgs),
+    /// Manage the background wake-loop service.
+    Service(ServiceCommand),
 }
 
 #[derive(Debug, Args)]
@@ -88,6 +90,12 @@ pub(crate) struct TaskCommand {
     pub(crate) command: TaskSubcommand,
 }
 
+#[derive(Debug, Args)]
+pub(crate) struct ServiceCommand {
+    #[command(subcommand)]
+    pub(crate) command: ServiceSubcommand,
+}
+
 #[derive(Debug, Subcommand)]
 pub(crate) enum MailSubcommand {
     /// Print the mail directory for a fin.
@@ -122,6 +130,23 @@ pub(crate) enum TaskSubcommand {
     Delete(MailMessageArgs),
 }
 
+#[derive(Debug, Subcommand)]
+pub(crate) enum ServiceSubcommand {
+    /// Install a platform service for a pod.
+    Install(ServiceInstallArgs),
+    /// Uninstall a platform service for a pod.
+    Uninstall(ServicePodArgs),
+    /// Start a pod service.
+    Start(ServicePodArgs),
+    /// Stop a pod service.
+    Stop(ServicePodArgs),
+    /// Print platform service status for a pod.
+    Status(ServicePodArgs),
+    /// Run the service loop. Used by generated platform services.
+    #[command(hide = true)]
+    Run(ServiceRunArgs),
+}
+
 #[derive(Debug, Args)]
 pub(crate) struct LoopArgs {
     /// Pod slug.
@@ -135,6 +160,48 @@ pub(crate) struct LoopArgs {
     /// Arguments passed to the framework.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ServiceInstallArgs {
+    /// Pod slug. Defaults to ORQA_POD.
+    pub(crate) pod: Option<String>,
+    /// Seconds between wake scans.
+    #[arg(long, default_value_t = 60)]
+    pub(crate) interval: u64,
+    /// Ignore pod and fin sleep markers for each scan.
+    #[arg(long)]
+    pub(crate) force: bool,
+    /// Framework executable override.
+    #[arg(long)]
+    pub(crate) framework: Option<OsString>,
+    /// Arguments passed to each wake-loop scan.
+    #[arg(last = true)]
+    pub(crate) args: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ServiceRunArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Seconds between wake scans.
+    #[arg(long, default_value_t = 60)]
+    pub(crate) interval: u64,
+    /// Ignore pod and fin sleep markers for each scan.
+    #[arg(long)]
+    pub(crate) force: bool,
+    /// Framework executable override.
+    #[arg(long)]
+    pub(crate) framework: Option<OsString>,
+    /// Arguments passed to each wake-loop scan.
+    #[arg(last = true)]
+    pub(crate) args: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ServicePodArgs {
+    /// Pod slug. Defaults to ORQA_POD.
+    pub(crate) pod: Option<String>,
 }
 
 #[derive(Debug, Args)]
