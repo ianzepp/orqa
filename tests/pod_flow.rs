@@ -634,6 +634,25 @@ fn operator_pod_can_bridge_mail_and_tasks_cross_pod() {
         ["mail", "list", "--pod", "target-pod", "--fin", "ceo"],
     );
     assert!(mail.contains("External update"));
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "ceo@target-pod.orqa",
+            "--to",
+            "dispatcher@operator.orqa",
+            "--subject",
+            "Re: External update",
+            "Status is ready.",
+        ],
+    );
+    let operator_mail = orqa_output(
+        &root,
+        ["mail", "list", "--pod", "operator", "--fin", "dispatcher"],
+    );
+    assert!(operator_mail.contains("Re: External update"));
 
     orqa(
         &root,
