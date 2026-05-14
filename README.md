@@ -17,6 +17,35 @@ Maildir inbox for pod-local messages, and a Maildir-style task queue.
 
 `ORQA_HOME` is the root directory for all pods. It defaults to `~/.orqa`.
 
+## Installation
+
+Install the latest crates.io release with Cargo:
+
+```sh
+cargo install orqa
+```
+
+Install the latest GitHub release with the shell installer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ianzepp/orqa/main/install.sh | sh
+```
+
+The installer downloads a prebuilt archive for macOS Apple Silicon, macOS
+Intel, or Linux Intel, verifies the published SHA-256 checksum when checksum
+tools are available, and installs `orqa` to `~/.local/bin`. Set
+`ORQA_INSTALL_DIR` to choose another directory:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/ianzepp/orqa/main/install.sh | ORQA_INSTALL_DIR=/usr/local/bin sh
+```
+
+Or install the prebuilt CLI with Homebrew:
+
+```sh
+brew install ianzepp/tap/orqa
+```
+
 ```text
 ORQA_HOME/
   pods/
