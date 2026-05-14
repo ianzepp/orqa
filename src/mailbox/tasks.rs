@@ -166,7 +166,7 @@ pub(crate) fn canonical_task_body(
     for (key, value) in fields {
         task.push_str(&key);
         task.push_str(": ");
-        task.push_str(&value);
+        task.push_str(&format_front_matter_value(&value));
         task.push('\n');
     }
     task.push_str("---\n\n");
@@ -189,6 +189,30 @@ pub(crate) fn split_front_matter(body: &str) -> (Vec<(String, String)>, &str) {
 }
 
 pub(crate) fn parse_front_matter(front_matter: &str) -> Vec<(String, String)> {
+    let Ok(value) = serde_yaml::from_str::<Value>(front_matter) else {
+        return parse_front_matter_lines(front_matter);
+    };
+    let Value::Mapping(fields) = value else {
+        return parse_front_matter_lines(front_matter);
+    };
+
+    fields
+        .into_iter()
+        .filter_map(|(key, value)| {
+            let key = match key {
+                Value::String(key) => key,
+                key => yaml_value_to_string(&key),
+            };
+            let key = key.trim();
+            if key.is_empty() {
+                return None;
+            }
+            Some((key.to_string(), yaml_value_to_string(&value)))
+        })
+        .collect()
+}
+
+fn parse_front_matter_lines(front_matter: &str) -> Vec<(String, String)> {
     front_matter
         .lines()
         .filter_map(|line| {
@@ -200,6 +224,67 @@ pub(crate) fn parse_front_matter(front_matter: &str) -> Vec<(String, String)> {
             Some((key.to_string(), value.trim().to_string()))
         })
         .collect()
+}
+
+fn yaml_value_to_string(value: &Value) -> String {
+    match value {
+        Value::Null => "null".to_string(),
+        Value::Bool(value) => value.to_string(),
+        Value::Number(value) => value.to_string(),
+        Value::String(value) => value.to_string(),
+        Value::Sequence(values) => yaml_sequence_to_string(values),
+        Value::Mapping(values) => yaml_mapping_to_string(values),
+        Value::Tagged(value) => yaml_value_to_string(&value.value),
+    }
+}
+
+fn yaml_sequence_to_string(values: &[Value]) -> String {
+    if values.is_empty() {
+        return "[]".to_string();
+    }
+
+    let values = values
+        .iter()
+        .map(yaml_value_to_string)
+        .map(|value| format_front_matter_value(&value))
+        .collect::<Vec<_>>();
+    format!("[{}]", values.join(", "))
+}
+
+fn yaml_mapping_to_string(values: &Mapping) -> String {
+    serde_yaml::to_string(values)
+        .unwrap_or_default()
+        .trim()
+        .to_string()
+}
+
+fn format_front_matter_value(value: &str) -> String {
+    if value == "[]" || (value.starts_with('[') && value.ends_with(']')) {
+        return value.to_string();
+    }
+    if !needs_quoted_yaml_string(value) {
+        return value.to_string();
+    }
+
+    let escaped = value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n");
+    format!("\"{escaped}\"")
+}
+
+fn needs_quoted_yaml_string(value: &str) -> bool {
+    value.is_empty()
+        || value.contains(": ")
+        || value.contains(" #")
+        || value.contains('\n')
+        || matches!(
+            value,
+            "true" | "false" | "null" | "Null" | "NULL" | "~" | "yes" | "no" | "on" | "off"
+        )
+        || value.chars().next().is_some_and(|first| {
+            matches!(first, '-' | '?' | ':' | '!' | '&' | '*' | '#' | '@' | '`')
+        })
 }
 
 pub(crate) fn field_value(fields: &[(String, String)], key: &str) -> Option<String> {
@@ -226,6 +311,8 @@ pub(crate) fn upsert_field(fields: &mut Vec<(String, String)>, key: &str, value:
     }
 }
 use std::{fs, path::Path};
+
+use serde_yaml::{Mapping, Value};
 
 use crate::{
     cli::TaskListArgs,

@@ -106,6 +106,22 @@ fn preserves_and_fills_task_front_matter() {
 }
 
 #[test]
+fn parses_yaml_task_front_matter_values() {
+    let from = MailAddress::parse("amy@sample-pod.orqa").unwrap();
+    let to = MailAddress::parse("bob-jones@sample-pod.orqa").unwrap();
+    let task = canonical_task_body(
+        &from,
+        &to,
+        None,
+        "---\ntitle: \"fix: parser\"\ndepends_on: [first, second]\n---\n\nDetails.",
+    );
+
+    assert!(task.contains("title: \"fix: parser\"\n"));
+    assert!(task.contains("depends_on: [first, second]\n"));
+    assert!(task.ends_with("Details.\n"));
+}
+
+#[test]
 fn parses_task_field_filters() {
     let args = TaskListArgs {
         pod: None,
