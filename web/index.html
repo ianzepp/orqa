@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta
+      name="description"
+      content="Orqa helps local agents run as a working group with separate identities, local state, mail, tasks, wake scans, and inspectable runs."
+    >
+    <title>orqa</title>
+    <link rel="stylesheet" href="./styles.css">
+  </head>
+  <body>
+    <header class="site-header" aria-label="Site header">
+      <a class="brand" href="#top" aria-label="orqa home">
+        <span class="brand-mark" aria-hidden="true">orqa</span>
+      </a>
+      <nav class="site-nav" aria-label="Primary navigation">
+        <a href="#install">Install</a>
+        <a href="#why">Why</a>
+        <a href="#example">Example</a>
+        <a href="https://github.com/ianzepp/orqa">GitHub</a>
+      </nav>
+      <button class="theme-toggle" type="button" data-theme-toggle aria-label="Toggle color theme">
+        <span data-theme-label>System</span>
+      </button>
+    </header>
+
+    <main id="top">
+      <section class="hero" aria-labelledby="hero-title">
+        <div class="hero-copy">
+          <p class="eyebrow">orqa.sh</p>
+          <h1 id="hero-title">Run local agents as a working group.</h1>
+          <p class="hero-summary">
+            Give this prompt to desktop Codex or cloud Codex to install Orqa,
+            create a demo group, and see how agents can hand work to each other.
+          </p>
+        </div>
+
+        <div class="prompt-panel" aria-label="Copyable Codex prompt">
+          <div class="panel-head">
+            <h2>Give This To Codex</h2>
+            <button class="copy-button" type="button" data-copy-target="codex-prompt">
+              Copy Prompt
+            </button>
+          </div>
+          <textarea id="codex-prompt" class="prompt-box" readonly spellcheck="false">You are helping me install and try Orqa, a local CLI coordinator for groups of local agent runtimes.
+
+Goal:
+Install orqa, create a small demo group with two agents, and show me how to use mail, tasks, wake planning, and a Codex-backed agent run.
+
+Instructions:
+1. Check whether Rust/Cargo, Homebrew, curl, and ~/.local/bin are available.
+2. Install orqa using the safest available method:
+   - Prefer: cargo install orqa
+   - Alternative: brew install ianzepp/tap/orqa
+   - Alternative: curl -fsSL https://raw.githubusercontent.com/ianzepp/orqa/main/install.sh | sh
+3. Ensure the installed orqa binary is on PATH.
+4. Run: orqa doctor
+5. Create a temporary demo home, for example /tmp/orqa-demo.
+6. Run:
+   orqa --home /tmp/orqa-demo pod create demo
+   orqa --home /tmp/orqa-demo fin create demo planner
+   orqa --home /tmp/orqa-demo fin create demo builder
+7. Send a message and task from planner to builder.
+8. Show:
+   orqa --home /tmp/orqa-demo plan demo
+   orqa --home /tmp/orqa-demo pod status demo
+   orqa --home /tmp/orqa-demo fin status demo builder
+9. Explain what files were created under /tmp/orqa-demo.
+10. Do not run destructive cleanup unless I ask.</textarea>
+        </div>
+      </section>
+
+      <section class="install-section" id="install" aria-labelledby="install-title">
+        <div class="section-heading">
+          <p class="eyebrow">Manual Install</p>
+          <h2 id="install-title">Install it yourself.</h2>
+        </div>
+        <div class="command-grid">
+          <article class="command-card">
+            <div class="panel-head">
+              <h3>Shell Installer</h3>
+              <button class="copy-button" type="button" data-copy-target="install-curl">
+                Copy
+              </button>
+            </div>
+            <pre><code id="install-curl">curl -fsSL https://raw.githubusercontent.com/ianzepp/orqa/main/install.sh | sh</code></pre>
+          </article>
+
+          <article class="command-card">
+            <div class="panel-head">
+              <h3>Homebrew</h3>
+              <button class="copy-button" type="button" data-copy-target="install-brew">
+                Copy
+              </button>
+            </div>
+            <pre><code id="install-brew">brew install ianzepp/tap/orqa</code></pre>
+          </article>
+
+          <article class="command-card">
+            <div class="panel-head">
+              <h3>Cargo</h3>
+              <button class="copy-button" type="button" data-copy-target="install-cargo">
+                Copy
+              </button>
+            </div>
+            <pre><code id="install-cargo">cargo install orqa</code></pre>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-band" id="why" aria-labelledby="why-title">
+        <div class="section-heading">
+          <p class="eyebrow">Why Orqa Exists</p>
+          <h2 id="why-title">Agents get more useful when they can coordinate.</h2>
+        </div>
+        <div class="reason-grid">
+          <article>
+            <h3>Separate Identities</h3>
+            <p>
+              Run a planner, builder, reviewer, or researcher without forcing
+              every agent through the same runtime home and global state.
+            </p>
+          </article>
+          <article>
+            <h3>Local Handoffs</h3>
+            <p>
+              Agents can send pod-local mail and tasks, leaving durable work
+              items on disk instead of relying on a fragile chat transcript.
+            </p>
+          </article>
+          <article>
+            <h3>Wake Signals</h3>
+            <p>
+              Orqa can scan for unread mail and open tasks, then launch the
+              agents that have work waiting.
+            </p>
+          </article>
+          <article>
+            <h3>Inspectable Runs</h3>
+            <p>
+              Run status, logs, and command records live under the agent home,
+              so the coordination layer stays visible and debuggable.
+            </p>
+          </article>
+        </div>
+      </section>
+
+      <section class="content-band split-band" aria-labelledby="does-title">
+        <div class="section-heading">
+          <p class="eyebrow">What It Does</p>
+          <h2 id="does-title">A local filesystem shape for agent groups.</h2>
+        </div>
+        <div class="split-content">
+          <div>
+            <p>
+              Orqa does not try to be a cloud orchestration platform. It creates
+              groups, agent homes, inboxes, task queues, config files, locks,
+              and run records, then shells out to the backend you already use.
+            </p>
+            <p>
+              The project terms are simple: a group is a pod, and an agent
+              identity inside that group is a fin.
+            </p>
+          </div>
+          <pre aria-label="Example Orqa home layout"><code>ORQA_HOME/
+  pods/
+    demo/
+      pod.toml
+      fins/
+        planner/
+          fin.toml
+          .codex/
+          mail/
+          tasks/
+        builder/
+          fin.toml
+          .codex/
+          mail/
+          tasks/</code></pre>
+        </div>
+      </section>
+
+      <section class="content-band" id="example" aria-labelledby="example-title">
+        <div class="section-heading">
+          <p class="eyebrow">First Group</p>
+          <h2 id="example-title">Create two agents and send work between them.</h2>
+        </div>
+        <div class="example-panel">
+          <div class="panel-head">
+            <h3>Quick Start</h3>
+            <button class="copy-button" type="button" data-copy-target="quick-start">
+              Copy
+            </button>
+          </div>
+          <pre><code id="quick-start">orqa pod create demo
+orqa fin create demo planner
+orqa fin create demo builder
+
+orqa mail send \
+  --from planner@demo.orqa \
+  --to builder@demo.orqa \
+  --subject hello \
+  "wake up"
+
+orqa task send \
+  --from planner@demo.orqa \
+  --to builder@demo.orqa \
+  --title first-task \
+  "inspect the project and report back"
+
+orqa plan demo
+orqa loop --dry-run demo</code></pre>
+        </div>
+      </section>
+    </main>
+
+    <footer class="site-footer">
+      <p>
+        Orqa is an MIT-licensed local CLI for coordinating groups of local
+        agents.
+      </p>
+      <a href="https://github.com/ianzepp/orqa">github.com/ianzepp/orqa</a>
+    </footer>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
