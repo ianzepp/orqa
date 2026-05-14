@@ -1,7 +1,7 @@
 use std::{
     env, fs,
     path::{Path, PathBuf},
-    process::Command,
+    process::{Child, Command},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -136,6 +136,57 @@ fn fin_list_without_pod_context_explains_missing_pod() {
     fs::remove_dir_all(root).unwrap_or(());
 }
 
+#[test]
+fn service_run_scans_all_pods() {
+    let root = temp_root();
+
+    for pod in ["alpha-pod", "beta-pod"] {
+        orqa(&root, ["pod", "create", pod]);
+        orqa(&root, ["fin", "create", pod, "amy"]);
+        set_writer_backend(&root, pod);
+        orqa(
+            &root,
+            [
+                "mail",
+                "send",
+                "--from",
+                &format!("amy@{pod}.orqa"),
+                "--to",
+                &format!("amy@{pod}.orqa"),
+                "wake",
+            ],
+        );
+    }
+
+    let mut child = command(
+        &root,
+        ["service", "run", "--interval", "1", "--", "from-service"],
+    )
+    .spawn()
+    .unwrap();
+
+    let alpha_marker = root.join("pods/alpha-pod/fins/amy/ran.txt");
+    let beta_marker = root.join("pods/beta-pod/fins/amy/ran.txt");
+    for _ in 0..40 {
+        if alpha_marker.exists() && beta_marker.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    stop_child(&mut child);
+
+    assert_eq!(
+        fs::read_to_string(&alpha_marker).unwrap(),
+        "pod=alpha-pod fin=amy prompt=from-service"
+    );
+    assert_eq!(
+        fs::read_to_string(&beta_marker).unwrap(),
+        "pod=beta-pod fin=amy prompt=from-service"
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn orqa<const N: usize>(root: &Path, args: [&str; N]) {
     let output = command(root, args).output().unwrap();
     assert!(
@@ -161,6 +212,33 @@ fn command<const N: usize>(root: &Path, args: [&str; N]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_orqa"));
     command.arg("--home").arg(root).args(args);
     command
+}
+
+fn set_writer_backend(root: &Path, pod: &str) {
+    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let config = fs::read_to_string(&pod_config).unwrap();
+    let config = config.replace(
+        "default_backend = \"codex\"",
+        "default_backend = \"writer\"",
+    );
+    fs::write(
+        &pod_config,
+        format!(
+            r#"{config}
+
+[backends.writer]
+enabled = true
+command = "/bin/sh"
+args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{fin_home}}/ran.txt"]
+"#
+        ),
+    )
+    .unwrap();
+}
+
+fn stop_child(child: &mut Child) {
+    let _ = child.kill();
+    let _ = child.wait();
 }
 
 fn temp_root() -> PathBuf {

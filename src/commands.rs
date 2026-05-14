@@ -17,7 +17,7 @@ use crate::{
 
 pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
     match command.command {
-        PodSubcommand::List => list_dirs(&orqa.home.join("pods")),
+        PodSubcommand::List => print_dirs(&orqa.home.join("pods")),
         PodSubcommand::Create(args) => {
             let pod = PodRef::new(&args.slug)?;
             let home = orqa.pod_home(&pod);
@@ -61,7 +61,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
                     .map_err(|_| "missing pod; pass a pod or run with ORQA_POD set".to_string())?,
             };
             let pod = PodRef::new(&pod)?;
-            list_dirs(&orqa.pod_home(&pod).join("fins"))
+            print_dirs(&orqa.pod_home(&pod).join("fins"))
         }
         FinSubcommand::Create(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
@@ -100,9 +100,9 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
     }
 }
 
-fn list_dirs(dir: &Path) -> Result<(), String> {
+pub(crate) fn list_dirs(dir: &Path) -> Result<Vec<String>, String> {
     if !dir.exists() {
-        return Ok(());
+        return Ok(Vec::new());
     }
 
     let mut names = Vec::new();
@@ -117,6 +117,11 @@ fn list_dirs(dir: &Path) -> Result<(), String> {
     }
 
     names.sort();
+    Ok(names)
+}
+
+fn print_dirs(dir: &Path) -> Result<(), String> {
+    let names = list_dirs(dir)?;
     for name in names {
         println!("{name}");
     }

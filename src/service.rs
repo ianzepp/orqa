@@ -7,10 +7,8 @@ use std::{
 };
 
 use crate::{
-    cli::{
-        LoopArgs, ServiceCommand, ServiceInstallArgs, ServicePodArgs, ServiceRunArgs,
-        ServiceSubcommand,
-    },
+    cli::{LoopArgs, ServiceCommand, ServiceInstallArgs, ServiceRunArgs, ServiceSubcommand},
+    commands::list_dirs,
     model::{Orqa, PodRef},
     runtime::loop_pod,
 };
@@ -18,19 +16,17 @@ use crate::{
 pub(crate) fn service(orqa: &Orqa, command: ServiceCommand) -> Result<(), String> {
     match command.command {
         ServiceSubcommand::Install(args) => install(orqa, args),
-        ServiceSubcommand::Uninstall(args) => uninstall(orqa, args),
-        ServiceSubcommand::Start(args) => start(orqa, args),
-        ServiceSubcommand::Stop(args) => stop(orqa, args),
-        ServiceSubcommand::Status(args) => status(orqa, args),
+        ServiceSubcommand::Uninstall => uninstall(orqa),
+        ServiceSubcommand::Start => start(orqa),
+        ServiceSubcommand::Stop => stop(orqa),
+        ServiceSubcommand::Status => status(orqa),
         ServiceSubcommand::Run(args) => run(orqa, args),
     }
 }
 
 fn install(orqa: &Orqa, args: ServiceInstallArgs) -> Result<(), String> {
     validate_interval(args.interval)?;
-    let pod = resolve_pod(args.pod.as_deref())?;
-    ensure_pod_exists(orqa, &pod)?;
-    let spec = ServiceSpec::new(orqa, &pod)?;
+    let spec = ServiceSpec::new(orqa)?;
     fs::create_dir_all(spec.log_dir()).map_err(|error| {
         format!(
             "failed to create service log directory {}: {error}",
@@ -83,15 +79,9 @@ fn install(orqa: &Orqa, args: ServiceInstallArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn uninstall(orqa: &Orqa, args: ServicePodArgs) -> Result<(), String> {
-    let pod = resolve_pod(args.pod.as_deref())?;
-    let spec = ServiceSpec::new(orqa, &pod)?;
-    let _ = stop(
-        orqa,
-        ServicePodArgs {
-            pod: Some(pod.slug.clone()),
-        },
-    );
+fn uninstall(orqa: &Orqa) -> Result<(), String> {
+    let spec = ServiceSpec::new(orqa)?;
+    let _ = stop(orqa);
 
     match platform() {
         Platform::Macos => remove_if_exists(&macos_plist_path(&spec)?)?,
@@ -108,9 +98,8 @@ fn uninstall(orqa: &Orqa, args: ServicePodArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn start(orqa: &Orqa, args: ServicePodArgs) -> Result<(), String> {
-    let pod = resolve_pod(args.pod.as_deref())?;
-    let spec = ServiceSpec::new(orqa, &pod)?;
+fn start(orqa: &Orqa) -> Result<(), String> {
+    let spec = ServiceSpec::new(orqa)?;
 
     match platform() {
         Platform::Macos => {
@@ -132,9 +121,8 @@ fn start(orqa: &Orqa, args: ServicePodArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn stop(orqa: &Orqa, args: ServicePodArgs) -> Result<(), String> {
-    let pod = resolve_pod(args.pod.as_deref())?;
-    let spec = ServiceSpec::new(orqa, &pod)?;
+fn stop(orqa: &Orqa) -> Result<(), String> {
+    let spec = ServiceSpec::new(orqa)?;
 
     match platform() {
         Platform::Macos => {
@@ -157,9 +145,8 @@ fn stop(orqa: &Orqa, args: ServicePodArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn status(orqa: &Orqa, args: ServicePodArgs) -> Result<(), String> {
-    let pod = resolve_pod(args.pod.as_deref())?;
-    let spec = ServiceSpec::new(orqa, &pod)?;
+fn status(orqa: &Orqa) -> Result<(), String> {
+    let spec = ServiceSpec::new(orqa)?;
 
     match platform() {
         Platform::Macos => {
@@ -186,26 +173,26 @@ fn status(orqa: &Orqa, args: ServicePodArgs) -> Result<(), String> {
 fn run(orqa: &Orqa, args: ServiceRunArgs) -> Result<(), String> {
     validate_interval(args.interval)?;
     loop {
+        loop_all_pods(orqa, &args)?;
+        thread::sleep(Duration::from_secs(args.interval));
+    }
+}
+
+fn loop_all_pods(orqa: &Orqa, args: &ServiceRunArgs) -> Result<(), String> {
+    for pod in list_dirs(&orqa.home.join("pods"))? {
+        let pod = PodRef::new(&pod)?;
         loop_pod(
             orqa,
             LoopArgs {
-                pod: args.pod.clone(),
+                pod: pod.slug,
                 force: args.force,
                 framework: args.framework.clone(),
                 args: args.args.clone(),
             },
         )?;
-        thread::sleep(Duration::from_secs(args.interval));
     }
-}
 
-fn resolve_pod(pod: Option<&str>) -> Result<PodRef, String> {
-    let pod = match pod {
-        Some(pod) => pod.to_string(),
-        None => env::var("ORQA_POD")
-            .map_err(|_| "missing pod; pass a pod or run with ORQA_POD set".to_string())?,
-    };
-    PodRef::new(&pod)
+    Ok(())
 }
 
 fn validate_interval(interval: u64) -> Result<(), String> {
@@ -213,20 +200,6 @@ fn validate_interval(interval: u64) -> Result<(), String> {
         Err("service interval must be at least 1 second".to_string())
     } else {
         Ok(())
-    }
-}
-
-fn ensure_pod_exists(orqa: &Orqa, pod: &PodRef) -> Result<(), String> {
-    let home = orqa.pod_home(pod);
-    if home.is_dir() {
-        Ok(())
-    } else {
-        Err(format!(
-            "pod {} does not exist at {}; create it with `orqa pod create {}`",
-            pod.slug,
-            home.display(),
-            pod.slug
-        ))
     }
 }
 
@@ -259,23 +232,21 @@ struct ServiceSpec {
     unit: String,
     exe: PathBuf,
     home: PathBuf,
-    pod: String,
 }
 
 impl ServiceSpec {
-    fn new(orqa: &Orqa, pod: &PodRef) -> Result<Self, String> {
+    fn new(orqa: &Orqa) -> Result<Self, String> {
         let exe = env::current_exe()
             .map_err(|error| format!("failed to resolve current executable: {error}"))?;
         let hash = stable_hash(&orqa.home);
-        let label = format!("com.ianzepp.orqa.{}.{}", pod.slug, hash);
-        let unit = format!("orqa-{}-{}.service", pod.slug, hash);
+        let label = format!("com.ianzepp.orqa.{hash}");
+        let unit = format!("orqa-{hash}.service");
 
         Ok(Self {
             label,
             unit,
             exe,
             home: orqa.home.clone(),
-            pod: pod.slug.clone(),
         })
     }
 
@@ -343,7 +314,6 @@ fn service_args(spec: &ServiceSpec, args: &ServiceInstallArgs) -> Vec<String> {
         spec.home.display().to_string(),
         "service".to_string(),
         "run".to_string(),
-        spec.pod.clone(),
         "--interval".to_string(),
         args.interval.to_string(),
     ];
@@ -414,7 +384,7 @@ fn linux_unit(spec: &ServiceSpec, args: &ServiceInstallArgs) -> String {
 
     format!(
         r#"[Unit]
-Description=Orqa wake-loop service for pod {}
+Description=Orqa wake-loop service for {}
 After=default.target
 
 [Service]
@@ -427,7 +397,7 @@ Environment=ORQA_HOME={}
 [Install]
 WantedBy=default.target
 "#,
-        spec.pod,
+        spec.home.display(),
         shell_quote(&format!("exec {command}")),
         shell_quote(&spec.home.to_string_lossy()),
     )

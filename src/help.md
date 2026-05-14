@@ -277,27 +277,22 @@ orqa loop --force sample-pod
 
 ## Background Service
 
-Use `orqa service` to install and control a background wake-loop service for a
-pod:
+Use `orqa service` to install and control one background wake-loop service for
+the active `ORQA_HOME`:
 
 ```sh
-orqa service install sample-pod --interval 60 -- "handle your open Orqa mail and tasks"
-orqa service start sample-pod
-orqa service status sample-pod
-orqa service stop sample-pod
-orqa service uninstall sample-pod
-```
-
-Inside a launched fin, `ORQA_POD` is already set, so the pod can be omitted:
-
-```sh
+orqa service install --interval 60 -- "handle your open Orqa mail and tasks"
+orqa service start
 orqa service status
+orqa service stop
+orqa service uninstall
 ```
 
 On macOS, Orqa writes a user LaunchAgent and controls it with `launchctl`. On
 Linux, Orqa writes a user systemd unit and controls it with `systemctl --user`.
-The service repeatedly runs the equivalent of `orqa loop <pod>` at the interval
-chosen during install.
+The service repeatedly discovers all pods under `ORQA_HOME/pods/` and runs the
+equivalent of `orqa loop <pod>` for each pod at the interval chosen during
+install. New pods are picked up on the next scan.
 
 ## Runtime Locks
 

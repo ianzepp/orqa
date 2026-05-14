@@ -607,21 +607,22 @@ when the PID no longer exists. Sleeping pods and fins are skipped unless
 ### Service Commands
 
 ```text
-orqa service install [--interval <seconds>] [--force] [--framework <framework>] [pod] [-- <args>...]
-orqa service uninstall [pod]
-orqa service start [pod]
-orqa service stop [pod]
-orqa service status [pod]
+orqa service install [--interval <seconds>] [--force] [--framework <framework>] [-- <args>...]
+orqa service uninstall
+orqa service start
+orqa service stop
+orqa service status
 ```
 
-The service command manages a background wake-loop service for one pod. When the
-pod argument is omitted, commands use `ORQA_POD`.
+The service command manages one background wake-loop service for the active
+`ORQA_HOME`.
 
 `service install` writes a platform service definition for the active
 `ORQA_HOME`: a user LaunchAgent on macOS, or a user systemd unit on Linux. The
-installed service repeatedly runs the equivalent of `orqa loop <pod>` at the
-configured interval. `--framework` and arguments after `--` are preserved in the
-service definition for each scan.
+installed service repeatedly discovers all pods under `ORQA_HOME/pods/` and
+runs the equivalent of `orqa loop <pod>` for each pod at the configured
+interval. New pods are picked up on the next scan. `--framework` and arguments
+after `--` are preserved in the service definition for each pod scan.
 
 Use `service start`, `service stop`, and `service status` to control the
 installed service through `launchctl` or `systemctl --user`. Use

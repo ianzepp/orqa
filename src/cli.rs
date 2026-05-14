@@ -132,16 +132,16 @@ pub(crate) enum TaskSubcommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum ServiceSubcommand {
-    /// Install a platform service for a pod.
+    /// Install a platform service for ORQA_HOME.
     Install(ServiceInstallArgs),
-    /// Uninstall a platform service for a pod.
-    Uninstall(ServicePodArgs),
-    /// Start a pod service.
-    Start(ServicePodArgs),
-    /// Stop a pod service.
-    Stop(ServicePodArgs),
-    /// Print platform service status for a pod.
-    Status(ServicePodArgs),
+    /// Uninstall the platform service for ORQA_HOME.
+    Uninstall,
+    /// Start the service for ORQA_HOME.
+    Start,
+    /// Stop the service for ORQA_HOME.
+    Stop,
+    /// Print platform service status for ORQA_HOME.
+    Status,
     /// Run the service loop. Used by generated platform services.
     #[command(hide = true)]
     Run(ServiceRunArgs),
@@ -164,8 +164,6 @@ pub(crate) struct LoopArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct ServiceInstallArgs {
-    /// Pod slug. Defaults to ORQA_POD.
-    pub(crate) pod: Option<String>,
     /// Seconds between wake scans.
     #[arg(long, default_value_t = 60)]
     pub(crate) interval: u64,
@@ -182,8 +180,6 @@ pub(crate) struct ServiceInstallArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct ServiceRunArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
     /// Seconds between wake scans.
     #[arg(long, default_value_t = 60)]
     pub(crate) interval: u64,
@@ -196,12 +192,6 @@ pub(crate) struct ServiceRunArgs {
     /// Arguments passed to each wake-loop scan.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
-}
-
-#[derive(Debug, Args)]
-pub(crate) struct ServicePodArgs {
-    /// Pod slug. Defaults to ORQA_POD.
-    pub(crate) pod: Option<String>,
 }
 
 #[derive(Debug, Args)]
