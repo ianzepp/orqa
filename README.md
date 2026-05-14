@@ -31,6 +31,7 @@ orqa pod create sample-pod
 orqa agent create sample-pod amy
 orqa agent create sample-pod bob-jones
 orqa mail send --from amy@sample-pod.orqa --to bob-jones@sample-pod.orqa --subject hello "wake up"
+ORQA_POD=sample-pod ORQA_AGENT=amy orqa mail send --to bob-jones --subject hello "wake up"
 orqa loop sample-pod
 orqa agent run sample-pod amy -- --help
 ```

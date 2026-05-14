@@ -123,10 +123,10 @@ struct RunArgs {
 
 #[derive(Debug, Args)]
 struct SendMailArgs {
-    /// Sender address, such as amy@sample-pod.orqa.
+    /// Sender address. Defaults to ORQA_AGENT@ORQA_POD.orqa.
     #[arg(long)]
-    from: String,
-    /// Recipient address, such as bob-jones@sample-pod.orqa.
+    from: Option<String>,
+    /// Recipient address, such as bob-jones or bob-jones@sample-pod.orqa.
     #[arg(long)]
     to: String,
     /// Message subject.
@@ -291,8 +291,8 @@ fn run_agent(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
 }
 
 fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
-    let from = MailAddress::parse(&args.from)?;
-    let to = MailAddress::parse(&args.to)?;
+    let from = resolve_sender(args.from.as_deref())?;
+    let to = resolve_address(&args.to, Some(&from.pod))?;
 
     if from.pod != to.pod {
         return Err(format!(
@@ -410,6 +410,50 @@ fn read_stdin() -> Result<String, String> {
         .read_to_string(&mut body)
         .map_err(|error| format!("failed to read stdin: {error}"))?;
     Ok(body)
+}
+
+fn resolve_sender(from: Option<&str>) -> Result<MailAddress, String> {
+    match from {
+        Some(from) => {
+            let pod = env::var("ORQA_POD").ok();
+            resolve_address(from, pod.as_deref())
+        }
+        None => {
+            let pod = env::var("ORQA_POD").map_err(|_| {
+                "missing sender; use --from agent@pod.orqa or run with ORQA_POD and ORQA_AGENT set"
+                    .to_string()
+            })?;
+            let agent = env::var("ORQA_AGENT").map_err(|_| {
+                "missing sender; use --from agent@pod.orqa or run with ORQA_POD and ORQA_AGENT set"
+                    .to_string()
+            })?;
+
+            resolve_address(&agent, Some(&pod))
+        }
+    }
+}
+
+fn resolve_address(address: &str, pod_hint: Option<&str>) -> Result<MailAddress, String> {
+    if address.contains('@') {
+        return MailAddress::parse(address);
+    }
+
+    let pod = match pod_hint {
+        Some(pod) => pod.to_string(),
+        None => env::var("ORQA_POD").map_err(|_| {
+            format!(
+                "bare address {address:?} needs ORQA_POD; use agent@pod.orqa or run with ORQA_POD set"
+            )
+        })?,
+    };
+
+    validate_slug(address)?;
+    validate_slug(&pod)?;
+
+    Ok(MailAddress {
+        agent: address.to_string(),
+        pod,
+    })
 }
 
 fn write_if_missing(path: &Path, contents: &str) -> Result<(), String> {
@@ -555,6 +599,20 @@ mod tests {
         assert_eq!(address.agent, "amy");
         assert_eq!(address.pod, "sample-pod");
         assert_eq!(address.label(), "amy@sample-pod.orqa");
+    }
+
+    #[test]
+    fn qualifies_bare_mail_addresses_with_pod_hint() {
+        let address = resolve_address("bob-jones", Some("sample-pod")).unwrap();
+
+        assert_eq!(address.agent, "bob-jones");
+        assert_eq!(address.pod, "sample-pod");
+        assert_eq!(address.label(), "bob-jones@sample-pod.orqa");
+    }
+
+    #[test]
+    fn bare_mail_addresses_need_pod_context() {
+        assert!(resolve_address("bob-jones", None).is_err());
     }
 
     #[test]
