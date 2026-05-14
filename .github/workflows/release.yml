@@ -71,5 +71,5 @@ jobs:
             ./*.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" \
             --title "orqa $RELEASE_TAG" \
-            --notes "First public orqa release." \
+            --generate-notes \
             --verify-tag
