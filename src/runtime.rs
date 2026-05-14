@@ -12,6 +12,7 @@ use serde::Serialize;
 use crate::{
     cli::{ChatArgs, ExecArgs, LoopArgs, PlanArgs, SuperviseArgs},
     config::{BackendCommand, BackendMode, backend_chat_command, backend_command, run_policy},
+    hooks::run_hook_phase,
     mailbox::unread_count,
     model::{FinRef, Orqa, PodRef},
     runs::{RunFiles, latest_run_started_at},
@@ -91,6 +92,10 @@ impl std::fmt::Display for WakeReason {
 }
 
 pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
+    let pod = PodRef::new(&args.pod)?;
+    if !args.dry_run {
+        run_hook_phase(orqa, &pod, "pre-plan")?;
+    }
     let plan = plan_pod(orqa, &args.pod, args.force, &args.args)?;
     if args.dry_run {
         return print_plan(&plan, args.json);

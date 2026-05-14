@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod config;
 mod doctor;
+mod hooks;
 mod mailbox;
 mod model;
 mod report;

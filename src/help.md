@@ -81,6 +81,7 @@ Print homes when an agent needs to inspect paths:
 orqa pod list
 orqa fin list sample-pod
 orqa pod home sample-pod
+orqa pod hook list sample-pod
 orqa fin home sample-pod planner
 orqa mail home sample-pod planner
 orqa task home sample-pod planner
@@ -389,6 +390,27 @@ orqa ops report --since 1d
 Use `orqa ops report` to print a Markdown evidence bundle covering all pods,
 task records, mail records, file paths, statuses, and clipped context. `--since`
 accepts Unix seconds or relative durations such as `30m`, `2h`, or `1d`.
+
+## Pod Hooks
+
+Use pod hooks for cheap lifecycle work around the wake loop:
+
+```sh
+orqa pod hook add ops pre-plan 10-sync-external-mail -- ./10-sync-external-mail.sh
+orqa pod hook list ops
+orqa pod hook run ops pre-plan
+orqa pod hook disable ops pre-plan 10-sync-external-mail
+orqa pod hook enable ops pre-plan 10-sync-external-mail
+```
+
+The first supported phase is `pre-plan`, which runs at the start of `orqa loop`
+before mail, tasks, debounce, or `exec_always` are evaluated. Hooks live under
+`ORQA_HOME/pods/<pod>/hooks/pre-plan/` as `<hook-id>.toml` plus an adjacent
+script. Commands run from the phase directory in lexicographic filename order.
+Failed hooks are reported and the wake loop continues.
+
+Hook commands receive `ORQA_HOME`, `ORQA_POD`, `ORQA_POD_HOME`, `ORQA_HOOK`,
+`ORQA_HOOK_PHASE`, `ORQA_HOOK_HOME`, and `ORQA_HOOK_STATE`.
 
 ## Sleep And Wake
 

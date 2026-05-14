@@ -335,6 +335,131 @@ fn plan_and_dry_run_explain_wake_decisions_without_running() {
 }
 
 #[test]
+fn pod_hook_add_list_run_and_toggle_manage_pre_plan_hooks() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(
+        &root,
+        [
+            "pod",
+            "hook",
+            "add",
+            "test-pod",
+            "pre-plan",
+            "10-env",
+            "--",
+            "./10-env.sh",
+        ],
+    );
+
+    let hook_home = root.join("pods/test-pod/hooks/pre-plan");
+    let script = hook_home.join("10-env.sh");
+    fs::write(
+        &script,
+        r#"#!/usr/bin/env sh
+set -eu
+printf '%s|%s|%s|%s|%s' "$ORQA_HOME" "$ORQA_POD" "$ORQA_HOOK" "$ORQA_HOOK_PHASE" "$PWD" > "$ORQA_HOOK_STATE/env.txt"
+"#,
+    )
+    .unwrap();
+
+    let list = orqa_output(&root, ["pod", "hook", "list", "test-pod"]);
+    assert!(list.contains("pre-plan 10-env enabled=true timeout=30s command=./10-env.sh"));
+
+    orqa(
+        &root,
+        ["pod", "hook", "disable", "test-pod", "pre-plan", "10-env"],
+    );
+    let disabled = orqa_output(&root, ["pod", "hook", "list", "test-pod"]);
+    assert!(disabled.contains("enabled=false"));
+
+    orqa(
+        &root,
+        ["pod", "hook", "enable", "test-pod", "pre-plan", "10-env"],
+    );
+    let run = orqa_output(&root, ["pod", "hook", "run", "test-pod", "pre-plan"]);
+    assert!(run.contains("hook test-pod pre-plan/10-env status=ok"));
+
+    let state = fs::read_to_string(root.join("pods/test-pod/hooks/state/10-env/env.txt")).unwrap();
+    let parts = state.split('|').collect::<Vec<_>>();
+    assert_eq!(Path::new(parts[0]), root.as_path());
+    assert_eq!(parts[1], "test-pod");
+    assert_eq!(parts[2], "10-env");
+    assert_eq!(parts[3], "pre-plan");
+    assert_eq!(
+        fs::canonicalize(Path::new(parts[4])).unwrap(),
+        fs::canonicalize(&hook_home).unwrap()
+    );
+
+    orqa(
+        &root,
+        ["pod", "hook", "remove", "test-pod", "pre-plan", "10-env"],
+    );
+    assert!(!hook_home.join("10-env.toml").exists());
+    assert!(!script.exists());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn loop_runs_pre_plan_hooks_and_continues_after_hook_failure() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_writer_backend(&root, "test-pod");
+    orqa(
+        &root,
+        [
+            "pod",
+            "hook",
+            "add",
+            "test-pod",
+            "pre-plan",
+            "10-fail",
+            "--",
+            "./10-fail.sh",
+        ],
+    );
+    fs::write(
+        root.join("pods/test-pod/hooks/pre-plan/10-fail.sh"),
+        "#!/usr/bin/env sh\nexit 7\n",
+    )
+    .unwrap();
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "amy@test-pod.orqa",
+            "--to",
+            "amy@test-pod.orqa",
+            "wake",
+        ],
+    );
+
+    let output = orqa_output(&root, ["loop", "test-pod", "--", "from-loop"]);
+    assert!(output.contains("hook test-pod pre-plan/10-fail status=failed exit=7"));
+    assert!(output.contains("wake test-pod/amy"));
+
+    let marker = root.join("pods/test-pod/fins/amy/ran.txt");
+    for _ in 0..20 {
+        if marker.exists() {
+            break;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+    assert_eq!(
+        fs::read_to_string(&marker).unwrap(),
+        "pod=test-pod fin=amy prompt=from-loop"
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn plan_ignores_backend_errors_until_fin_is_wakeable() {
     let root = temp_root();
 

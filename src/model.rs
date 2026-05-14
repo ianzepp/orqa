@@ -56,6 +56,18 @@ impl Orqa {
     pub(crate) fn fin_sleep_path(&self, fin: &FinRef) -> PathBuf {
         self.fin_home(fin).join("sleep.lock")
     }
+
+    pub(crate) fn pod_hooks_home(&self, pod: &PodRef) -> PathBuf {
+        self.pod_home(pod).join("hooks")
+    }
+
+    pub(crate) fn pod_hook_phase_home(&self, pod: &PodRef, phase: &str) -> PathBuf {
+        self.pod_hooks_home(pod).join(phase)
+    }
+
+    pub(crate) fn pod_hook_state_home(&self, pod: &PodRef, hook: &str) -> PathBuf {
+        self.pod_hooks_home(pod).join("state").join(hook)
+    }
 }
 
 pub(crate) struct PodRef {

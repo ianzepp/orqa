@@ -60,6 +60,8 @@ pub(crate) enum PodSubcommand {
     Status(PodStatusArgs),
     /// Check pod filesystem, config, backend command, and LLM connectivity.
     Doctor(PodDoctorArgs),
+    /// Manage pod lifecycle hooks.
+    Hook(PodHookCommand),
     /// Print recent run output for fins in a pod.
     Tail(PodTailArgs),
     /// Pause all wake-loop runs for a pod.
@@ -143,6 +145,28 @@ pub(crate) enum OpsSubcommand {
 pub(crate) struct PodCharterCommand {
     #[command(subcommand)]
     pub(crate) command: PodCharterSubcommand,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodHookCommand {
+    #[command(subcommand)]
+    pub(crate) command: PodHookSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PodHookSubcommand {
+    /// List hooks for a pod.
+    List(PodHookListArgs),
+    /// Add a hook definition and adjacent script stub.
+    Add(PodHookAddArgs),
+    /// Enable a hook.
+    Enable(PodHookRefArgs),
+    /// Disable a hook.
+    Disable(PodHookRefArgs),
+    /// Remove a hook definition and adjacent script.
+    Remove(PodHookRefArgs),
+    /// Run enabled hooks for one phase.
+    Run(PodHookRunArgs),
 }
 
 #[derive(Debug, Subcommand)]
@@ -355,6 +379,46 @@ pub(crate) struct PodDoctorArgs {
     /// Seconds to wait for each backend probe.
     #[arg(long, default_value_t = 120)]
     pub(crate) timeout: u64,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodHookListArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodHookAddArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Hook phase. Currently only pre-plan is supported.
+    pub(crate) phase: String,
+    /// Hook id, commonly prefixed for sort order, such as 10-sync-mail.
+    pub(crate) hook: String,
+    /// Hook timeout, such as 30s, 5m, or 1h.
+    #[arg(long, default_value = "30s")]
+    pub(crate) timeout: String,
+    /// Shell command to execute from the hook phase directory.
+    #[arg(last = true, required = true)]
+    pub(crate) command: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodHookRefArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Hook phase. Currently only pre-plan is supported.
+    pub(crate) phase: String,
+    /// Hook id.
+    pub(crate) hook: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodHookRunArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Hook phase. Currently only pre-plan is supported.
+    pub(crate) phase: String,
 }
 
 #[derive(Debug, Args)]

@@ -675,6 +675,12 @@ orqa pod charter get <slug>
 orqa pod charter set <slug> <prompt|@file|->
 orqa pod status <slug>
 orqa pod doctor <slug> [--fin <fin>] [--prompt <prompt>] [--timeout <seconds>]
+orqa pod hook list <slug>
+orqa pod hook add <slug> pre-plan <hook-id> [--timeout <duration>] -- <command>
+orqa pod hook enable <slug> pre-plan <hook-id>
+orqa pod hook disable <slug> pre-plan <hook-id>
+orqa pod hook remove <slug> pre-plan <hook-id>
+orqa pod hook run <slug> pre-plan
 orqa pod tail <slug> [--fin <fin>] [--lines <n>] [--follow]
 orqa pod sleep <slug>
 orqa pod wake <slug> --force
@@ -689,9 +695,10 @@ pod. `pod charter set` replaces both `CHARTER.md` and the generated pod
 `AGENTS.md`. `pod list` prints one status line per pod with fin count, sleep
 state, wakeable/running counts, unread mail, and open tasks. `pod doctor`
 checks required pod and fin files, resolves each fin's backend command, and
-runs a short backend probe to verify connectivity. `pod sleep` writes a
-pod-level sleep marker, and `pod wake` requires `--force` before it removes that
-marker.
+runs a short backend probe to verify connectivity. `pod hook` manages shell
+hooks under `hooks/<phase>/` for lifecycle work around the wake loop. `pod
+sleep` writes a pod-level sleep marker, and `pod wake` requires `--force`
+before it removes that marker.
 
 ### Fin Commands
 
@@ -831,6 +838,43 @@ orqa loop [--force] <pod> [-- <args>...]
 are launched through their configured backend. The run policy in `pod.toml` and
 `fin.toml` can debounce repeated runs or wake idle fins periodically with
 `exec_always`.
+
+### Pod Hooks
+
+```text
+orqa pod hook list <pod>
+orqa pod hook add <pod> pre-plan <hook-id> [--timeout <duration>] -- <command>
+orqa pod hook enable <pod> pre-plan <hook-id>
+orqa pod hook disable <pod> pre-plan <hook-id>
+orqa pod hook remove <pod> pre-plan <hook-id>
+orqa pod hook run <pod> pre-plan
+```
+
+Hooks are pod-local shell commands stored under
+`ORQA_HOME/pods/<pod>/hooks/<phase>/`. The first supported phase is `pre-plan`,
+which runs at the start of `orqa loop` before Orqa checks mail, tasks, debounce,
+or `exec_always`. This is intended for cheap local synchronization, such as
+syncing an external inbox to disk and delivering new messages into the operator
+fin before wake planning.
+
+`pod hook add` writes `<hook-id>.toml` and an adjacent `<hook-id>.sh` script
+stub. Hook TOML is intentionally small:
+
+```toml
+[hook]
+enabled = true
+command = "./10-sync-external-mail.sh"
+timeout = "30s"
+```
+
+Commands run from the phase directory in lexicographic filename order, so ids
+like `10-sync-mail` and `20-import-events` give stable priority. Failed or timed
+out hooks are reported and the loop continues to normal wake planning.
+
+Hook commands receive these environment variables: `ORQA_HOME`, `ORQA_POD`,
+`ORQA_POD_HOME`, `ORQA_HOOK`, `ORQA_HOOK_PHASE`, `ORQA_HOOK_HOME`, and
+`ORQA_HOOK_STATE`. The state directory is
+`ORQA_HOME/pods/<pod>/hooks/state/<hook-id>/`.
 
 ```sh
 orqa loop sample-pod

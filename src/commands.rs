@@ -15,6 +15,7 @@ use crate::{
         pod_agents_template, pod_config_template,
     },
     doctor::pod_doctor,
+    hooks::{add_hook, disable_hook, enable_hook, list_hooks, remove_hook, run_hooks},
     mailbox::{
         ItemKind, delete_item, delete_mail, done_item, done_mail, ensure_maildir, list_mail,
         list_tasks, read_item, read_mail, remove_sleep_marker, send_mail, send_task, unread_mail,
@@ -85,6 +86,14 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
             }
         }
         PodSubcommand::Doctor(args) => pod_doctor(orqa, args),
+        PodSubcommand::Hook(command) => match command.command {
+            crate::cli::PodHookSubcommand::List(args) => list_hooks(orqa, args),
+            crate::cli::PodHookSubcommand::Add(args) => add_hook(orqa, args),
+            crate::cli::PodHookSubcommand::Enable(args) => enable_hook(orqa, args),
+            crate::cli::PodHookSubcommand::Disable(args) => disable_hook(orqa, args),
+            crate::cli::PodHookSubcommand::Remove(args) => remove_hook(orqa, args),
+            crate::cli::PodHookSubcommand::Run(args) => run_hooks(orqa, args),
+        },
         PodSubcommand::Tail(args) => {
             let pod = PodRef::new(&args.pod)?;
             if let Some(fin) = &args.fin {
