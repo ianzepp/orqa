@@ -1,9 +1,9 @@
 # Orqa Operational Guide
 
-Orqa is a local coordinator for background agents. It gives a group of agents a
-shared filesystem shape, names the group as a pod, names each agent as a fin,
-and provides local mail and task queues that can wake fins when there is work
-to handle.
+Orqa is a local coordinator for groups of local agent runtimes. It gives a
+goal-oriented group of agents a shared filesystem shape, names the group as a
+pod, names each runtime identity as a fin, and provides local mail and task
+queues that can wake fins when there is work to handle.
 
 Orqa does not decide what the agent should think or how the agent framework
 works. It creates the homes, inboxes, task queues, config files, and runtime
@@ -12,11 +12,13 @@ the other fins in its pod.
 
 ## Core Model
 
-A pod is a collection of fins. Use a pod when a set of agents should share a
-workspace, communicate with each other, and be woken by the same scan loop.
+A pod is a collection of fins, or agents, that should share a goal, communicate
+with each other, and be woken by the same scan loop.
 
-A fin is one agent identity inside one pod. Each fin has its own home directory,
-its own `.codex` directory, its own mail inbox, and its own task queue.
+A fin is one agent runtime identity inside one pod. In practice, a fin can be
+backed by runtimes such as Claude, Codex, OpenClaw, Hermes, Pi, or a custom
+command. Each fin has its own home directory, its own `.codex` directory, its
+own mail inbox, and its own task queue.
 
 `ORQA_HOME` is the root for all pods. It defaults to `~/.orqa`.
 
@@ -83,11 +85,11 @@ orqa --home /tmp/orqa-demo pod create sample-pod
 
 ## Running Fins
 
-`orqa fin run` launches one fin through the backend selected by `pod.toml` and
+`orqa fin exec` launches one fin through the backend selected by `pod.toml` and
 `fin.toml`.
 
 ```sh
-orqa fin run sample-pod amy -- "handle your open mail and tasks"
+orqa fin exec sample-pod amy -- "handle your open mail and tasks"
 ```
 
 `orqa loop` scans a pod for fins with wake signals. Unread mail and open tasks
@@ -108,9 +110,18 @@ orqa loop --dry-run sample-pod
 Use `--framework` to bypass config for a one-off smoke test:
 
 ```sh
-orqa fin run --framework /bin/echo sample-pod amy -- "hello"
+orqa fin exec --framework /bin/echo sample-pod amy -- "hello"
 orqa loop --framework /bin/echo sample-pod -- "wake scan"
 ```
+
+Start an interactive backend chat as a fin with the backend's `chat_args`:
+
+```sh
+orqa fin chat sample-pod amy
+```
+
+`fin chat` attaches stdin, stdout, and stderr directly to the terminal while
+using the same fin environment and lock behavior as `fin exec`.
 
 When Orqa launches a fin, it sets:
 
@@ -133,7 +144,7 @@ orqa pod status sample-pod
 orqa fin status sample-pod amy
 ```
 
-Each fin run records a small run directory under the fin home:
+Each fin exec records a small run directory under the fin home:
 
 ```text
 ORQA_HOME/pods/<pod>/fins/<fin>/runs/<run-id>/
@@ -173,7 +184,8 @@ default_backend = "codex"
 [backends.codex]
 enabled = true
 command = "codex"
-args = ["{prompt}"]
+exec_args = ["{prompt}"]
+chat_args = []
 
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
@@ -190,11 +202,12 @@ slug = "amy"
 model = "gpt-5.3-codex"
 ```
 
-Backend args are argv arrays, not shell strings. Template values include
-`{orqa_home}`, `{pod}`, `{pod_home}`, `{fin}`, `{fin_home}`, `{codex_home}`,
-`{mail_home}`, `{task_home}`, `{model}`, and `{prompt}`.
+Backend `exec_args` and `chat_args` are argv arrays, not shell strings.
+Template values include `{orqa_home}`, `{pod}`, `{pod_home}`, `{fin}`,
+`{fin_home}`, `{codex_home}`, `{mail_home}`, `{task_home}`, `{model}`, and
+`{prompt}`.
 
-`{prompt}` is built from the arguments after `--` on `fin run` or `loop`.
+`{prompt}` is built from the arguments after `--` on `fin exec` or `loop`.
 
 ## Mail
 

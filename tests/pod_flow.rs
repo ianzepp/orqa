@@ -2,12 +2,15 @@ use std::{
     env, fs,
     path::{Path, PathBuf},
     process::{Child, Command},
+    sync::atomic::{AtomicUsize, Ordering},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
+static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
 #[test]
-fn fin_run_uses_generated_pod_config_backend() {
+fn fin_exec_uses_generated_pod_config_backend() {
     let root = temp_root();
 
     orqa(&root, ["pod", "create", "test-pod"]);
@@ -24,13 +27,13 @@ fn fin_run_uses_generated_pod_config_backend() {
 [backends.echo]
 enabled = true
 command = "/bin/echo"
-args = ["pod={{pod}}", "fin={{fin}}", "prompt={{prompt}}"]
+exec_args = ["pod={{pod}}", "fin={{fin}}", "prompt={{prompt}}"]
 "#
         ),
     )
     .unwrap();
 
-    let output = orqa_output(&root, ["fin", "run", "test-pod", "amy", "--", "hello"]);
+    let output = orqa_output(&root, ["fin", "exec", "test-pod", "amy", "--", "hello"]);
 
     assert_eq!(output.trim(), "pod=test-pod fin=amy prompt=hello");
 
@@ -58,7 +61,7 @@ fn loop_uses_generated_pod_config_backend_for_wakeable_fin() {
 [backends.writer]
 enabled = true
 command = "/bin/sh"
-args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{fin_home}}/ran.txt"]
+exec_args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{fin_home}}/ran.txt"]
 "#
         ),
     )
@@ -157,7 +160,7 @@ fn plan_ignores_backend_errors_until_fin_is_wakeable() {
 }
 
 #[test]
-fn fin_run_records_status_and_tail_output() {
+fn fin_exec_records_status_and_tail_output() {
     let root = temp_root();
 
     orqa(&root, ["pod", "create", "test-pod"]);
@@ -167,7 +170,7 @@ fn fin_run_records_status_and_tail_output() {
         &root,
         [
             "fin",
-            "run",
+            "exec",
             "--framework",
             "/bin/echo",
             "test-pod",
@@ -190,7 +193,7 @@ fn fin_run_records_status_and_tail_output() {
 }
 
 #[test]
-fn repeated_fin_runs_get_distinct_finished_records() {
+fn repeated_fin_execs_get_distinct_finished_records() {
     let root = temp_root();
 
     orqa(&root, ["pod", "create", "test-pod"]);
@@ -201,7 +204,7 @@ fn repeated_fin_runs_get_distinct_finished_records() {
             &root,
             [
                 "fin",
-                "run",
+                "exec",
                 "--framework",
                 "/bin/echo",
                 "test-pod",
@@ -230,8 +233,43 @@ fn repeated_fin_runs_get_distinct_finished_records() {
     assert!(
         ledger
             .lines()
-            .all(|line| line.contains("\"status\":\"finished\""))
+            .all(|line| line.contains("\"status\":\"finished\"")
+                || line.contains("\"status\": \"finished\""))
     );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn fin_chat_uses_chat_args_with_interactive_stdio() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+
+    let pod_config = root.join("pods/test-pod/pod.toml");
+    let config = fs::read_to_string(&pod_config).unwrap();
+    let config = config.replace("default_backend = \"codex\"", "default_backend = \"echo\"");
+    fs::write(
+        &pod_config,
+        format!(
+            r#"{config}
+
+[backends.echo]
+enabled = true
+command = "/bin/echo"
+exec_args = ["exec"]
+chat_args = ["chat", "pod={{pod}}", "fin={{fin}}"]
+"#
+        ),
+    )
+    .unwrap();
+
+    let output = orqa_output(&root, ["fin", "chat", "test-pod", "amy"]);
+    assert_eq!(output.trim(), "chat pod=test-pod fin=amy");
+
+    let runs = orqa_output(&root, ["fin", "runs", "test-pod", "amy"]);
+    assert!(runs.contains("mode=chat"));
 
     fs::remove_dir_all(root).unwrap();
 }
@@ -371,7 +409,7 @@ fn set_writer_backend(root: &Path, pod: &str) {
 [backends.writer]
 enabled = true
 command = "/bin/sh"
-args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{fin_home}}/ran.txt"]
+exec_args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{fin_home}}/ran.txt"]
 "#
         ),
     )
@@ -388,5 +426,9 @@ fn temp_root() -> PathBuf {
         .duration_since(UNIX_EPOCH)
         .unwrap()
         .as_nanos();
-    env::temp_dir().join(format!("orqa-pod-flow-test-{suffix}"))
+    let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
+    env::temp_dir().join(format!(
+        "orqa-pod-flow-test-{}-{suffix}-{counter}",
+        std::process::id(),
+    ))
 }

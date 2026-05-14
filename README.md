@@ -1,19 +1,23 @@
 # orqa
 
-`orqa` is a small local coordinator for background fins.
+`orqa` is a small local coordinator for groups of local agent runtimes.
 
 It does not try to be a full orchestration platform. Its job is to keep a pod
 and fin filesystem layout, give fins simple local mail and task channels,
-scan for wake signals, and shell out to the configured framework when a fin
-should run.
+scan for wake signals, and shell out to the configured agent runtime when a fin
+should execute or chat.
 
 ## Concepts
 
-A **pod** is a collection of fins that can communicate with each other.
+A **pod** is a collection of fins, or agents, that are intended to communicate
+with each other around a common goal. The pod owns the shared local namespace,
+backend definitions, and pod-local mail/task channels.
 
-A **fin** belongs to exactly one pod. Each fin has its own home directory
-inside that pod, including an isolated `.codex` directory for Codex state, a
-Maildir inbox for pod-local messages, and a Maildir-style task queue.
+A **fin** is one agent runtime identity inside a pod. In practice, a fin can be
+backed by runtimes such as Claude, Codex, OpenClaw, Hermes, Pi, or any custom
+command you configure. Each fin has its own home directory inside the pod,
+including isolated runtime state, a Maildir inbox for pod-local messages, and a
+Maildir-style task queue.
 
 `ORQA_HOME` is the root directory for all pods. It defaults to `~/.orqa`.
 
@@ -106,7 +110,8 @@ default_backend = "codex"
 [backends.codex]
 enabled = true
 command = "codex"
-args = ["{prompt}"]
+exec_args = ["{prompt}"]
+chat_args = []
 
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
@@ -116,18 +121,20 @@ model = "gpt-5.3-codex"
 # [backends.opencode]
 # enabled = true
 # command = "opencode"
-# args = ["run", "--model", "{model}", "{prompt}"]
+# exec_args = ["run", "--model", "{model}", "{prompt}"]
+# chat_args = ["--model", "{model}"]
 
 # [backends.pi]
 # enabled = true
 # command = "pi"
-# args = [
+# exec_args = [
 #     "exec",
 #     "--home", "{fin_home}",
 #     "--pod", "{pod}",
 #     "--fin", "{fin}",
 #     "{prompt}",
 # ]
+# chat_args = ["chat", "--home", "{fin_home}", "--pod", "{pod}", "--fin", "{fin}"]
 ```
 
 `fin.toml` records per-fin backend values. A fin inherits the pod default
@@ -145,7 +152,7 @@ model = "gpt-5.3-codex"
 Backend argument lists are stored as argv arrays instead of shell strings. That
 keeps quoting behavior predictable when prompts or paths contain spaces.
 
-The config files are seeded by `pod create` and `fin create`. `orqa fin run`
+The config files are seeded by `pod create` and `fin create`. `orqa fin exec`
 and `orqa loop` use them when `--framework` is omitted. `--framework` remains
 an explicit command override for quick smoke tests and one-off runs.
 
@@ -187,7 +194,7 @@ orqa loop --dry-run sample-pod
 Run a fin directly through the configured backend:
 
 ```sh
-orqa fin run sample-pod amy -- --help
+orqa fin exec sample-pod amy -- --help
 ```
 
 Everything can run against a temporary or alternate root with `--home`:
@@ -227,19 +234,28 @@ cargo test
 
 ## Fin Execution
 
-`orqa fin run` shells out to the backend selected by `pod.toml` and
+`orqa fin exec` shells out to the backend selected by `pod.toml` and
 `fin.toml`. A fin inherits `[pod].default_backend` unless `fin.toml` sets
 `fin.backend`.
 
 ```sh
-orqa fin run sample-pod amy -- "work on the next task"
+orqa fin exec sample-pod amy -- "work on the next task"
 ```
 
 Use `--framework` to bypass config and run another executable:
 
 ```sh
-orqa fin run --framework /bin/echo sample-pod amy -- "hello"
+orqa fin exec --framework /bin/echo sample-pod amy -- "hello"
 ```
+
+Start an interactive backend chat as a fin with the backend's `chat_args`:
+
+```sh
+orqa fin chat sample-pod amy
+```
+
+`fin chat` attaches stdin, stdout, and stderr directly to the terminal while
+using the same fin environment and lock behavior as `fin exec`.
 
 When a fin runs, `orqa` sets these environment variables:
 
@@ -296,7 +312,7 @@ orqa pod status sample-pod
 orqa fin status sample-pod amy
 ```
 
-Each direct or loop-launched fin run records logs and status under the fin:
+Each direct or loop-launched fin exec records logs and status under the fin:
 
 ```text
 ORQA_HOME/pods/<pod>/fins/<fin>/runs/<run-id>/
@@ -501,7 +517,7 @@ Commands:
   doctor  Show basic runtime information
   help    Print the operational guide for agents using Orqa
   pod     Create or inspect pods
-  fin     Create or run fins inside a pod
+  fin     Create or operate fins inside a pod
   mail    Mail helpers for pod-local fin messages
   task    Task helpers for pod-local work items
   loop    Run the wake loop for a pod
@@ -545,18 +561,20 @@ orqa fin run-log <pod> <fin> [run-id|latest]
 orqa fin tail <pod> <fin> [run-id|latest] [--lines <n>] [--follow]
 orqa fin sleep <pod> <fin>
 orqa fin wake <pod> <fin> --force
-orqa fin run [--framework <framework>] <pod> <fin> [-- <args>...]
+orqa fin exec [--framework <framework>] <pod> <fin> [-- <args>...]
+orqa fin chat [--framework <framework>] <pod> <fin> [-- <args>...]
 ```
 
 `fin create` creates the fin home, `.codex/`, `mail/`, `tasks/`, `fin.txt`,
 and `fin.toml`. `fin list` prints fin slugs for the provided pod, or for
-`ORQA_POD` when the pod argument is omitted. `fin run` launches the configured
+`ORQA_POD` when the pod argument is omitted. `fin exec` launches the configured
 backend unless `--framework` is provided, and passes any arguments after `--` as
 the `{prompt}` template value:
 
 ```sh
-orqa fin run sample-pod amy -- "work on the next task"
-orqa fin run --framework /bin/echo sample-pod amy -- "hello"
+orqa fin exec sample-pod amy -- "work on the next task"
+orqa fin exec --framework /bin/echo sample-pod amy -- "hello"
+orqa fin chat sample-pod amy
 ```
 
 `fin wake` requires `--force` before it removes a fin-level sleep marker.

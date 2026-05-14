@@ -22,7 +22,8 @@ default_backend = "echo"
 [backends.echo]
 enabled = true
 command = "/bin/echo"
-args = ["pod={pod}", "fin={fin}", "model={model}", "prompt={prompt}"]
+exec_args = ["pod={pod}", "fin={fin}", "model={model}", "prompt={prompt}"]
+chat_args = ["chat", "model={model}"]
 
 [backends.echo.defaults]
 model = "pod-default"
@@ -50,6 +51,7 @@ model = "fin-model"
 
     assert_eq!(command.backend, "echo");
     assert_eq!(command.command, OsString::from("/bin/echo"));
+    assert_eq!(command.mode, BackendMode::Exec);
     assert_eq!(
         command.args,
         vec![
@@ -58,6 +60,13 @@ model = "fin-model"
             OsString::from("model=fin-model"),
             OsString::from("prompt=hello world"),
         ]
+    );
+
+    let chat = backend_chat_command(&orqa, &fin).unwrap();
+    assert_eq!(chat.mode, BackendMode::Chat);
+    assert_eq!(
+        chat.args,
+        vec![OsString::from("chat"), OsString::from("model=fin-model")]
     );
 
     fs::remove_dir_all(root).unwrap();

@@ -11,7 +11,8 @@ pub(crate) fn pod_config_template(pod: &PodRef) -> String {
 # The pod owns backend definitions and the default backend used by fins that do
 # not set their own override in fin.toml.
 #
-# Backend args are argv arrays, not shell strings. Supported template values
+# Backend exec_args and chat_args are argv arrays, not shell strings. Supported
+# template values
 # include:
 #   {{orqa_home}}, {{pod}}, {{pod_home}}, {{fin}}, {{fin_home}}, {{codex_home}},
 #   {{mail_home}}, {{task_home}}, {{model}}, {{prompt}}
@@ -20,12 +21,14 @@ pub(crate) fn pod_config_template(pod: &PodRef) -> String {
 slug = "{slug}"
 default_backend = "codex"
 
-# Codex is enabled by default. Adjust command/args here if the Codex CLI shape
-# changes on this machine.
+# Codex is enabled by default. Adjust command/exec_args/chat_args here if the Codex CLI shape
+# changes on this machine. Empty chat_args means "start command with no argv" for
+# an interactive terminal session.
 [backends.codex]
 enabled = true
 command = "codex"
-args = ["{{prompt}}"]
+exec_args = ["{{prompt}}"]
+chat_args = []
 
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
@@ -35,7 +38,8 @@ model = "gpt-5.3-codex"
 # [backends.opencode]
 # enabled = true
 # command = "opencode"
-# args = ["run", "--model", "{{model}}", "{{prompt}}"]
+# exec_args = ["run", "--model", "{{model}}", "{{prompt}}"]
+# chat_args = ["--model", "{{model}}"]
 #
 # [backends.opencode.defaults]
 # model = "default"
@@ -43,18 +47,25 @@ model = "gpt-5.3-codex"
 # [backends.pi]
 # enabled = true
 # command = "pi"
-# args = [
+# exec_args = [
 #     "exec",
 #     "--home", "{{fin_home}}",
 #     "--pod", "{{pod}}",
 #     "--fin", "{{fin}}",
 #     "{{prompt}}",
 # ]
+# chat_args = [
+#     "chat",
+#     "--home", "{{fin_home}}",
+#     "--pod", "{{pod}}",
+#     "--fin", "{{fin}}",
+# ]
 
 # [backends.custom]
 # enabled = true
 # command = "custom-fin-runner"
-# args = ["{{prompt}}"]
+# exec_args = ["{{prompt}}"]
+# chat_args = []
 "#,
         slug = pod.slug
     )
@@ -72,7 +83,8 @@ pub(crate) fn fin_config_template(fin: &FinRef) -> String {
 slug = "{slug}"
 # backend = "codex"
 
-# Per-fin template values. These can be used by backend args in pod.toml.
+# Per-fin template values. These can be used by backend exec_args and chat_args
+# in pod.toml.
 [backend]
 model = "gpt-5.3-codex"
 "#,
@@ -85,12 +97,48 @@ pub(crate) struct BackendCommand {
     pub(crate) backend: String,
     pub(crate) command: OsString,
     pub(crate) args: Vec<OsString>,
+    pub(crate) mode: BackendMode,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum BackendMode {
+    Exec,
+    Chat,
+}
+
+impl BackendMode {
+    fn args_key(self) -> &'static str {
+        match self {
+            Self::Exec => "exec_args",
+            Self::Chat => "chat_args",
+        }
+    }
+
+    pub(crate) fn as_str(self) -> &'static str {
+        match self {
+            Self::Exec => "exec",
+            Self::Chat => "chat",
+        }
+    }
 }
 
 pub(crate) fn backend_command(
     orqa: &Orqa,
     fin: &FinRef,
     prompt_args: &[OsString],
+) -> Result<BackendCommand, String> {
+    backend_command_for(orqa, fin, prompt_args, BackendMode::Exec)
+}
+
+pub(crate) fn backend_chat_command(orqa: &Orqa, fin: &FinRef) -> Result<BackendCommand, String> {
+    backend_command_for(orqa, fin, &[], BackendMode::Chat)
+}
+
+fn backend_command_for(
+    orqa: &Orqa,
+    fin: &FinRef,
+    prompt_args: &[OsString],
+    mode: BackendMode,
 ) -> Result<BackendCommand, String> {
     let pod_config = read_toml(&orqa.pod_home(&PodRef::new(&fin.pod)?).join("pod.toml"))?;
     let fin_config = read_toml(&orqa.fin_home(fin).join("fin.toml"))?;
@@ -104,7 +152,7 @@ pub(crate) fn backend_command(
 
     let command = string_field(backend, "command")
         .ok_or_else(|| format!("backend {backend_name:?} is missing command"))?;
-    let backend_args = string_array_field(backend, "args")?;
+    let backend_args = required_string_array_field(backend, mode.args_key())?;
     let values = backend_values(orqa, fin, prompt_args, backend, &fin_config)?;
     let args = backend_args
         .iter()
@@ -115,6 +163,7 @@ pub(crate) fn backend_command(
         backend: backend_name,
         command: OsString::from(command),
         args,
+        mode,
     })
 }
 
@@ -223,9 +272,9 @@ fn bool_field(table: &Table, key: &str) -> Option<bool> {
     table.get(key)?.as_bool()
 }
 
-fn string_array_field(table: &Table, key: &str) -> Result<Vec<String>, String> {
+fn required_string_array_field(table: &Table, key: &str) -> Result<Vec<String>, String> {
     let Some(value) = table.get(key) else {
-        return Ok(Vec::new());
+        return Err(format!("{key} must be defined as an array of strings"));
     };
     let Some(array) = value.as_array() else {
         return Err(format!("{key} must be an array of strings"));

@@ -20,6 +20,7 @@ pub(crate) struct RunRecord {
     pub(crate) id: String,
     pub(crate) fin: String,
     pub(crate) backend: String,
+    pub(crate) mode: String,
     pub(crate) command: String,
     pub(crate) args: Vec<String>,
     pub(crate) status: String,
@@ -64,6 +65,7 @@ impl RunFiles {
     pub(crate) fn create(
         orqa: &Orqa,
         fin: &FinRef,
+        mode: &str,
         backend: &str,
         framework: &OsString,
         args: &[OsString],
@@ -81,6 +83,7 @@ impl RunFiles {
             id,
             fin: fin.label(),
             backend: backend.to_string(),
+            mode: mode.to_string(),
             command: framework.to_string_lossy().to_string(),
             args: args
                 .iter()

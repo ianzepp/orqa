@@ -13,7 +13,7 @@ use crate::{
     },
     model::{FinRef, Orqa, PodRef},
     runs::{list_runs, read_run_logs, read_run_record_for, tail_fin, tail_pod},
-    runtime::{run_fin, supervise_fin},
+    runtime::{chat_fin, exec_fin, supervise_fin},
     status::{fin_status, pod_status, print_fin_status, print_json, print_pod_status},
 };
 
@@ -124,11 +124,12 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             } else {
                 for run in runs.runs {
                     println!(
-                        "{} status={} exit_code={} backend={} command={}",
+                        "{} status={} exit_code={} mode={} backend={} command={}",
                         run.id,
                         run.status,
                         run.exit_code
                             .map_or_else(|| "-".to_string(), |code| code.to_string()),
+                        run.mode,
                         run.backend,
                         run.command
                     );
@@ -145,6 +146,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
                 println!("run {}", run.id);
                 println!("fin={}", run.fin);
                 println!("status={}", run.status);
+                println!("mode={}", run.mode);
                 println!("backend={}", run.backend);
                 println!("command={}", run.command);
                 if let Some(exit_code) = run.exit_code {
@@ -185,7 +187,8 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             println!("wake {}", fin.label());
             Ok(())
         }
-        FinSubcommand::Run(args) => run_fin(orqa, args),
+        FinSubcommand::Exec(args) => exec_fin(orqa, args),
+        FinSubcommand::Chat(args) => chat_fin(orqa, args),
         FinSubcommand::Supervise(args) => supervise_fin(orqa, args),
     }
 }

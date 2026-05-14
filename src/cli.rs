@@ -24,7 +24,7 @@ pub(crate) enum Command {
     Guide,
     /// Create or inspect pods.
     Pod(PodCommand),
-    /// Create or run fins inside a pod.
+    /// Create or operate fins inside a pod.
     Fin(FinCommand),
     /// Mail helpers for pod-local fin messages.
     Mail(MailCommand),
@@ -92,11 +92,13 @@ pub(crate) enum FinSubcommand {
     Sleep(FinRefArgs),
     /// Clear a fin sleep marker.
     Wake(FinWakeArgs),
-    /// Run a fin through the configured framework.
-    Run(RunArgs),
+    /// Execute a one-shot fin backend command.
+    Exec(ExecArgs),
+    /// Start an interactive fin backend chat.
+    Chat(ChatArgs),
     /// Internal supervised runner used by wake loops.
     #[command(hide = true)]
-    Supervise(RunArgs),
+    Supervise(ExecArgs),
 }
 
 #[derive(Debug, Args)]
@@ -348,7 +350,21 @@ pub(crate) struct FinWakeArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct RunArgs {
+pub(crate) struct ExecArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Fin slug inside the pod.
+    pub(crate) fin: String,
+    /// Framework executable.
+    #[arg(long)]
+    pub(crate) framework: Option<OsString>,
+    /// Arguments passed to the framework.
+    #[arg(last = true)]
+    pub(crate) args: Vec<OsString>,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct ChatArgs {
     /// Pod slug.
     pub(crate) pod: String,
     /// Fin slug inside the pod.

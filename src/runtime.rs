@@ -8,8 +8,8 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    cli::{LoopArgs, PlanArgs, RunArgs},
-    config::{BackendCommand, backend_command},
+    cli::{ChatArgs, ExecArgs, LoopArgs, PlanArgs},
+    config::{BackendCommand, BackendMode, backend_chat_command, backend_command},
     mailbox::unread_count,
     model::{FinRef, Orqa, PodRef},
     runs::RunFiles,
@@ -105,7 +105,7 @@ pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
         }
 
         let fin_ref = FinRef::new(&plan.pod, &fin.fin)?;
-        let command = resolve_run_command(orqa, &fin_ref, args.framework.as_ref(), &args.args)?;
+        let command = resolve_exec_command(orqa, &fin_ref, args.framework.as_ref(), &args.args)?;
         spawn_supervised_wake(orqa, &fin_ref, &command, fin)?;
     }
 
@@ -186,7 +186,7 @@ fn plan_fin(
         (WakeDecision::WouldSkip, WakeReason::NoAction)
     };
     let backend = if decision == WakeDecision::WouldWake {
-        match resolve_run_command(orqa, fin, framework, args) {
+        match resolve_exec_command(orqa, fin, framework, args) {
             Ok(command) => Some(command.backend),
             Err(error) => {
                 return Ok(FinWakePlan {
@@ -245,16 +245,22 @@ fn print_plan(plan: &WakePlan, json: bool) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn run_fin(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
+pub(crate) fn exec_fin(orqa: &Orqa, args: ExecArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
-    let command = resolve_run_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
-    run_fin_foreground(orqa, &fin, &command)
+    let command = resolve_exec_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
+    exec_fin_foreground(orqa, &fin, &command)
 }
 
-pub(crate) fn supervise_fin(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
+pub(crate) fn chat_fin(orqa: &Orqa, args: ChatArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
-    let command = resolve_run_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
-    let outcome = run_fin_logged(orqa, &fin, &command, false)?;
+    let command = resolve_chat_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
+    fin_chat_interactive(orqa, &fin, &command)
+}
+
+pub(crate) fn supervise_fin(orqa: &Orqa, args: ExecArgs) -> Result<(), String> {
+    let fin = FinRef::new(&args.pod, &args.fin)?;
+    let command = resolve_exec_command(orqa, &fin, args.framework.as_ref(), &args.args)?;
+    let outcome = exec_fin_logged(orqa, &fin, &command, false)?;
     if outcome.success {
         Ok(())
     } else {
@@ -311,8 +317,8 @@ fn supervisor_args(command: &BackendCommand) -> Vec<OsString> {
     args
 }
 
-fn run_fin_foreground(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> Result<(), String> {
-    let outcome = run_fin_logged(orqa, fin, command, true)?;
+fn exec_fin_foreground(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> Result<(), String> {
+    let outcome = exec_fin_logged(orqa, fin, command, true)?;
     io::copy(&mut outcome.stdout.as_slice(), &mut io::stdout())
         .map_err(|error| format!("failed to write stdout: {error}"))?;
     io::copy(&mut outcome.stderr.as_slice(), &mut io::stderr())
@@ -332,7 +338,7 @@ fn exit_error(command: &OsString, code: Option<i32>) -> String {
     )
 }
 
-pub(crate) fn resolve_run_command(
+pub(crate) fn resolve_exec_command(
     orqa: &Orqa,
     fin: &FinRef,
     framework: Option<&OsString>,
@@ -343,13 +349,36 @@ pub(crate) fn resolve_run_command(
             backend: "override".to_string(),
             command: framework.clone(),
             args: args.to_vec(),
+            mode: BackendMode::Exec,
         });
     }
 
     backend_command(orqa, fin, args)
 }
 
-pub(crate) fn run_fin_logged(
+fn resolve_chat_command(
+    orqa: &Orqa,
+    fin: &FinRef,
+    framework: Option<&OsString>,
+    args: &[OsString],
+) -> Result<BackendCommand, String> {
+    if let Some(framework) = framework {
+        return Ok(BackendCommand {
+            backend: "override".to_string(),
+            command: framework.clone(),
+            args: args.to_vec(),
+            mode: BackendMode::Chat,
+        });
+    }
+
+    let mut command = backend_chat_command(orqa, fin)?;
+    if !args.is_empty() {
+        command.args.extend(args.iter().cloned());
+    }
+    Ok(command)
+}
+
+pub(crate) fn exec_fin_logged(
     orqa: &Orqa,
     fin: &FinRef,
     command: &BackendCommand,
@@ -367,7 +396,14 @@ pub(crate) fn run_fin_logged(
     }
 
     ensure_codex_home(orqa, fin)?;
-    let run = RunFiles::create(orqa, fin, &command.backend, &command.command, &command.args)?;
+    let run = RunFiles::create(
+        orqa,
+        fin,
+        command.mode.as_str(),
+        &command.backend,
+        &command.command,
+        &command.args,
+    )?;
 
     let output = if capture_output {
         let mut child = fin_process(orqa, fin, command)
@@ -428,6 +464,49 @@ pub(crate) struct RunOutcome {
     code: Option<i32>,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
+}
+
+fn fin_chat_interactive(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> Result<(), String> {
+    if let Some(lock) = FinLock::try_existing(orqa, fin)? {
+        if lock.is_live() {
+            return Err(format!(
+                "fin {} is already running as pid {}",
+                fin.label(),
+                lock.pid
+            ));
+        }
+        lock.remove()?;
+    }
+
+    ensure_codex_home(orqa, fin)?;
+    let run = RunFiles::create(
+        orqa,
+        fin,
+        command.mode.as_str(),
+        &command.backend,
+        &command.command,
+        &command.args,
+    )?;
+    let mut child = fin_process(orqa, fin, command).spawn().map_err(|error| {
+        let _ = run.mark_spawn_failed(&error.to_string());
+        format!(
+            "failed to start interactive chat {:?}: {error}",
+            command.command
+        )
+    })?;
+    let lock = write_child_lock(orqa, fin, &mut child, &command.command, &run)?;
+    run.mark_spawned(child.id())?;
+    let status = child
+        .wait()
+        .map_err(|error| format!("failed to wait for {:?}: {error}", command.command));
+    lock.release();
+    let status = status?;
+    run.mark_finished_status(status)?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(exit_error(&command.command, status.code()))
+    }
 }
 
 fn ensure_codex_home(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
