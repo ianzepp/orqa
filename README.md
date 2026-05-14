@@ -63,13 +63,17 @@ ORQA_HOME/pods/<pod>/fins/<fin>/fin.toml
 ```
 
 `pod.toml` owns backend definitions. This keeps command formats and framework
-policy in one place for the whole pod:
+policy in one place for the whole pod. `pod create` enables Codex by default
+and writes commented examples for OpenCode, Pi, and a custom runner:
 
 ```toml
+# Orqa pod configuration.
+
 [pod]
 slug = "sample-pod"
 default_backend = "codex"
 
+# Codex is enabled by default.
 [backends.codex]
 enabled = true
 command = "codex"
@@ -78,23 +82,26 @@ args = ["{prompt}"]
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
 
-[backends.opencode]
-enabled = false
-command = "opencode"
-args = ["run", "--model", "{model}", "{prompt}"]
+# Enable and edit these examples if this pod should allow additional backends.
 
-[backends.pi]
-enabled = false
-command = "pi"
-args = ["exec", "--home", "{fin_home}", "--pod", "{pod}", "--fin", "{fin}", "{prompt}"]
+# [backends.opencode]
+# enabled = true
+# command = "opencode"
+# args = ["run", "--model", "{model}", "{prompt}"]
+
+# [backends.pi]
+# enabled = true
+# command = "pi"
+# args = ["exec", "--home", "{fin_home}", "--pod", "{pod}", "--fin", "{fin}", "{prompt}"]
 ```
 
-`fin.toml` records the fin's backend choice and per-fin backend values:
+`fin.toml` records per-fin backend values. A fin inherits the pod default
+backend unless `fin.backend` is uncommented:
 
 ```toml
 [fin]
 slug = "amy"
-backend = "codex"
+# backend = "codex"
 
 [backend]
 model = "gpt-5.3-codex"
@@ -106,7 +113,8 @@ keeps quoting behavior predictable when prompts or paths contain spaces.
 The config files are seeded by `pod create` and `fin create`. They are not wired
 into execution yet; current execution still uses `orqa fin run --framework ...`
 and `orqa loop --framework ...` while the backend command surface is being
-designed.
+designed. For now, edit these files directly when backend policy or argv shapes
+need to change.
 
 ## Quick Start
 

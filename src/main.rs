@@ -1,5 +1,4 @@
 use std::{
-    collections::BTreeMap,
     env,
     ffi::OsString,
     fs,
@@ -11,7 +10,6 @@ use std::{
 };
 
 use clap::{Args, Parser, Subcommand};
-use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -292,7 +290,7 @@ fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
                 format!("failed to create pod directory {}: {error}", home.display())
             })?;
             write_if_missing(&home.join("pod.txt"), &format!("slug={}\n", pod.slug))?;
-            write_toml_if_missing(&home.join("pod.toml"), &PodConfig::default_for(&pod)?)?;
+            write_if_missing(&home.join("pod.toml"), &pod_config_template(&pod))?;
             println!("{}", home.display());
             Ok(())
         }
@@ -315,7 +313,7 @@ fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             ensure_maildir(&orqa.mail_home(&fin))?;
             ensure_maildir(&orqa.task_home(&fin))?;
             write_if_missing(&home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
-            write_toml_if_missing(&home.join("fin.toml"), &FinConfig::default_for(&fin)?)?;
+            write_if_missing(&home.join("fin.toml"), &fin_config_template(&fin))?;
             println!("{}", home.display());
             Ok(())
         }
@@ -1215,143 +1213,80 @@ fn write_if_missing(path: &Path, contents: &str) -> Result<(), String> {
         .map_err(|error| format!("failed to write {}: {error}", path.display()))
 }
 
-fn write_toml_if_missing<T>(path: &Path, value: &T) -> Result<(), String>
-where
-    T: Serialize,
-{
-    if path.exists() {
-        return Ok(());
-    }
+fn pod_config_template(pod: &PodRef) -> String {
+    format!(
+        r#"# Orqa pod configuration.
+#
+# The pod owns backend definitions and the default backend used by fins that do
+# not set their own override in fin.toml.
+#
+# Backend args are argv arrays, not shell strings. Supported template values
+# include:
+#   {{orqa_home}}, {{pod}}, {{pod_home}}, {{fin}}, {{fin_home}}, {{codex_home}},
+#   {{mail_home}}, {{task_home}}, {{model}}, {{prompt}}
 
-    let contents =
-        toml::to_string_pretty(value).map_err(|error| format!("failed to encode TOML: {error}"))?;
-    fs::write(path, contents)
-        .map_err(|error| format!("failed to write {}: {error}", path.display()))
+[pod]
+slug = "{slug}"
+default_backend = "codex"
+
+# Codex is enabled by default. Adjust command/args here if the Codex CLI shape
+# changes on this machine.
+[backends.codex]
+enabled = true
+command = "codex"
+args = ["{{prompt}}"]
+
+[backends.codex.defaults]
+model = "gpt-5.3-codex"
+
+# Enable and edit these examples if this pod should allow additional backends.
+
+# [backends.opencode]
+# enabled = true
+# command = "opencode"
+# args = ["run", "--model", "{{model}}", "{{prompt}}"]
+#
+# [backends.opencode.defaults]
+# model = "default"
+
+# [backends.pi]
+# enabled = true
+# command = "pi"
+# args = [
+#     "exec",
+#     "--home", "{{fin_home}}",
+#     "--pod", "{{pod}}",
+#     "--fin", "{{fin}}",
+#     "{{prompt}}",
+# ]
+
+# [backends.custom]
+# enabled = true
+# command = "custom-fin-runner"
+# args = ["{{prompt}}"]
+"#,
+        slug = pod.slug
+    )
 }
 
-#[derive(Debug, Deserialize, Serialize)]
-struct PodConfig {
-    pod: PodSettings,
-    backends: BTreeMap<String, BackendConfig>,
-}
+fn fin_config_template(fin: &FinRef) -> String {
+    format!(
+        r#"# Orqa fin configuration.
+#
+# By default a fin inherits the pod default backend from pod.toml.
+# Uncomment fin.backend only when this fin should use a different enabled
+# backend from its pod.
 
-impl PodConfig {
-    fn default_for(pod: &PodRef) -> Result<Self, String> {
-        let mut backends = BTreeMap::new();
-        backends.insert("codex".to_string(), BackendConfig::codex());
-        backends.insert("opencode".to_string(), BackendConfig::opencode());
-        backends.insert("pi".to_string(), BackendConfig::pi());
-        backends.insert("custom".to_string(), BackendConfig::custom());
+[fin]
+slug = "{slug}"
+# backend = "codex"
 
-        Ok(Self {
-            pod: PodSettings {
-                slug: pod.slug.clone(),
-                default_backend: "codex".to_string(),
-            },
-            backends,
-        })
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct PodSettings {
-    slug: String,
-    default_backend: String,
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct BackendConfig {
-    enabled: bool,
-    command: String,
-    args: Vec<String>,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    defaults: BTreeMap<String, String>,
-}
-
-impl BackendConfig {
-    fn codex() -> Self {
-        let mut defaults = BTreeMap::new();
-        defaults.insert("model".to_string(), "gpt-5.3-codex".to_string());
-
-        Self {
-            enabled: true,
-            command: "codex".to_string(),
-            args: vec!["{prompt}".to_string()],
-            defaults,
-        }
-    }
-
-    fn opencode() -> Self {
-        let mut defaults = BTreeMap::new();
-        defaults.insert("model".to_string(), "default".to_string());
-
-        Self {
-            enabled: false,
-            command: "opencode".to_string(),
-            args: vec![
-                "run".to_string(),
-                "--model".to_string(),
-                "{model}".to_string(),
-                "{prompt}".to_string(),
-            ],
-            defaults,
-        }
-    }
-
-    fn pi() -> Self {
-        Self {
-            enabled: false,
-            command: "pi".to_string(),
-            args: vec![
-                "exec".to_string(),
-                "--home".to_string(),
-                "{fin_home}".to_string(),
-                "--pod".to_string(),
-                "{pod}".to_string(),
-                "--fin".to_string(),
-                "{fin}".to_string(),
-                "{prompt}".to_string(),
-            ],
-            defaults: BTreeMap::new(),
-        }
-    }
-
-    fn custom() -> Self {
-        Self {
-            enabled: false,
-            command: "custom-fin-runner".to_string(),
-            args: vec!["{prompt}".to_string()],
-            defaults: BTreeMap::new(),
-        }
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct FinConfig {
-    fin: FinSettings,
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    backend: BTreeMap<String, String>,
-}
-
-impl FinConfig {
-    fn default_for(fin: &FinRef) -> Result<Self, String> {
-        let mut backend = BTreeMap::new();
-        backend.insert("model".to_string(), "gpt-5.3-codex".to_string());
-
-        Ok(Self {
-            fin: FinSettings {
-                slug: fin.fin.clone(),
-                backend: "codex".to_string(),
-            },
-            backend,
-        })
-    }
-}
-
-#[derive(Debug, Deserialize, Serialize)]
-struct FinSettings {
-    slug: String,
-    backend: String,
+# Per-fin template values. These can be used by backend args in pod.toml.
+[backend]
+model = "gpt-5.3-codex"
+"#,
+        slug = fin.fin
+    )
 }
 
 impl Orqa {
@@ -1613,25 +1548,26 @@ mod tests {
     }
 
     #[test]
-    fn serializes_default_pod_config() {
+    fn pod_config_template_includes_commented_backend_examples() {
         let pod = PodRef::new("sample-pod").unwrap();
-        let config = PodConfig::default_for(&pod).unwrap();
-        let toml = toml::to_string(&config).unwrap();
+        let toml = pod_config_template(&pod);
 
         assert!(toml.contains("[pod]"));
         assert!(toml.contains("slug = \"sample-pod\""));
         assert!(toml.contains("[backends.codex]"));
         assert!(toml.contains("command = \"codex\""));
+        assert!(toml.contains("# [backends.opencode]"));
+        assert!(toml.contains("# [backends.pi]"));
+        assert!(toml.contains("# [backends.custom]"));
     }
 
     #[test]
-    fn serializes_default_fin_config() {
+    fn fin_config_template_inherits_pod_backend_by_default() {
         let fin = FinRef::new("sample-pod", "amy").unwrap();
-        let config = FinConfig::default_for(&fin).unwrap();
-        let toml = toml::to_string(&config).unwrap();
+        let toml = fin_config_template(&fin);
 
         assert!(toml.contains("[fin]"));
         assert!(toml.contains("slug = \"amy\""));
-        assert!(toml.contains("backend = \"codex\""));
+        assert!(toml.contains("# backend = \"codex\""));
     }
 }
