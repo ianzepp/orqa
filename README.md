@@ -454,6 +454,7 @@ Usage: orqa [OPTIONS] [COMMAND]
 
 Commands:
   doctor  Show basic runtime information
+  help    Print the operational guide for agents using Orqa
   pod     Create or inspect pods
   fin     Create or run fins inside a pod
   mail    Mail helpers for pod-local fin messages
@@ -463,6 +464,9 @@ Commands:
 
 `orqa doctor` prints basic runtime information, including the active
 `ORQA_HOME`.
+
+`orqa help` prints an embedded Markdown operational guide for agents and humans
+who need the runtime overview without install or development notes.
 
 ### Pod Commands
 

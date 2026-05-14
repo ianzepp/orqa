@@ -3,7 +3,8 @@
     name = "orqa",
     version,
     about = "Fan out work to background fins",
-    long_about = None
+    long_about = None,
+    disable_help_subcommand(true)
 )]
 pub(crate) struct Cli {
     /// Override ORQA_HOME for this command.
@@ -18,6 +19,9 @@ pub(crate) struct Cli {
 pub(crate) enum Command {
     /// Show basic runtime information.
     Doctor,
+    /// Print the operational guide for agents using Orqa.
+    #[command(name = "help")]
+    Guide,
     /// Create or inspect pods.
     Pod(PodCommand),
     /// Create or run fins inside a pod.

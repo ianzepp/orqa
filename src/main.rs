@@ -5,9 +5,9 @@ mod mailbox;
 mod model;
 mod runtime;
 
-use std::process::ExitCode;
+use std::{env, ffi::OsStr, process::ExitCode};
 
-use clap::Parser;
+use clap::{CommandFactory, FromArgMatches};
 
 use cli::{Cli, Command};
 use commands::{fin, mail, pod, task};
@@ -19,7 +19,13 @@ use runtime::loop_pod;
 mod tests;
 
 fn main() -> ExitCode {
-    let cli = Cli::parse();
+    if operational_help_requested() {
+        print_operational_help();
+        return ExitCode::SUCCESS;
+    }
+
+    let matches = Cli::command().disable_help_subcommand(true).get_matches();
+    let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
     let orqa = Orqa::new(cli.home);
 
     match run(&orqa, cli.command.unwrap_or(Command::Doctor)) {
@@ -34,6 +40,10 @@ fn main() -> ExitCode {
 fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
     match command {
         Command::Doctor => doctor(orqa),
+        Command::Guide => {
+            print_operational_help();
+            Ok(())
+        }
         Command::Pod(command) => pod(orqa, command),
         Command::Fin(command) => fin(orqa, command),
         Command::Mail(command) => mail(orqa, command),
@@ -46,4 +56,27 @@ fn doctor(orqa: &Orqa) -> Result<(), String> {
     println!("orqa is installed and ready.");
     println!("orqa_home={}", orqa.home.display());
     Ok(())
+}
+
+fn print_operational_help() {
+    print!("{}", include_str!("help.md"));
+}
+
+fn operational_help_requested() -> bool {
+    let mut args = env::args_os().skip(1);
+
+    while let Some(arg) = args.next() {
+        if arg.as_os_str() == OsStr::new("--home") {
+            let _ = args.next();
+            continue;
+        }
+
+        if arg.to_string_lossy().starts_with("--home=") {
+            continue;
+        }
+
+        return arg.as_os_str() == OsStr::new("help");
+    }
+
+    false
 }
