@@ -563,6 +563,50 @@ chat_args = ["chat", "pod={{pod}}", "fin={{fin}}"]
 }
 
 #[test]
+fn task_done_marks_front_matter_status_done() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    orqa(
+        &root,
+        [
+            "task",
+            "send",
+            "--from",
+            "amy@test-pod.orqa",
+            "--to",
+            "amy@test-pod.orqa",
+            "--title",
+            "Finish paperwork",
+            "Close the loop.",
+        ],
+    );
+    let tasks = orqa_output(&root, ["task", "list", "--pod", "test-pod", "--fin", "amy"]);
+    let task_id = tasks
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap();
+
+    let done_path = orqa_output(
+        &root,
+        ["task", "done", "--pod", "test-pod", "--fin", "amy", task_id],
+    );
+    let done = fs::read_to_string(done_path.trim()).unwrap();
+    assert!(done.contains("status: done\n"));
+    assert!(done_path.contains("/tasks/cur/"));
+
+    let done_again = orqa_output(
+        &root,
+        ["task", "done", "--pod", "test-pod", "--fin", "amy", task_id],
+    );
+    assert_eq!(done_again.trim(), done_path.trim());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn pod_doctor_checks_files_config_and_backend_probe() {
     let root = temp_root();
 

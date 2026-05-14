@@ -15,8 +15,8 @@ pub(crate) use storage::{
     sorted_files, unread_count, write_if_missing, write_sleep_marker,
 };
 pub(crate) use tasks::{
-    TaskFilters, canonical_task_body, collect_tasks, field_value, sort_tasks, split_front_matter,
-    upsert_field,
+    TaskFilters, canonical_task_body, collect_tasks, field_value, mark_task_done, sort_tasks,
+    split_front_matter, upsert_field,
 };
 
 #[cfg(test)]
@@ -196,8 +196,15 @@ pub(crate) fn done_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> R
     let id = message_id(&path)?;
 
     if mail_state(&home, &path)? == "cur" {
+        if matches!(kind, ItemKind::Task) {
+            update_task_done_status(&path)?;
+        }
         println!("{}", path.display());
         return Ok(());
+    }
+
+    if matches!(kind, ItemKind::Task) {
+        update_task_done_status(&path)?;
     }
 
     let done_path = home.join("cur").join(id);
@@ -211,6 +218,13 @@ pub(crate) fn done_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> R
 
     println!("{}", done_path.display());
     Ok(())
+}
+
+fn update_task_done_status(path: &std::path::Path) -> Result<(), String> {
+    let body = fs::read_to_string(path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    fs::write(path, mark_task_done(&body))
+        .map_err(|error| format!("failed to mark task done {}: {error}", path.display()))
 }
 
 pub(crate) fn delete_item(

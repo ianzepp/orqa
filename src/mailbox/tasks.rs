@@ -162,6 +162,16 @@ pub(crate) fn canonical_task_body(
     ensure_field(&mut fields, "kind", "need");
     ensure_field(&mut fields, "depends_on", "[]");
 
+    render_task_body(fields, description)
+}
+
+pub(crate) fn mark_task_done(body: &str) -> String {
+    let (mut fields, description) = split_front_matter(body);
+    upsert_field(&mut fields, "status", "done");
+    render_task_body(fields, description)
+}
+
+fn render_task_body(fields: Vec<(String, String)>, description: &str) -> String {
     let mut task = String::from("---\n");
     for (key, value) in fields {
         task.push_str(&key);
@@ -172,7 +182,6 @@ pub(crate) fn canonical_task_body(
     task.push_str("---\n\n");
     task.push_str(description.trim());
     task.push('\n');
-
     task
 }
 

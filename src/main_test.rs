@@ -4,7 +4,7 @@ use crate::{
     cli::TaskListArgs,
     config::{fin_agents_template, fin_config_template, pod_agents_template, pod_config_template},
     mailbox::{
-        TaskFilters, canonical_task_body, deliver_mail, ensure_maildir, message_id,
+        TaskFilters, canonical_task_body, deliver_mail, ensure_maildir, mark_task_done, message_id,
         priority_sort_value, quote_value, remove_sleep_marker, resolve_address,
         resolve_message_path, unique_mail_name, write_sleep_marker,
     },
@@ -103,6 +103,18 @@ fn preserves_and_fills_task_front_matter() {
     assert!(task.contains("status: open\n"));
     assert!(task.contains("kind: need\n"));
     assert!(task.ends_with("Details.\n"));
+}
+
+#[test]
+fn marks_task_front_matter_done() {
+    let task = mark_task_done(
+        "---\ntitle: Ship it\nstatus: open\npriority: high\n---\n\nComplete the work.",
+    );
+
+    assert!(task.contains("title: Ship it\n"));
+    assert!(task.contains("status: done\n"));
+    assert!(task.contains("priority: high\n"));
+    assert!(task.ends_with("Complete the work.\n"));
 }
 
 #[test]
