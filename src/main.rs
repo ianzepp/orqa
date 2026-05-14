@@ -15,7 +15,7 @@ use clap::{Args, Parser, Subcommand};
 #[command(
     name = "orqa",
     version,
-    about = "Fan out work to background agents",
+    about = "Fan out work to background fins",
     long_about = None
 )]
 struct Cli {
@@ -33,9 +33,9 @@ enum Command {
     Doctor,
     /// Create or inspect pods.
     Pod(PodCommand),
-    /// Create or run agents inside a pod.
-    Agent(AgentCommand),
-    /// Mail helpers for pod-local agent messages.
+    /// Create or run fins inside a pod.
+    Fin(FinCommand),
+    /// Mail helpers for pod-local fin messages.
     Mail(MailCommand),
     /// Task helpers for pod-local work items.
     Task(TaskCommand),
@@ -58,18 +58,18 @@ enum PodSubcommand {
 }
 
 #[derive(Debug, Args)]
-struct AgentCommand {
+struct FinCommand {
     #[command(subcommand)]
-    command: AgentSubcommand,
+    command: FinSubcommand,
 }
 
 #[derive(Debug, Subcommand)]
-enum AgentSubcommand {
-    /// Create an agent inside a pod.
-    Create(AgentRefArgs),
-    /// Print the home directory for an agent.
-    Home(AgentRefArgs),
-    /// Run an agent through the configured framework.
+enum FinSubcommand {
+    /// Create a fin inside a pod.
+    Create(FinRefArgs),
+    /// Print the home directory for a fin.
+    Home(FinRefArgs),
+    /// Run a fin through the configured framework.
     Run(RunArgs),
 }
 
@@ -87,31 +87,31 @@ struct TaskCommand {
 
 #[derive(Debug, Subcommand)]
 enum MailSubcommand {
-    /// Print the mail directory for an agent.
-    Home(AgentRefArgs),
+    /// Print the mail directory for a fin.
+    Home(FinRefArgs),
     /// Send a pod-local message.
     Send(SendMailArgs),
-    /// List messages for an agent.
+    /// List messages for a fin.
     List(MailListArgs),
-    /// Read a message for an agent.
+    /// Read a message for a fin.
     Read(MailMessageArgs),
     /// Mark an unread message as done.
     Done(MailMessageArgs),
     /// Delete a message.
     Delete(MailMessageArgs),
-    /// List unread messages for an agent.
-    Unread(AgentRefArgs),
+    /// List unread messages for a fin.
+    Unread(FinRefArgs),
 }
 
 #[derive(Debug, Subcommand)]
 enum TaskSubcommand {
-    /// Print the task directory for an agent.
-    Home(AgentRefArgs),
+    /// Print the task directory for a fin.
+    Home(FinRefArgs),
     /// Assign a pod-local task.
     Send(SendTaskArgs),
-    /// List tasks for an agent.
+    /// List tasks for a fin.
     List(TaskListArgs),
-    /// Read a task for an agent.
+    /// Read a task for a fin.
     Read(MailMessageArgs),
     /// Mark an open task as done.
     Done(MailMessageArgs),
@@ -123,10 +123,10 @@ enum TaskSubcommand {
 struct LoopArgs {
     /// Pod slug.
     pod: String,
-    /// Agent framework executable.
+    /// Framework executable.
     #[arg(long, default_value = "codex")]
     framework: OsString,
-    /// Arguments passed to the agent framework.
+    /// Arguments passed to the framework.
     #[arg(last = true)]
     args: Vec<OsString>,
 }
@@ -138,30 +138,30 @@ struct SlugArgs {
 }
 
 #[derive(Debug, Args)]
-struct AgentRefArgs {
+struct FinRefArgs {
     /// Pod slug.
     pod: String,
-    /// Agent slug inside the pod.
-    agent: String,
+    /// Fin slug inside the pod.
+    fin: String,
 }
 
 #[derive(Debug, Args)]
 struct RunArgs {
     /// Pod slug.
     pod: String,
-    /// Agent slug inside the pod.
-    agent: String,
-    /// Agent framework executable.
+    /// Fin slug inside the pod.
+    fin: String,
+    /// Framework executable.
     #[arg(long, default_value = "codex")]
     framework: OsString,
-    /// Arguments passed to the agent framework.
+    /// Arguments passed to the framework.
     #[arg(last = true)]
     args: Vec<OsString>,
 }
 
 #[derive(Debug, Args)]
 struct SendMailArgs {
-    /// Sender address. Defaults to ORQA_AGENT@ORQA_POD.orqa.
+    /// Sender address. Defaults to ORQA_FIN@ORQA_POD.orqa.
     #[arg(long)]
     from: Option<String>,
     /// Recipient address, such as bob-jones or bob-jones@sample-pod.orqa.
@@ -176,7 +176,7 @@ struct SendMailArgs {
 
 #[derive(Debug, Args)]
 struct SendTaskArgs {
-    /// Sender address. Defaults to ORQA_AGENT@ORQA_POD.orqa.
+    /// Sender address. Defaults to ORQA_FIN@ORQA_POD.orqa.
     #[arg(long)]
     from: Option<String>,
     /// Assignee address, such as bob-jones or bob-jones@sample-pod.orqa.
@@ -194,9 +194,9 @@ struct MailListArgs {
     /// Pod slug. Defaults to ORQA_POD.
     #[arg(long)]
     pod: Option<String>,
-    /// Agent slug. Defaults to ORQA_AGENT.
+    /// Fin slug. Defaults to ORQA_FIN.
     #[arg(long)]
-    agent: Option<String>,
+    fin: Option<String>,
     /// Include done items from cur.
     #[arg(long)]
     all: bool,
@@ -207,9 +207,9 @@ struct TaskListArgs {
     /// Pod slug. Defaults to ORQA_POD.
     #[arg(long)]
     pod: Option<String>,
-    /// Agent slug. Defaults to ORQA_AGENT.
+    /// Fin slug. Defaults to ORQA_FIN.
     #[arg(long)]
-    agent: Option<String>,
+    fin: Option<String>,
     /// Include done items from cur.
     #[arg(long)]
     all: bool,
@@ -238,9 +238,9 @@ struct MailMessageArgs {
     /// Pod slug. Defaults to ORQA_POD.
     #[arg(long)]
     pod: Option<String>,
-    /// Agent slug. Defaults to ORQA_AGENT.
+    /// Fin slug. Defaults to ORQA_FIN.
     #[arg(long)]
-    agent: Option<String>,
+    fin: Option<String>,
     /// Message id, filename, or path.
     message: String,
 }
@@ -268,7 +268,7 @@ fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
     match command {
         Command::Doctor => doctor(orqa),
         Command::Pod(command) => pod(orqa, command),
-        Command::Agent(command) => agent(orqa, command),
+        Command::Fin(command) => fin(orqa, command),
         Command::Mail(command) => mail(orqa, command),
         Command::Task(command) => task(orqa, command),
         Command::Loop(args) => loop_pod(orqa, args),
@@ -286,7 +286,7 @@ fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
         PodSubcommand::Create(args) => {
             let pod = PodRef::new(&args.slug)?;
             let home = orqa.pod_home(&pod);
-            fs::create_dir_all(home.join("agents")).map_err(|error| {
+            fs::create_dir_all(home.join("fins")).map_err(|error| {
                 format!("failed to create pod directory {}: {error}", home.display())
             })?;
             write_if_missing(&home.join("pod.txt"), &format!("slug={}\n", pod.slug))?;
@@ -301,37 +301,34 @@ fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
     }
 }
 
-fn agent(orqa: &Orqa, command: AgentCommand) -> Result<(), String> {
+fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
     match command.command {
-        AgentSubcommand::Create(args) => {
-            let agent = AgentRef::new(&args.pod, &args.agent)?;
-            let home = orqa.agent_home(&agent);
+        FinSubcommand::Create(args) => {
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            let home = orqa.fin_home(&fin);
             fs::create_dir_all(home.join(".codex")).map_err(|error| {
-                format!(
-                    "failed to create agent directory {}: {error}",
-                    home.display()
-                )
+                format!("failed to create fin directory {}: {error}", home.display())
             })?;
-            ensure_maildir(&orqa.mail_home(&agent))?;
-            ensure_maildir(&orqa.task_home(&agent))?;
-            write_if_missing(&home.join("agent.txt"), &format!("slug={}\n", agent.agent))?;
+            ensure_maildir(&orqa.mail_home(&fin))?;
+            ensure_maildir(&orqa.task_home(&fin))?;
+            write_if_missing(&home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
             println!("{}", home.display());
             Ok(())
         }
-        AgentSubcommand::Home(args) => {
-            let agent = AgentRef::new(&args.pod, &args.agent)?;
-            println!("{}", orqa.agent_home(&agent).display());
+        FinSubcommand::Home(args) => {
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            println!("{}", orqa.fin_home(&fin).display());
             Ok(())
         }
-        AgentSubcommand::Run(args) => run_agent(orqa, args),
+        FinSubcommand::Run(args) => run_fin(orqa, args),
     }
 }
 
 fn mail(orqa: &Orqa, command: MailCommand) -> Result<(), String> {
     match command.command {
         MailSubcommand::Home(args) => {
-            let agent = AgentRef::new(&args.pod, &args.agent)?;
-            println!("{}", orqa.mail_home(&agent).display());
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            println!("{}", orqa.mail_home(&fin).display());
             Ok(())
         }
         MailSubcommand::Send(args) => send_mail(orqa, args),
@@ -346,8 +343,8 @@ fn mail(orqa: &Orqa, command: MailCommand) -> Result<(), String> {
 fn task(orqa: &Orqa, command: TaskCommand) -> Result<(), String> {
     match command.command {
         TaskSubcommand::Home(args) => {
-            let agent = AgentRef::new(&args.pod, &args.agent)?;
-            println!("{}", orqa.task_home(&agent).display());
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            println!("{}", orqa.task_home(&fin).display());
             Ok(())
         }
         TaskSubcommand::Send(args) => send_task(orqa, args),
@@ -360,78 +357,78 @@ fn task(orqa: &Orqa, command: TaskCommand) -> Result<(), String> {
 
 fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
     let pod = PodRef::new(&args.pod)?;
-    let agents_dir = orqa.pod_home(&pod).join("agents");
-    let agents = fs::read_dir(&agents_dir).map_err(|error| {
+    let fins_dir = orqa.pod_home(&pod).join("fins");
+    let fins = fs::read_dir(&fins_dir).map_err(|error| {
         format!(
-            "failed to read agents directory {}: {error}",
-            agents_dir.display()
+            "failed to read fins directory {}: {error}",
+            fins_dir.display()
         )
     })?;
 
-    for entry in agents {
-        let entry = entry.map_err(|error| format!("failed to read agent directory: {error}"))?;
+    for entry in fins {
+        let entry = entry.map_err(|error| format!("failed to read fin directory: {error}"))?;
         if !entry.path().is_dir() {
             continue;
         }
 
-        let agent_slug = entry.file_name().to_string_lossy().to_string();
-        let agent = AgentRef::new(&pod.slug, &agent_slug)?;
-        let unread_mail = unread_count(&orqa.mail_home(&agent))?;
-        let open_tasks = unread_count(&orqa.task_home(&agent))?;
+        let fin_slug = entry.file_name().to_string_lossy().to_string();
+        let fin = FinRef::new(&pod.slug, &fin_slug)?;
+        let unread_mail = unread_count(&orqa.mail_home(&fin))?;
+        let open_tasks = unread_count(&orqa.task_home(&fin))?;
 
         if unread_mail > 0 || open_tasks > 0 {
             let wake = Wake {
                 unread_mail,
                 open_tasks,
             };
-            wake_agent(orqa, &agent, &args.framework, &args.args, wake)?;
+            wake_fin(orqa, &fin, &args.framework, &args.args, wake)?;
         }
     }
 
     Ok(())
 }
 
-fn run_agent(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
-    let agent = AgentRef::new(&args.pod, &args.agent)?;
-    run_agent_foreground(orqa, &agent, &args.framework, &args.args)
+fn run_fin(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
+    let fin = FinRef::new(&args.pod, &args.fin)?;
+    run_fin_foreground(orqa, &fin, &args.framework, &args.args)
 }
 
-fn run_agent_foreground(
+fn run_fin_foreground(
     orqa: &Orqa,
-    agent: &AgentRef,
+    fin: &FinRef,
     framework: &OsString,
     args: &[OsString],
 ) -> Result<(), String> {
-    if let Some(lock) = AgentLock::try_existing(orqa, agent)? {
+    if let Some(lock) = FinLock::try_existing(orqa, fin)? {
         if lock.is_live() {
             return Err(format!(
-                "agent {} is already running as pid {}",
-                agent.label(),
+                "fin {} is already running as pid {}",
+                fin.label(),
                 lock.pid
             ));
         }
         lock.remove()?;
     }
 
-    let home = orqa.agent_home(agent);
+    let home = orqa.fin_home(fin);
     let codex_home = home.join(".codex");
 
     fs::create_dir_all(&codex_home).map_err(|error| {
         format!(
-            "failed to create agent codex home {}: {error}",
+            "failed to create fin codex home {}: {error}",
             codex_home.display()
         )
     })?;
 
     let mut child = ProcessCommand::new(framework)
         .env("ORQA_HOME", &orqa.home)
-        .env("ORQA_POD", &agent.pod)
-        .env("ORQA_AGENT", &agent.agent)
+        .env("ORQA_POD", &fin.pod)
+        .env("ORQA_FIN", &fin.fin)
         .env("CODEX_HOME", &codex_home)
         .args(args)
         .spawn()
         .map_err(|error| format!("failed to run {framework:?}: {error}"))?;
-    let lock = AgentLock::write(orqa, agent, child.id(), framework)?;
+    let lock = FinLock::write(orqa, fin, child.id(), framework)?;
     let status = child
         .wait()
         .map_err(|error| format!("failed to wait for {framework:?}: {error}"));
@@ -456,18 +453,18 @@ struct Wake {
     open_tasks: usize,
 }
 
-fn wake_agent(
+fn wake_fin(
     orqa: &Orqa,
-    agent: &AgentRef,
+    fin: &FinRef,
     framework: &OsString,
     args: &[OsString],
     wake: Wake,
 ) -> Result<(), String> {
-    match AgentLock::try_existing(orqa, agent)? {
+    match FinLock::try_existing(orqa, fin)? {
         Some(lock) if lock.is_live() => {
             println!(
                 "skip {} pid={} unread_mail={} open_tasks={}",
-                agent.label(),
+                fin.label(),
                 lock.pid,
                 wake.unread_mail,
                 wake.open_tasks
@@ -476,42 +473,42 @@ fn wake_agent(
         }
         Some(lock) => {
             lock.remove()?;
-            spawn_wake_agent(orqa, agent, framework, args, wake)
+            spawn_wake_fin(orqa, fin, framework, args, wake)
         }
-        None => spawn_wake_agent(orqa, agent, framework, args, wake),
+        None => spawn_wake_fin(orqa, fin, framework, args, wake),
     }
 }
 
-fn spawn_wake_agent(
+fn spawn_wake_fin(
     orqa: &Orqa,
-    agent: &AgentRef,
+    fin: &FinRef,
     framework: &OsString,
     args: &[OsString],
     wake: Wake,
 ) -> Result<(), String> {
-    let home = orqa.agent_home(agent);
+    let home = orqa.fin_home(fin);
     let codex_home = home.join(".codex");
     fs::create_dir_all(&codex_home).map_err(|error| {
         format!(
-            "failed to create agent codex home {}: {error}",
+            "failed to create fin codex home {}: {error}",
             codex_home.display()
         )
     })?;
 
     let child = ProcessCommand::new(framework)
         .env("ORQA_HOME", &orqa.home)
-        .env("ORQA_POD", &agent.pod)
-        .env("ORQA_AGENT", &agent.agent)
+        .env("ORQA_POD", &fin.pod)
+        .env("ORQA_FIN", &fin.fin)
         .env("CODEX_HOME", &codex_home)
         .args(args)
         .spawn()
         .map_err(|error| format!("failed to spawn {framework:?}: {error}"))?;
     let pid = child.id();
 
-    AgentLock::write(orqa, agent, pid, framework)?;
+    FinLock::write(orqa, fin, pid, framework)?;
     println!(
         "wake {} pid={} unread_mail={} open_tasks={}",
-        agent.label(),
+        fin.label(),
         pid,
         wake.unread_mail,
         wake.open_tasks
@@ -520,14 +517,14 @@ fn spawn_wake_agent(
     Ok(())
 }
 
-struct AgentLock {
+struct FinLock {
     path: PathBuf,
     pid: u32,
 }
 
-impl AgentLock {
-    fn try_existing(orqa: &Orqa, agent: &AgentRef) -> Result<Option<Self>, String> {
-        let path = orqa.lock_path(agent);
+impl FinLock {
+    fn try_existing(orqa: &Orqa, fin: &FinRef) -> Result<Option<Self>, String> {
+        let path = orqa.lock_path(fin);
         if !path.exists() {
             return Ok(None);
         }
@@ -540,13 +537,8 @@ impl AgentLock {
         Ok(Some(Self { path, pid }))
     }
 
-    fn write(
-        orqa: &Orqa,
-        agent: &AgentRef,
-        pid: u32,
-        framework: &OsString,
-    ) -> Result<Self, String> {
-        let path = orqa.lock_path(agent);
+    fn write(orqa: &Orqa, fin: &FinRef, pid: u32, framework: &OsString) -> Result<Self, String> {
+        let path = orqa.lock_path(fin);
         let parent = path
             .parent()
             .ok_or_else(|| format!("lock path has no parent: {}", path.display()))?;
@@ -558,8 +550,8 @@ impl AgentLock {
         })?;
 
         let contents = format!(
-            "pid={pid}\npod={}\nagent={}\nframework={:?}\n",
-            agent.pod, agent.agent, framework
+            "pid={pid}\npod={}\nfin={}\nframework={:?}\n",
+            fin.pod, fin.fin, framework
         );
         fs::write(&path, contents)
             .map_err(|error| format!("failed to write lock {}: {error}", path.display()))?;
@@ -620,9 +612,9 @@ fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
         ));
     }
 
-    let from_agent = AgentRef::new(&from.pod, &from.agent)?;
-    let to_agent = AgentRef::new(&to.pod, &to.agent)?;
-    let mail_home = orqa.mail_home(&to_agent);
+    let from_fin = FinRef::new(&from.pod, &from.fin)?;
+    let to_fin = FinRef::new(&to.pod, &to.fin)?;
+    let mail_home = orqa.mail_home(&to_fin);
     ensure_maildir(&mail_home)?;
 
     let body = match args.body {
@@ -640,15 +632,15 @@ fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
     let path = deliver_mail(&mail_home, &message)?;
 
     println!("{}", path.display());
-    println!("queued wake for {}", to_agent.label());
+    println!("queued wake for {}", to_fin.label());
 
-    let _ = from_agent;
+    let _ = from_fin;
     Ok(())
 }
 
-fn unread_mail(orqa: &Orqa, args: AgentRefArgs) -> Result<(), String> {
-    let agent = AgentRef::new(&args.pod, &args.agent)?;
-    let new_dir = orqa.mail_home(&agent).join("new");
+fn unread_mail(orqa: &Orqa, args: FinRefArgs) -> Result<(), String> {
+    let fin = FinRef::new(&args.pod, &args.fin)?;
+    let new_dir = orqa.mail_home(&fin).join("new");
 
     for path in sorted_files(&new_dir)? {
         println!("{}", path.display());
@@ -685,8 +677,8 @@ fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
         ));
     }
 
-    let to_agent = AgentRef::new(&to.pod, &to.agent)?;
-    let task_home = orqa.task_home(&to_agent);
+    let to_fin = FinRef::new(&to.pod, &to.fin)?;
+    let task_home = orqa.task_home(&to_fin);
     ensure_maildir(&task_home)?;
 
     let body = match args.body {
@@ -697,13 +689,13 @@ fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
     let path = deliver_mail(&task_home, &task)?;
 
     println!("{}", path.display());
-    println!("queued task for {}", to_agent.label());
+    println!("queued task for {}", to_fin.label());
     Ok(())
 }
 
 fn list_tasks(orqa: &Orqa, args: TaskListArgs) -> Result<(), String> {
-    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
-    let home = orqa.task_home(&agent);
+    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+    let home = orqa.task_home(&fin);
     let filters = TaskFilters::new(&args)?;
     let mut tasks = collect_tasks(&home, args.all)?;
 
@@ -724,10 +716,10 @@ enum ItemKind {
 }
 
 impl ItemKind {
-    fn home(self, orqa: &Orqa, agent: &AgentRef) -> PathBuf {
+    fn home(self, orqa: &Orqa, fin: &FinRef) -> PathBuf {
         match self {
-            Self::Mail => orqa.mail_home(agent),
-            Self::Task => orqa.task_home(agent),
+            Self::Mail => orqa.mail_home(fin),
+            Self::Task => orqa.task_home(fin),
         }
     }
 
@@ -740,8 +732,8 @@ impl ItemKind {
 }
 
 fn list_items(orqa: &Orqa, args: MailListArgs, kind: ItemKind) -> Result<(), String> {
-    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
-    let home = kind.home(orqa, &agent);
+    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+    let home = kind.home(orqa, &fin);
 
     for path in sorted_files(&home.join("new"))? {
         println!("new {} {}", message_id(&path)?, message_title(&path, kind)?);
@@ -899,8 +891,8 @@ fn quote_value(value: &str) -> String {
 }
 
 fn read_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
-    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
-    let path = resolve_message_path(&kind.home(orqa, &agent), &args.message)?;
+    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+    let path = resolve_message_path(&kind.home(orqa, &fin), &args.message)?;
     let message = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
 
@@ -909,8 +901,8 @@ fn read_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), S
 }
 
 fn done_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
-    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
-    let home = kind.home(orqa, &agent);
+    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+    let home = kind.home(orqa, &fin);
     let path = resolve_message_path(&home, &args.message)?;
     let id = message_id(&path)?;
 
@@ -933,8 +925,8 @@ fn done_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), S
 }
 
 fn delete_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
-    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
-    let path = resolve_message_path(&kind.home(orqa, &agent), &args.message)?;
+    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+    let path = resolve_message_path(&kind.home(orqa, &fin), &args.message)?;
 
     fs::remove_file(&path)
         .map_err(|error| format!("failed to delete item {}: {error}", path.display()))?;
@@ -1077,19 +1069,19 @@ fn sorted_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
-fn resolve_agent(pod: Option<&str>, agent: Option<&str>) -> Result<AgentRef, String> {
+fn resolve_fin(pod: Option<&str>, fin: Option<&str>) -> Result<FinRef, String> {
     let pod = match pod {
         Some(pod) => pod.to_string(),
         None => env::var("ORQA_POD")
             .map_err(|_| "missing pod; use --pod or run with ORQA_POD set".to_string())?,
     };
-    let agent = match agent {
-        Some(agent) => agent.to_string(),
-        None => env::var("ORQA_AGENT")
-            .map_err(|_| "missing agent; use --agent or run with ORQA_AGENT set".to_string())?,
+    let fin = match fin {
+        Some(fin) => fin.to_string(),
+        None => env::var("ORQA_FIN")
+            .map_err(|_| "missing fin; use --fin or run with ORQA_FIN set".to_string())?,
     };
 
-    AgentRef::new(&pod, &agent)
+    FinRef::new(&pod, &fin)
 }
 
 fn resolve_message_path(mail_home: &Path, message: &str) -> Result<PathBuf, String> {
@@ -1174,15 +1166,15 @@ fn resolve_sender(from: Option<&str>) -> Result<MailAddress, String> {
         }
         None => {
             let pod = env::var("ORQA_POD").map_err(|_| {
-                "missing sender; use --from agent@pod.orqa or run with ORQA_POD and ORQA_AGENT set"
+                "missing sender; use --from fin@pod.orqa or run with ORQA_POD and ORQA_FIN set"
                     .to_string()
             })?;
-            let agent = env::var("ORQA_AGENT").map_err(|_| {
-                "missing sender; use --from agent@pod.orqa or run with ORQA_POD and ORQA_AGENT set"
+            let fin = env::var("ORQA_FIN").map_err(|_| {
+                "missing sender; use --from fin@pod.orqa or run with ORQA_POD and ORQA_FIN set"
                     .to_string()
             })?;
 
-            resolve_address(&agent, Some(&pod))
+            resolve_address(&fin, Some(&pod))
         }
     }
 }
@@ -1196,7 +1188,7 @@ fn resolve_address(address: &str, pod_hint: Option<&str>) -> Result<MailAddress,
         Some(pod) => pod.to_string(),
         None => env::var("ORQA_POD").map_err(|_| {
             format!(
-                "bare address {address:?} needs ORQA_POD; use agent@pod.orqa or run with ORQA_POD set"
+                "bare address {address:?} needs ORQA_POD; use fin@pod.orqa or run with ORQA_POD set"
             )
         })?,
     };
@@ -1205,7 +1197,7 @@ fn resolve_address(address: &str, pod_hint: Option<&str>) -> Result<MailAddress,
     validate_slug(&pod)?;
 
     Ok(MailAddress {
-        agent: address.to_string(),
+        fin: address.to_string(),
         pod,
     })
 }
@@ -1232,24 +1224,24 @@ impl Orqa {
         self.home.join("pods").join(&pod.slug)
     }
 
-    fn agent_home(&self, agent: &AgentRef) -> PathBuf {
+    fn fin_home(&self, fin: &FinRef) -> PathBuf {
         self.home
             .join("pods")
-            .join(&agent.pod)
-            .join("agents")
-            .join(&agent.agent)
+            .join(&fin.pod)
+            .join("fins")
+            .join(&fin.fin)
     }
 
-    fn mail_home(&self, agent: &AgentRef) -> PathBuf {
-        self.agent_home(agent).join("mail")
+    fn mail_home(&self, fin: &FinRef) -> PathBuf {
+        self.fin_home(fin).join("mail")
     }
 
-    fn task_home(&self, agent: &AgentRef) -> PathBuf {
-        self.agent_home(agent).join("tasks")
+    fn task_home(&self, fin: &FinRef) -> PathBuf {
+        self.fin_home(fin).join("tasks")
     }
 
-    fn lock_path(&self, agent: &AgentRef) -> PathBuf {
-        self.agent_home(agent).join("run.lock")
+    fn lock_path(&self, fin: &FinRef) -> PathBuf {
+        self.fin_home(fin).join("run.lock")
     }
 }
 
@@ -1266,51 +1258,51 @@ impl PodRef {
     }
 }
 
-struct AgentRef {
+struct FinRef {
     pod: String,
-    agent: String,
+    fin: String,
 }
 
-impl AgentRef {
-    fn new(pod: &str, agent: &str) -> Result<Self, String> {
+impl FinRef {
+    fn new(pod: &str, fin: &str) -> Result<Self, String> {
         validate_slug(pod)?;
-        validate_slug(agent)?;
+        validate_slug(fin)?;
         Ok(Self {
             pod: pod.to_string(),
-            agent: agent.to_string(),
+            fin: fin.to_string(),
         })
     }
 
     fn label(&self) -> String {
-        format!("{}/{}", self.pod, self.agent)
+        format!("{}/{}", self.pod, self.fin)
     }
 }
 
 struct MailAddress {
-    agent: String,
+    fin: String,
     pod: String,
 }
 
 impl MailAddress {
     fn parse(address: &str) -> Result<Self, String> {
-        let (agent, domain) = address
+        let (fin, domain) = address
             .split_once('@')
-            .ok_or_else(|| format!("invalid local address {address:?}; expected agent@pod.orqa"))?;
+            .ok_or_else(|| format!("invalid local address {address:?}; expected fin@pod.orqa"))?;
         let pod = domain
             .strip_suffix(".orqa")
-            .ok_or_else(|| format!("invalid local address {address:?}; expected agent@pod.orqa"))?;
+            .ok_or_else(|| format!("invalid local address {address:?}; expected fin@pod.orqa"))?;
 
-        validate_slug(agent)?;
+        validate_slug(fin)?;
         validate_slug(pod)?;
 
         Ok(Self {
-            agent: agent.to_string(),
+            fin: fin.to_string(),
             pod: pod.to_string(),
         })
     }
 
     fn label(&self) -> String {
-        format!("{}@{}.orqa", self.agent, self.pod)
+        format!("{}@{}.orqa", self.fin, self.pod)
     }
 }
 
@@ -1358,7 +1350,7 @@ mod tests {
     fn parses_local_mail_addresses() {
         let address = MailAddress::parse("amy@sample-pod.orqa").unwrap();
 
-        assert_eq!(address.agent, "amy");
+        assert_eq!(address.fin, "amy");
         assert_eq!(address.pod, "sample-pod");
         assert_eq!(address.label(), "amy@sample-pod.orqa");
     }
@@ -1367,7 +1359,7 @@ mod tests {
     fn qualifies_bare_mail_addresses_with_pod_hint() {
         let address = resolve_address("bob-jones", Some("sample-pod")).unwrap();
 
-        assert_eq!(address.agent, "bob-jones");
+        assert_eq!(address.fin, "bob-jones");
         assert_eq!(address.pod, "sample-pod");
         assert_eq!(address.label(), "bob-jones@sample-pod.orqa");
     }
@@ -1437,7 +1429,7 @@ mod tests {
     fn parses_task_field_filters() {
         let args = TaskListArgs {
             pod: None,
-            agent: None,
+            fin: None,
             all: false,
             status: Some("open".to_string()),
             priority: Some("high".to_string()),
@@ -1473,7 +1465,7 @@ mod tests {
 
     #[test]
     fn parses_lock_pid() {
-        assert_eq!(lock_pid("pid=123\nagent=amy\n"), Some(123));
-        assert_eq!(lock_pid("agent=amy\n"), None);
+        assert_eq!(lock_pid("pid=123\nfin=amy\n"), Some(123));
+        assert_eq!(lock_pid("fin=amy\n"), None);
     }
 }

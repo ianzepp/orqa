@@ -1,17 +1,17 @@
 # orqa
 
-`orqa` is a small local coordinator for background agents.
+`orqa` is a small local coordinator for background fins.
 
 It does not try to be a full orchestration platform. Its job is to keep a pod
-and agent filesystem layout, give agents simple local mail and task channels,
-scan for wake signals, and shell out to the configured agent framework when an
-agent should run.
+and fin filesystem layout, give fins simple local mail and task channels,
+scan for wake signals, and shell out to the configured framework when a fin
+should run.
 
 ## Concepts
 
-A **pod** is a collection of agents that can communicate with each other.
+A **pod** is a collection of fins that can communicate with each other.
 
-An **agent** belongs to exactly one pod. Each agent has its own home directory
+A **fin** belongs to exactly one pod. Each fin has its own home directory
 inside that pod, including an isolated `.codex` directory for Codex state, a
 Maildir inbox for pod-local messages, and a Maildir-style task queue.
 
@@ -22,9 +22,9 @@ ORQA_HOME/
   pods/
     sample-pod/
       pod.txt
-      agents/
+      fins/
         amy/
-          agent.txt
+          fin.txt
           .codex/
           mail/
             cur/
@@ -35,7 +35,7 @@ ORQA_HOME/
             new/
             tmp/
         bob-jones/
-          agent.txt
+          fin.txt
           .codex/
           mail/
             cur/
@@ -47,15 +47,15 @@ ORQA_HOME/
             tmp/
 ```
 
-Pods and agents are referenced by slug. Slugs may contain lowercase letters,
+Pods and fins are referenced by slug. Slugs may contain lowercase letters,
 digits, and hyphens.
 
 ## Quick Start
 
 ```sh
 orqa pod create sample-pod
-orqa agent create sample-pod amy
-orqa agent create sample-pod bob-jones
+orqa fin create sample-pod amy
+orqa fin create sample-pod bob-jones
 ```
 
 Send a fully qualified pod-local message:
@@ -66,10 +66,10 @@ orqa mail send \
   --to bob-jones@sample-pod.orqa \
   --subject hello \
   "wake up"
-ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail list
-ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail read <message-id>
-ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail done <message-id>
-ORQA_POD=sample-pod ORQA_AGENT=amy orqa task send --to bob-jones --title update-settings "please do this"
+ORQA_POD=sample-pod ORQA_FIN=bob-jones orqa mail list
+ORQA_POD=sample-pod ORQA_FIN=bob-jones orqa mail read <message-id>
+ORQA_POD=sample-pod ORQA_FIN=bob-jones orqa mail done <message-id>
+ORQA_POD=sample-pod ORQA_FIN=amy orqa task send --to bob-jones --title update-settings "please do this"
 ```
 
 Run one wake scan for the pod:
@@ -78,10 +78,10 @@ Run one wake scan for the pod:
 orqa loop sample-pod
 ```
 
-Run an agent directly through the default framework, currently `codex`:
+Run a fin directly through the default framework, currently `codex`:
 
 ```sh
-orqa agent run sample-pod amy -- --help
+orqa fin run sample-pod amy -- --help
 ```
 
 Everything can run against a temporary or alternate root with `--home`:
@@ -90,52 +90,52 @@ Everything can run against a temporary or alternate root with `--home`:
 orqa --home /tmp/orqa-demo pod create sample-pod
 ```
 
-## Agent Execution
+## Fin Execution
 
-`orqa agent run` shells out to an agent framework. By default, that executable
+`orqa fin run` shells out to a framework. By default, that executable
 is `codex`.
 
 ```sh
-orqa agent run sample-pod amy -- "work on the next task"
+orqa fin run sample-pod amy -- "work on the next task"
 ```
 
 Use `--framework` to run another executable:
 
 ```sh
-orqa agent run sample-pod amy --framework /bin/echo -- "hello"
+orqa fin run sample-pod amy --framework /bin/echo -- "hello"
 ```
 
-When an agent runs, `orqa` sets these environment variables:
+When a fin runs, `orqa` sets these environment variables:
 
 ```text
 ORQA_HOME=<home>
 ORQA_POD=<pod-slug>
-ORQA_AGENT=<agent-slug>
-CODEX_HOME=<home>/pods/<pod-slug>/agents/<agent-slug>/.codex
+ORQA_FIN=<fin-slug>
+CODEX_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.codex
 ```
 
-That lets Codex use the agent-specific `.codex` directory as its config home.
-It also gives commands executed by the agent enough context to use short mail
+That lets Codex use the fin-specific `.codex` directory as its config home.
+It also gives commands executed by the fin enough context to use short mail
 addresses.
 
-Direct agent runs and loop-launched runs use a per-agent lock file:
+Direct fin runs and loop-launched runs use a per-fin lock file:
 
 ```text
-ORQA_HOME/pods/<pod>/agents/<agent>/run.lock
+ORQA_HOME/pods/<pod>/fins/<fin>/run.lock
 ```
 
 The lock records the child process PID. If the lock exists and the PID is still
-alive, another wake scan skips that agent. If the PID is gone, `orqa` treats the
-lock as stale, removes it, and the agent can run again.
+alive, another wake scan skips that fin. If the PID is gone, `orqa` treats the
+lock as stale, removes it, and the fin can run again.
 
 ## Mail
 
-Agents communicate through pod-local Maildir inboxes.
+Fins communicate through pod-local Maildir inboxes.
 
 An address has the form:
 
 ```text
-agent@pod.orqa
+fin@pod.orqa
 ```
 
 For example, this message:
@@ -151,17 +151,17 @@ orqa mail send \
 is delivered to:
 
 ```text
-ORQA_HOME/pods/sample-pod/agents/bob-jones/mail/new/
+ORQA_HOME/pods/sample-pod/fins/bob-jones/mail/new/
 ```
 
 Unread messages in `mail/new` are wake signals. `orqa loop sample-pod` scans
-agent inboxes and prints agents that should run:
+fin inboxes and prints fins that should run:
 
 ```text
 wake sample-pod/bob-jones unread=1
 ```
 
-When an agent finishes handling a message, it can mark that message done. This
+When a fin finishes handling a message, it can mark that message done. This
 moves the file from `mail/new` to `mail/cur`, which clears the wake signal:
 
 ```sh
@@ -176,8 +176,8 @@ orqa mail delete <message-id>
 
 ### Short Addresses
 
-Inside an Orqa-launched agent process, `ORQA_POD` and `ORQA_AGENT` are already
-set. In that context, an agent can send mail with just the recipient slug:
+Inside an Orqa-launched fin process, `ORQA_POD` and `ORQA_FIN` are already
+set. In that context, a fin can send mail with just the recipient slug:
 
 ```sh
 orqa mail send --to bob-jones --subject hello "wake up"
@@ -190,7 +190,7 @@ from: amy@sample-pod.orqa
 to:   bob-jones@sample-pod.orqa
 ```
 
-Outside an agent context, either use fully qualified addresses or provide a
+Outside a fin context, either use fully qualified addresses or provide a
 fully qualified sender so the pod can be inferred:
 
 ```sh
@@ -201,14 +201,14 @@ orqa mail send \
   "wake up"
 ```
 
-If `orqa` cannot infer the pod, it returns an error asking for `agent@pod.orqa`
+If `orqa` cannot infer the pod, it returns an error asking for `fin@pod.orqa`
 or the relevant environment variables.
 
 ## Tasks
 
 Tasks use the same storage pattern as mail, but live under `tasks/`.
 
-Sending mail to another agent is a communication request. Sending a task is a
+Sending mail to another fin is a communication request. Sending a task is a
 work assignment:
 
 ```sh
@@ -222,10 +222,10 @@ orqa task send \
 That task is delivered to:
 
 ```text
-ORQA_HOME/pods/sample-pod/agents/bob-jones/tasks/new/
+ORQA_HOME/pods/sample-pod/fins/bob-jones/tasks/new/
 ```
 
-Task bodies are Markdown documents with YAML front matter. Agents may provide a
+Task bodies are Markdown documents with YAML front matter. Fins may provide a
 complete front matter block, or they may provide plain Markdown and let `orqa`
 fill in the canonical metadata.
 
@@ -266,7 +266,7 @@ depends_on: []
 please update the settings
 ```
 
-An agent can also send a fuller task document:
+A fin can also send a fuller task document:
 
 ```sh
 cat <<'TASK' | orqa task send --to bob-jones
@@ -303,7 +303,7 @@ orqa doctor
 
 ### `orqa pod create <pod>`
 
-Creates a pod home directory and its `agents` directory.
+Creates a pod home directory and its `fins` directory.
 
 ```sh
 orqa pod create sample-pod
@@ -317,37 +317,37 @@ Prints the filesystem path for a pod.
 orqa pod home sample-pod
 ```
 
-### `orqa agent create <pod> <agent>`
+### `orqa fin create <pod> <fin>`
 
-Creates an agent home directory, its `.codex` directory, its Maildir inbox, and
+Creates a fin home directory, its `.codex` directory, its Maildir inbox, and
 its task queue.
 
 ```sh
-orqa agent create sample-pod amy
+orqa fin create sample-pod amy
 ```
 
-### `orqa agent home <pod> <agent>`
+### `orqa fin home <pod> <fin>`
 
-Prints the filesystem path for an agent.
+Prints the filesystem path for a fin.
 
 ```sh
-orqa agent home sample-pod amy
+orqa fin home sample-pod amy
 ```
 
-### `orqa agent run <pod> <agent>`
+### `orqa fin run <pod> <fin>`
 
-Runs an agent through the configured framework.
+Runs a fin through the configured framework.
 
 ```sh
-orqa agent run sample-pod amy -- "work on the next task"
-orqa agent run sample-pod amy --framework codex -- "work on the next task"
+orqa fin run sample-pod amy -- "work on the next task"
+orqa fin run sample-pod amy --framework codex -- "work on the next task"
 ```
 
 Arguments after `--` are passed through to the framework.
 
-### `orqa mail home <pod> <agent>`
+### `orqa mail home <pod> <fin>`
 
-Prints the Maildir path for an agent.
+Prints the Maildir path for a fin.
 
 ```sh
 orqa mail home sample-pod amy
@@ -359,7 +359,7 @@ Sends a pod-local message.
 
 ```sh
 orqa mail send --from amy@sample-pod.orqa --to bob-jones@sample-pod.orqa "hello"
-orqa mail send --to bob-jones --subject hello "hello from agent context"
+orqa mail send --to bob-jones --subject hello "hello from fin context"
 ```
 
 If no message body is provided as an argument, `orqa` reads the body from stdin:
@@ -370,13 +370,13 @@ cat message.txt | orqa mail send --to bob-jones --subject hello
 
 ### `orqa mail list`
 
-Lists unread messages for the current agent context. Use `--all` to include
+Lists unread messages for the current fin context. Use `--all` to include
 done messages from `mail/cur`.
 
 ```sh
 orqa mail list
 orqa mail list --all
-orqa mail list --pod sample-pod --agent bob-jones
+orqa mail list --pod sample-pod --fin bob-jones
 ```
 
 The output includes the mail state, message id, and subject:
@@ -391,7 +391,7 @@ Prints a message. `<message>` may be the id from `mail list` or a full path.
 
 ```sh
 orqa mail read 1778757271046041.31124.0.orqa
-orqa mail read --pod sample-pod --agent bob-jones 1778757271046041.31124.0.orqa
+orqa mail read --pod sample-pod --fin bob-jones 1778757271046041.31124.0.orqa
 ```
 
 ### `orqa mail done <message>`
@@ -410,18 +410,18 @@ Deletes a message from `mail/new` or `mail/cur`.
 orqa mail delete 1778757271046041.31124.0.orqa
 ```
 
-### `orqa mail unread <pod> <agent>`
+### `orqa mail unread <pod> <fin>`
 
-Lists unread message file paths in an agent's `mail/new` inbox. This is a
-lower-level helper; agents usually want `orqa mail list`.
+Lists unread message file paths in a fin's `mail/new` inbox. This is a
+lower-level helper; fins usually want `orqa mail list`.
 
 ```sh
 orqa mail unread sample-pod bob-jones
 ```
 
-### `orqa task home <pod> <agent>`
+### `orqa task home <pod> <fin>`
 
-Prints the task queue path for an agent.
+Prints the task queue path for a fin.
 
 ```sh
 orqa task home sample-pod amy
@@ -449,14 +449,14 @@ omitted, `orqa` uses `title:` from the provided front matter or falls back to
 
 ### `orqa task list`
 
-Lists open tasks for the current agent context. Use `--all` to include done
+Lists open tasks for the current fin context. Use `--all` to include done
 tasks from `tasks/cur`. Output is shell-friendly: state, id, and front matter
 properties as `key=value` fields.
 
 ```sh
 orqa task list
 orqa task list --all
-orqa task list --pod sample-pod --agent bob-jones
+orqa task list --pod sample-pod --fin bob-jones
 ```
 
 Example output:
@@ -517,7 +517,7 @@ orqa task delete 1778757485781904.31898.0.orqa
 
 ### `orqa loop <pod>`
 
-Scans a pod for agents with unread mail or open tasks. Wakeable agents are
+Scans a pod for fins with unread mail or open tasks. Wakeable fins are
 launched through the configured framework.
 
 ```sh
@@ -525,12 +525,12 @@ orqa loop sample-pod
 orqa loop sample-pod --framework codex -- "handle your open Orqa mail and tasks"
 ```
 
-For each wakeable agent, `orqa loop` creates `run.lock` with the spawned process
-PID. Later scans skip that agent while the PID is alive. Stale locks are removed
+For each wakeable fin, `orqa loop` creates `run.lock` with the spawned process
+PID. Later scans skip that fin while the PID is alive. Stale locks are removed
 when the PID no longer exists.
 
 ## Status
 
 This is intentionally early and small. The current implementation defines the
-filesystem contract, creates pods and agents, delivers local Maildir messages
-and tasks, detects wake signals, and shells out to an agent framework.
+filesystem contract, creates pods and fins, delivers local Maildir messages
+and tasks, detects wake signals, and shells out to a framework.
