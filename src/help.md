@@ -384,6 +384,7 @@ List, read, acknowledge, resolve, or dismiss issues:
 
 ```sh
 orqa ops
+orqa ops report --since 1d
 orqa ops issues --pod sample-pod --severity blocked
 orqa ops issue read <issue-id>
 orqa ops issue ack <issue-id>
@@ -395,6 +396,11 @@ Resolving or dismissing an issue moves it to the closed issue store and sends a
 normal mail message back to the originating fin. That returned mail is a wake
 signal, so the fin can resume through the usual loop. Pass `--wake` to clear the
 originating fin's sleep marker at the same time.
+
+Use `orqa ops report` to print a Markdown evidence bundle covering all pods,
+operator issues, task records, mail records, file paths, statuses, and clipped
+context. `--since` accepts Unix seconds or relative durations such as `30m`,
+`2h`, or `1d`.
 
 ## Sleep And Wake
 

@@ -135,6 +135,8 @@ pub(crate) struct OpsCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum OpsSubcommand {
+    /// Generate a Markdown report of pods, issues, tasks, and mail.
+    Report(OpsReportArgs),
     /// List operator issues.
     Issues(OpsIssueListArgs),
     /// Read or update one operator issue.
@@ -586,6 +588,13 @@ pub(crate) struct MailMessageArgs {
     pub(crate) fin: Option<String>,
     /// Message id, filename, or path.
     pub(crate) message: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OpsReportArgs {
+    /// Include only records at or after this time. Accepts Unix seconds or relative durations like 30m, 2h, 1d.
+    #[arg(long)]
+    pub(crate) since: Option<String>,
 }
 
 #[derive(Debug, Args)]

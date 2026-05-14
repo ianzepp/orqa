@@ -5,6 +5,7 @@ mod doctor;
 mod issues;
 mod mailbox;
 mod model;
+mod report;
 mod runs;
 mod runtime;
 mod runtime_home;

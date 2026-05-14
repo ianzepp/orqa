@@ -810,6 +810,7 @@ path. `task done` moves the task from `tasks/new` to `tasks/cur`.
 
 ```text
 orqa ops
+orqa ops report [--since <when>]
 orqa ops issues [--all] [--pod <pod>] [--fin <fin>]
                 [--status <status>] [--severity <severity>] [--kind <kind>]
                 [--field <key=value>] [--json]
@@ -829,6 +830,11 @@ front matter exactly, and `--field` can be repeated for custom fields such as
 issue from `new` to `cur`. `resolve` and `dismiss` move the issue to `closed`,
 record the operator note, and send a normal mail reply back to the originating
 fin. Pass `--wake` to clear that fin's sleep marker after sending the reply.
+
+`ops report` prints a Markdown evidence bundle for the operator: all pods and
+fins, operator issues, task records, mail records, file paths, statuses, and
+clipped context. `--since` accepts Unix seconds or relative durations such as
+`30m`, `2h`, or `1d`.
 
 ### Wake Loop
 

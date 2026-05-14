@@ -22,6 +22,7 @@ use crate::{
         write_if_missing, write_sleep_marker,
     },
     model::{FinRef, Orqa, PodRef},
+    report::ops_report,
     runs::{list_runs, read_run_logs, read_run_record_for, tail_fin, tail_pod},
     runtime::{chat_fin, exec_fin, supervise_fin},
     runtime_home::ensure_fin_runtime_homes,
@@ -363,6 +364,7 @@ pub(crate) fn ops(orqa: &Orqa, command: OpsCommand) -> Result<(), String> {
             println!("issues_closed={closed}");
             Ok(())
         }
+        Some(OpsSubcommand::Report(args)) => ops_report(orqa, args),
         Some(OpsSubcommand::Issues(args)) => list_issues(orqa, args),
         Some(OpsSubcommand::Issue(command)) => match command.command {
             OpsIssueSubcommand::Read(args) => read_issue(orqa, args),

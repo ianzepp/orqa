@@ -812,6 +812,73 @@ fn mail_to_operator_opens_issue_and_resolution_mails_fin() {
 }
 
 #[test]
+fn ops_report_prints_pods_tasks_mail_and_issues() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "deploy"]);
+    orqa(&root, ["fin", "create", "deploy", "release"]);
+    orqa(
+        &root,
+        [
+            "task",
+            "send",
+            "--from",
+            "release@deploy.orqa",
+            "--to",
+            "release@deploy.orqa",
+            "--title",
+            "Ship the release",
+            "Cut the next release and verify the service.",
+        ],
+    );
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "release@deploy.orqa",
+            "--to",
+            "release@deploy.orqa",
+            "--subject",
+            "Release note",
+            "Remember to summarize operator issues.",
+        ],
+    );
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "release@deploy.orqa",
+            "--to",
+            "operator@deploy.orqa",
+            "--subject",
+            "Cloudflare auth expired",
+            "Need a human to refresh credentials.",
+        ],
+    );
+
+    let report = orqa_output(&root, ["ops", "report", "--since", "1d"]);
+    assert!(report.contains("# Orqa Ops Report"));
+    assert!(report.contains("## Operator Issues"));
+    assert!(report.contains("## Pod `deploy`"));
+    assert!(report.contains("### Fin `release`"));
+    assert!(report.contains("#### Tasks"));
+    assert!(report.contains("title: `Ship the release`"));
+    assert!(report.contains("Cut the next release and verify the service."));
+    assert!(report.contains("#### Mail"));
+    assert!(report.contains("subject: `Release note`"));
+    assert!(report.contains("Remember to summarize operator issues."));
+    assert!(report.contains("Cloudflare auth expired"));
+    assert!(report.contains("Need a human to refresh credentials."));
+    assert!(report.contains("- path: `"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn operator_issue_ack_and_dismiss_move_issue_and_mail_fin() {
     let root = temp_root();
 
