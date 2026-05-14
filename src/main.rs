@@ -92,7 +92,7 @@ enum MailSubcommand {
     /// Send a pod-local message.
     Send(SendMailArgs),
     /// List messages for an agent.
-    List(MailboxArgs),
+    List(MailListArgs),
     /// Read a message for an agent.
     Read(MailMessageArgs),
     /// Mark an unread message as done.
@@ -110,7 +110,7 @@ enum TaskSubcommand {
     /// Assign a pod-local task.
     Send(SendTaskArgs),
     /// List tasks for an agent.
-    List(MailboxArgs),
+    List(TaskListArgs),
     /// Read a task for an agent.
     Read(MailMessageArgs),
     /// Mark an open task as done.
@@ -184,7 +184,7 @@ struct SendTaskArgs {
 }
 
 #[derive(Debug, Args)]
-struct MailboxArgs {
+struct MailListArgs {
     /// Pod slug. Defaults to ORQA_POD.
     #[arg(long)]
     pod: Option<String>,
@@ -194,6 +194,37 @@ struct MailboxArgs {
     /// Include done items from cur.
     #[arg(long)]
     all: bool,
+}
+
+#[derive(Debug, Args)]
+struct TaskListArgs {
+    /// Pod slug. Defaults to ORQA_POD.
+    #[arg(long)]
+    pod: Option<String>,
+    /// Agent slug. Defaults to ORQA_AGENT.
+    #[arg(long)]
+    agent: Option<String>,
+    /// Include done items from cur.
+    #[arg(long)]
+    all: bool,
+    /// Filter by status front matter.
+    #[arg(long)]
+    status: Option<String>,
+    /// Filter by priority front matter.
+    #[arg(long)]
+    priority: Option<String>,
+    /// Filter by kind front matter.
+    #[arg(long)]
+    kind: Option<String>,
+    /// Filter by arbitrary front matter field, as key=value.
+    #[arg(long = "field")]
+    fields: Vec<String>,
+    /// Sort by a front matter key, or by state/id.
+    #[arg(long)]
+    sort: Option<String>,
+    /// Reverse sort order.
+    #[arg(long)]
+    reverse: bool,
 }
 
 #[derive(Debug, Args)]
@@ -314,7 +345,7 @@ fn task(orqa: &Orqa, command: TaskCommand) -> Result<(), String> {
             Ok(())
         }
         TaskSubcommand::Send(args) => send_task(orqa, args),
-        TaskSubcommand::List(args) => list_items(orqa, args, ItemKind::Task),
+        TaskSubcommand::List(args) => list_tasks(orqa, args),
         TaskSubcommand::Read(args) => read_item(orqa, args, ItemKind::Task),
         TaskSubcommand::Done(args) => done_item(orqa, args, ItemKind::Task),
         TaskSubcommand::Delete(args) => delete_item(orqa, args, ItemKind::Task),
@@ -438,7 +469,7 @@ fn unread_mail(orqa: &Orqa, args: AgentRefArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn list_mail(orqa: &Orqa, args: MailboxArgs) -> Result<(), String> {
+fn list_mail(orqa: &Orqa, args: MailListArgs) -> Result<(), String> {
     list_items(orqa, args, ItemKind::Mail)
 }
 
@@ -482,6 +513,22 @@ fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
     Ok(())
 }
 
+fn list_tasks(orqa: &Orqa, args: TaskListArgs) -> Result<(), String> {
+    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
+    let home = orqa.task_home(&agent);
+    let filters = TaskFilters::new(&args)?;
+    let mut tasks = collect_tasks(&home, args.all)?;
+
+    tasks.retain(|task| filters.matches(task));
+    sort_tasks(&mut tasks, args.sort.as_deref(), args.reverse);
+
+    for task in tasks {
+        println!("{}", task.format());
+    }
+
+    Ok(())
+}
+
 #[derive(Clone, Copy)]
 enum ItemKind {
     Mail,
@@ -504,7 +551,7 @@ impl ItemKind {
     }
 }
 
-fn list_items(orqa: &Orqa, args: MailboxArgs, kind: ItemKind) -> Result<(), String> {
+fn list_items(orqa: &Orqa, args: MailListArgs, kind: ItemKind) -> Result<(), String> {
     let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
     let home = kind.home(orqa, &agent);
 
@@ -519,6 +566,148 @@ fn list_items(orqa: &Orqa, args: MailboxArgs, kind: ItemKind) -> Result<(), Stri
     }
 
     Ok(())
+}
+
+struct TaskFilters {
+    fields: Vec<(String, String)>,
+}
+
+impl TaskFilters {
+    fn new(args: &TaskListArgs) -> Result<Self, String> {
+        let mut fields = Vec::new();
+
+        if let Some(status) = &args.status {
+            fields.push(("status".to_string(), status.to_string()));
+        }
+        if let Some(priority) = &args.priority {
+            fields.push(("priority".to_string(), priority.to_string()));
+        }
+        if let Some(kind) = &args.kind {
+            fields.push(("kind".to_string(), kind.to_string()));
+        }
+        for field in &args.fields {
+            let (key, value) = field
+                .split_once('=')
+                .ok_or_else(|| format!("invalid --field {field:?}; expected key=value"))?;
+            if key.trim().is_empty() {
+                return Err(format!("invalid --field {field:?}; key cannot be empty"));
+            }
+            fields.push((key.trim().to_string(), value.trim().to_string()));
+        }
+
+        Ok(Self { fields })
+    }
+
+    fn matches(&self, task: &TaskSummary) -> bool {
+        self.fields.iter().all(|(key, value)| {
+            task.field(key)
+                .is_some_and(|task_value| task_value == value)
+        })
+    }
+}
+
+struct TaskSummary {
+    state: String,
+    id: String,
+    fields: Vec<(String, String)>,
+}
+
+impl TaskSummary {
+    fn field(&self, key: &str) -> Option<&str> {
+        self.fields
+            .iter()
+            .find(|(field_key, _)| field_key == key)
+            .map(|(_, value)| value.as_str())
+    }
+
+    fn sort_value(&self, key: &str) -> String {
+        match key {
+            "state" => self.state.clone(),
+            "id" => self.id.clone(),
+            "priority" => priority_sort_value(self.field("priority").unwrap_or("")),
+            key => self.field(key).unwrap_or("").to_string(),
+        }
+    }
+
+    fn format(&self) -> String {
+        let mut line = format!("{} {}", self.state, self.id);
+        for key in ["priority", "status", "kind", "title"] {
+            if let Some(value) = self.field(key) {
+                line.push(' ');
+                line.push_str(key);
+                line.push('=');
+                line.push_str(&quote_value(value));
+            }
+        }
+        line
+    }
+}
+
+fn collect_tasks(task_home: &Path, include_done: bool) -> Result<Vec<TaskSummary>, String> {
+    let mut tasks = Vec::new();
+
+    collect_tasks_in_state(task_home, "new", &mut tasks)?;
+    if include_done {
+        collect_tasks_in_state(task_home, "cur", &mut tasks)?;
+    }
+
+    Ok(tasks)
+}
+
+fn collect_tasks_in_state(
+    task_home: &Path,
+    state: &str,
+    tasks: &mut Vec<TaskSummary>,
+) -> Result<(), String> {
+    for path in sorted_files(&task_home.join(state))? {
+        let body = fs::read_to_string(&path)
+            .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+        let (fields, _) = split_front_matter(&body);
+        tasks.push(TaskSummary {
+            state: state.to_string(),
+            id: message_id(&path)?,
+            fields,
+        });
+    }
+
+    Ok(())
+}
+
+fn sort_tasks(tasks: &mut [TaskSummary], sort: Option<&str>, reverse: bool) {
+    let sort = sort.unwrap_or("id");
+    tasks.sort_by(|left, right| {
+        left.sort_value(sort)
+            .cmp(&right.sort_value(sort))
+            .then_with(|| left.id.cmp(&right.id))
+    });
+
+    if reverse {
+        tasks.reverse();
+    }
+}
+
+fn priority_sort_value(priority: &str) -> String {
+    let rank = match priority {
+        "critical" | "urgent" => 0,
+        "high" => 1,
+        "normal" | "medium" => 2,
+        "low" => 3,
+        _ => 9,
+    };
+
+    format!("{rank}:{priority}")
+}
+
+fn quote_value(value: &str) -> String {
+    if value.bytes().all(|byte| {
+        byte.is_ascii_alphanumeric()
+            || matches!(byte, b'-' | b'_' | b'.' | b'/' | b':' | b'[' | b']')
+    }) {
+        return value.to_string();
+    }
+
+    let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
+    format!("\"{escaped}\"")
 }
 
 fn read_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
@@ -1050,5 +1239,43 @@ mod tests {
         assert!(task.contains("status: open\n"));
         assert!(task.contains("kind: need\n"));
         assert!(task.ends_with("Details.\n"));
+    }
+
+    #[test]
+    fn parses_task_field_filters() {
+        let args = TaskListArgs {
+            pod: None,
+            agent: None,
+            all: false,
+            status: Some("open".to_string()),
+            priority: Some("high".to_string()),
+            kind: None,
+            fields: vec!["owner=amy".to_string()],
+            sort: None,
+            reverse: false,
+        };
+        let filters = TaskFilters::new(&args).unwrap();
+
+        assert_eq!(
+            filters.fields,
+            vec![
+                ("status".to_string(), "open".to_string()),
+                ("priority".to_string(), "high".to_string()),
+                ("owner".to_string(), "amy".to_string())
+            ]
+        );
+    }
+
+    #[test]
+    fn quotes_shell_unfriendly_values() {
+        assert_eq!(quote_value("high"), "high");
+        assert_eq!(quote_value("update settings"), "\"update settings\"");
+        assert_eq!(quote_value("say \"hi\""), "\"say \\\"hi\\\"\"");
+    }
+
+    #[test]
+    fn sorts_known_priorities_by_severity() {
+        assert!(priority_sort_value("high") < priority_sort_value("normal"));
+        assert!(priority_sort_value("normal") < priority_sort_value("low"));
     }
 }

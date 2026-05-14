@@ -440,13 +440,46 @@ omitted, `orqa` uses `title:` from the provided front matter or falls back to
 ### `orqa task list`
 
 Lists open tasks for the current agent context. Use `--all` to include done
-tasks from `tasks/cur`.
+tasks from `tasks/cur`. Output is shell-friendly: state, id, and front matter
+properties as `key=value` fields.
 
 ```sh
 orqa task list
 orqa task list --all
 orqa task list --pod sample-pod --agent bob-jones
 ```
+
+Example output:
+
+```text
+new 1778757936473943.33536.0.orqa priority=high status=blocked kind=want title="urgent task"
+```
+
+Filter by common task properties:
+
+```sh
+orqa task list --status open
+orqa task list --priority high
+orqa task list --kind need
+```
+
+Filter by custom front matter with `--field key=value`:
+
+```sh
+orqa task list --field owner=amy
+orqa task list --status blocked --field owner=amy
+```
+
+Sort by a front matter key, or by `state` or `id`:
+
+```sh
+orqa task list --sort priority
+orqa task list --sort title
+orqa task list --sort priority --reverse
+```
+
+Known priorities sort by severity: `critical`/`urgent`, `high`,
+`normal`/`medium`, then `low`.
 
 ### `orqa task read <task>`
 
