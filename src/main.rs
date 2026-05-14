@@ -178,7 +178,7 @@ struct SendTaskArgs {
     to: String,
     /// Task title.
     #[arg(long)]
-    title: String,
+    title: Option<String>,
     /// Task body. Reads stdin when omitted.
     body: Option<String>,
 }
@@ -474,14 +474,7 @@ fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
         Some(body) => body,
         None => read_stdin()?,
     };
-
-    let task = format!(
-        "From: {}\nTo: {}\nTitle: {}\n\n{}\n",
-        from.label(),
-        to.label(),
-        args.title,
-        body
-    );
+    let task = canonical_task_body(&from, &to, args.title.as_deref(), &body);
     let path = deliver_mail(&task_home, &task)?;
 
     println!("{}", path.display());
@@ -506,7 +499,7 @@ impl ItemKind {
     fn title_header(self) -> &'static str {
         match self {
             Self::Mail => "Subject: ",
-            Self::Task => "Title: ",
+            Self::Task => "title: ",
         }
     }
 }
@@ -570,6 +563,90 @@ fn delete_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(),
         .map_err(|error| format!("failed to delete item {}: {error}", path.display()))?;
     println!("deleted {}", path.display());
     Ok(())
+}
+
+fn canonical_task_body(
+    from: &MailAddress,
+    to: &MailAddress,
+    title_arg: Option<&str>,
+    body: &str,
+) -> String {
+    let (mut fields, description) = split_front_matter(body);
+    let title = title_arg
+        .map(str::to_string)
+        .or_else(|| field_value(&fields, "title"))
+        .unwrap_or_else(|| "(untitled task)".to_string());
+
+    upsert_field(&mut fields, "from", &from.label());
+    upsert_field(&mut fields, "to", &to.label());
+    upsert_field(&mut fields, "title", &title);
+    ensure_field(&mut fields, "priority", "normal");
+    ensure_field(&mut fields, "status", "open");
+    ensure_field(&mut fields, "kind", "need");
+    ensure_field(&mut fields, "depends_on", "[]");
+
+    let mut task = String::from("---\n");
+    for (key, value) in fields {
+        task.push_str(&key);
+        task.push_str(": ");
+        task.push_str(&value);
+        task.push('\n');
+    }
+    task.push_str("---\n\n");
+    task.push_str(description.trim());
+    task.push('\n');
+
+    task
+}
+
+fn split_front_matter(body: &str) -> (Vec<(String, String)>, &str) {
+    let Some(rest) = body.strip_prefix("---\n") else {
+        return (Vec::new(), body);
+    };
+    let Some((front_matter, description)) = rest.split_once("\n---") else {
+        return (Vec::new(), body);
+    };
+
+    let description = description.strip_prefix('\n').unwrap_or(description);
+    (parse_front_matter(front_matter), description)
+}
+
+fn parse_front_matter(front_matter: &str) -> Vec<(String, String)> {
+    front_matter
+        .lines()
+        .filter_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            let key = key.trim();
+            if key.is_empty() {
+                return None;
+            }
+            Some((key.to_string(), value.trim().to_string()))
+        })
+        .collect()
+}
+
+fn field_value(fields: &[(String, String)], key: &str) -> Option<String> {
+    fields
+        .iter()
+        .find(|(existing_key, _)| existing_key == key)
+        .map(|(_, value)| value.to_string())
+}
+
+fn ensure_field(fields: &mut Vec<(String, String)>, key: &str, value: &str) {
+    if field_value(fields, key).is_none() {
+        fields.push((key.to_string(), value.to_string()));
+    }
+}
+
+fn upsert_field(fields: &mut Vec<(String, String)>, key: &str, value: &str) {
+    if let Some((_, existing_value)) = fields
+        .iter_mut()
+        .find(|(existing_key, _)| existing_key == key)
+    {
+        *existing_value = value.to_string();
+    } else {
+        fields.push((key.to_string(), value.to_string()));
+    }
 }
 
 fn ensure_maildir(mail_home: &Path) -> Result<(), String> {
@@ -937,5 +1014,41 @@ mod tests {
         assert_eq!(resolve_message_path(&mail_home, &id).unwrap(), path);
 
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn canonicalizes_plain_task_bodies() {
+        let from = MailAddress::parse("amy@sample-pod.orqa").unwrap();
+        let to = MailAddress::parse("bob-jones@sample-pod.orqa").unwrap();
+        let task = canonical_task_body(&from, &to, Some("update-settings"), "Do the thing.");
+
+        assert!(task.starts_with("---\n"));
+        assert!(task.contains("from: amy@sample-pod.orqa\n"));
+        assert!(task.contains("to: bob-jones@sample-pod.orqa\n"));
+        assert!(task.contains("title: update-settings\n"));
+        assert!(task.contains("priority: normal\n"));
+        assert!(task.contains("status: open\n"));
+        assert!(task.contains("kind: need\n"));
+        assert!(task.contains("depends_on: []\n"));
+        assert!(task.ends_with("Do the thing.\n"));
+    }
+
+    #[test]
+    fn preserves_and_fills_task_front_matter() {
+        let from = MailAddress::parse("amy@sample-pod.orqa").unwrap();
+        let to = MailAddress::parse("bob-jones@sample-pod.orqa").unwrap();
+        let task = canonical_task_body(
+            &from,
+            &to,
+            None,
+            "---\ntitle: supplied-title\npriority: high\ncustom: keep-me\n---\n\nDetails.",
+        );
+
+        assert!(task.contains("title: supplied-title\n"));
+        assert!(task.contains("priority: high\n"));
+        assert!(task.contains("custom: keep-me\n"));
+        assert!(task.contains("status: open\n"));
+        assert!(task.contains("kind: need\n"));
+        assert!(task.ends_with("Details.\n"));
     }
 }

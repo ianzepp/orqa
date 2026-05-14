@@ -215,6 +215,63 @@ That task is delivered to:
 ORQA_HOME/pods/sample-pod/agents/bob-jones/tasks/new/
 ```
 
+Task bodies are Markdown documents with YAML front matter. Agents may provide a
+complete front matter block, or they may provide plain Markdown and let `orqa`
+fill in the canonical metadata.
+
+Required task properties are:
+
+```yaml
+from: amy@sample-pod.orqa
+to: bob-jones@sample-pod.orqa
+title: update-settings
+priority: normal
+status: open
+kind: need
+depends_on: []
+```
+
+`kind` is either `need` or `want`. `depends_on` is a lightweight dependency list
+for related task ids or names. Extra front matter properties are preserved.
+
+For example, plain Markdown:
+
+```sh
+orqa task send --to bob-jones --title update-settings "please update the settings"
+```
+
+is stored as:
+
+```markdown
+---
+from: amy@sample-pod.orqa
+to: bob-jones@sample-pod.orqa
+title: update-settings
+priority: normal
+status: open
+kind: need
+depends_on: []
+---
+
+please update the settings
+```
+
+An agent can also send a fuller task document:
+
+```sh
+cat <<'TASK' | orqa task send --to bob-jones
+---
+title: update-settings
+priority: high
+status: blocked
+kind: need
+depends_on: [choose-config-path]
+---
+
+Update the settings after the config path is decided.
+TASK
+```
+
 Open tasks in `tasks/new` are wake signals, just like unread mail. When the
 assignee finishes a task, it can mark the task done:
 
@@ -367,6 +424,7 @@ Assigns a pod-local task.
 ```sh
 orqa task send --from amy@sample-pod.orqa --to bob-jones@sample-pod.orqa --title update-settings "please do this"
 orqa task send --to bob-jones --title update-settings "please do this"
+cat task.md | orqa task send --to bob-jones
 ```
 
 If no task body is provided as an argument, `orqa` reads the body from stdin:
@@ -374,6 +432,10 @@ If no task body is provided as an argument, `orqa` reads the body from stdin:
 ```sh
 cat task.md | orqa task send --to bob-jones --title update-settings
 ```
+
+Task bodies are normalized into Markdown with YAML front matter. If `--title` is
+omitted, `orqa` uses `title:` from the provided front matter or falls back to
+`(untitled task)`.
 
 ### `orqa task list`
 
