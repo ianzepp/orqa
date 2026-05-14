@@ -194,6 +194,28 @@ The lock records the child process PID. If the lock exists and the PID is still
 alive, another wake scan skips that fin. If the PID is gone, `orqa` treats the
 lock as stale, removes it, and the fin can run again.
 
+Pods and fins can also be put to sleep manually:
+
+```sh
+orqa pod sleep sample-pod
+orqa fin sleep sample-pod amy
+```
+
+Sleeping pods and fins are skipped by the wake loop. Clear sleep state with an
+explicit forced wake:
+
+```sh
+orqa pod wake sample-pod --force
+orqa fin wake sample-pod amy --force
+```
+
+Use `loop --force` to run one wake scan while ignoring sleep markers without
+removing them:
+
+```sh
+orqa loop sample-pod --force
+```
+
 ## Mail
 
 Fins communicate through pod-local Maildir inboxes.
@@ -383,6 +405,23 @@ Prints the filesystem path for a pod.
 orqa pod home sample-pod
 ```
 
+### `orqa pod sleep <pod>`
+
+Writes a pod-level sleep marker. The wake loop skips the whole pod while this
+marker exists.
+
+```sh
+orqa pod sleep sample-pod
+```
+
+### `orqa pod wake <pod> --force`
+
+Clears a pod-level sleep marker.
+
+```sh
+orqa pod wake sample-pod --force
+```
+
 ### `orqa fin create <pod> <fin>`
 
 Creates a fin home directory, its `.codex` directory, its Maildir inbox, and
@@ -398,6 +437,23 @@ Prints the filesystem path for a fin.
 
 ```sh
 orqa fin home sample-pod amy
+```
+
+### `orqa fin sleep <pod> <fin>`
+
+Writes a fin-level sleep marker. The wake loop skips that fin while this marker
+exists.
+
+```sh
+orqa fin sleep sample-pod amy
+```
+
+### `orqa fin wake <pod> <fin> --force`
+
+Clears a fin-level sleep marker.
+
+```sh
+orqa fin wake sample-pod amy --force
 ```
 
 ### `orqa fin run <pod> <fin>`
@@ -589,11 +645,14 @@ launched through the configured framework.
 ```sh
 orqa loop sample-pod
 orqa loop sample-pod --framework codex -- "handle your open Orqa mail and tasks"
+orqa loop sample-pod --force
 ```
 
 For each wakeable fin, `orqa loop` creates `run.lock` with the spawned process
 PID. Later scans skip that fin while the PID is alive. Stale locks are removed
 when the PID no longer exists.
+
+Sleeping pods and fins are skipped unless `--force` is used.
 
 ## Status
 

@@ -55,6 +55,10 @@ enum PodSubcommand {
     Create(SlugArgs),
     /// Print the home directory for a pod.
     Home(SlugArgs),
+    /// Pause all wake-loop runs for a pod.
+    Sleep(SlugArgs),
+    /// Clear a pod sleep marker.
+    Wake(PodWakeArgs),
 }
 
 #[derive(Debug, Args)]
@@ -69,6 +73,10 @@ enum FinSubcommand {
     Create(FinRefArgs),
     /// Print the home directory for a fin.
     Home(FinRefArgs),
+    /// Pause wake-loop runs for a fin.
+    Sleep(FinRefArgs),
+    /// Clear a fin sleep marker.
+    Wake(FinWakeArgs),
     /// Run a fin through the configured framework.
     Run(RunArgs),
 }
@@ -123,6 +131,9 @@ enum TaskSubcommand {
 struct LoopArgs {
     /// Pod slug.
     pod: String,
+    /// Ignore pod and fin sleep markers for this scan.
+    #[arg(long)]
+    force: bool,
     /// Framework executable.
     #[arg(long, default_value = "codex")]
     framework: OsString,
@@ -143,6 +154,26 @@ struct FinRefArgs {
     pod: String,
     /// Fin slug inside the pod.
     fin: String,
+}
+
+#[derive(Debug, Args)]
+struct PodWakeArgs {
+    /// Pod slug.
+    slug: String,
+    /// Required to clear sleep state.
+    #[arg(long)]
+    force: bool,
+}
+
+#[derive(Debug, Args)]
+struct FinWakeArgs {
+    /// Pod slug.
+    pod: String,
+    /// Fin slug inside the pod.
+    fin: String,
+    /// Required to clear sleep state.
+    #[arg(long)]
+    force: bool,
 }
 
 #[derive(Debug, Args)]
@@ -299,6 +330,21 @@ fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
             println!("{}", orqa.pod_home(&pod).display());
             Ok(())
         }
+        PodSubcommand::Sleep(args) => {
+            let pod = PodRef::new(&args.slug)?;
+            write_sleep_marker(&orqa.pod_sleep_path(&pod))?;
+            println!("sleep {}", pod.slug);
+            Ok(())
+        }
+        PodSubcommand::Wake(args) => {
+            if !args.force {
+                return Err("pod wake requires --force".to_string());
+            }
+            let pod = PodRef::new(&args.slug)?;
+            remove_sleep_marker(&orqa.pod_sleep_path(&pod))?;
+            println!("wake {}", pod.slug);
+            Ok(())
+        }
     }
 }
 
@@ -320,6 +366,21 @@ fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
         FinSubcommand::Home(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
             println!("{}", orqa.fin_home(&fin).display());
+            Ok(())
+        }
+        FinSubcommand::Sleep(args) => {
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            write_sleep_marker(&orqa.fin_sleep_path(&fin))?;
+            println!("sleep {}", fin.label());
+            Ok(())
+        }
+        FinSubcommand::Wake(args) => {
+            if !args.force {
+                return Err("fin wake requires --force".to_string());
+            }
+            let fin = FinRef::new(&args.pod, &args.fin)?;
+            remove_sleep_marker(&orqa.fin_sleep_path(&fin))?;
+            println!("wake {}", fin.label());
             Ok(())
         }
         FinSubcommand::Run(args) => run_fin(orqa, args),
@@ -359,6 +420,11 @@ fn task(orqa: &Orqa, command: TaskCommand) -> Result<(), String> {
 
 fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
     let pod = PodRef::new(&args.pod)?;
+    if !args.force && orqa.pod_sleep_path(&pod).exists() {
+        println!("skip {} sleeping=true", pod.slug);
+        return Ok(());
+    }
+
     let fins_dir = orqa.pod_home(&pod).join("fins");
     let fins = fs::read_dir(&fins_dir).map_err(|error| {
         format!(
@@ -375,6 +441,11 @@ fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
 
         let fin_slug = entry.file_name().to_string_lossy().to_string();
         let fin = FinRef::new(&pod.slug, &fin_slug)?;
+        if !args.force && orqa.fin_sleep_path(&fin).exists() {
+            println!("skip {} sleeping=true", fin.label());
+            continue;
+        }
+
         let unread_mail = unread_count(&orqa.mail_home(&fin))?;
         let open_tasks = unread_count(&orqa.task_home(&fin))?;
 
@@ -1213,6 +1284,30 @@ fn write_if_missing(path: &Path, contents: &str) -> Result<(), String> {
         .map_err(|error| format!("failed to write {}: {error}", path.display()))
 }
 
+fn write_sleep_marker(path: &Path) -> Result<(), String> {
+    let parent = path
+        .parent()
+        .ok_or_else(|| format!("sleep marker path has no parent: {}", path.display()))?;
+    fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "failed to create sleep marker directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    fs::write(path, "sleeping=true\n")
+        .map_err(|error| format!("failed to write sleep marker {}: {error}", path.display()))
+}
+
+fn remove_sleep_marker(path: &Path) -> Result<(), String> {
+    if path.exists() {
+        fs::remove_file(path).map_err(|error| {
+            format!("failed to remove sleep marker {}: {error}", path.display())
+        })?;
+    }
+
+    Ok(())
+}
+
 fn pod_config_template(pod: &PodRef) -> String {
     format!(
         r#"# Orqa pod configuration.
@@ -1320,6 +1415,14 @@ impl Orqa {
 
     fn lock_path(&self, fin: &FinRef) -> PathBuf {
         self.fin_home(fin).join("run.lock")
+    }
+
+    fn pod_sleep_path(&self, pod: &PodRef) -> PathBuf {
+        self.pod_home(pod).join("sleep.lock")
+    }
+
+    fn fin_sleep_path(&self, fin: &FinRef) -> PathBuf {
+        self.fin_home(fin).join("sleep.lock")
     }
 }
 
@@ -1545,6 +1648,19 @@ mod tests {
     fn parses_lock_pid() {
         assert_eq!(lock_pid("pid=123\nfin=amy\n"), Some(123));
         assert_eq!(lock_pid("fin=amy\n"), None);
+    }
+
+    #[test]
+    fn writes_and_removes_sleep_markers() {
+        let root = env::temp_dir().join(format!("orqa-test-{}", unique_mail_name().unwrap()));
+        let marker = root.join("sleep.lock");
+
+        write_sleep_marker(&marker).unwrap();
+        assert!(marker.exists());
+        remove_sleep_marker(&marker).unwrap();
+        assert!(!marker.exists());
+
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
