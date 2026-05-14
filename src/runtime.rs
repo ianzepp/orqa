@@ -395,7 +395,7 @@ pub(crate) fn exec_fin_logged(
         lock.remove()?;
     }
 
-    ensure_codex_home(orqa, fin)?;
+    ensure_runtime_homes(orqa, fin)?;
     let run = RunFiles::create(
         orqa,
         fin,
@@ -478,7 +478,7 @@ fn fin_chat_interactive(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> 
         lock.remove()?;
     }
 
-    ensure_codex_home(orqa, fin)?;
+    ensure_runtime_homes(orqa, fin)?;
     let run = RunFiles::create(
         orqa,
         fin,
@@ -509,14 +509,18 @@ fn fin_chat_interactive(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> 
     }
 }
 
-fn ensure_codex_home(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
-    let codex_home = orqa.fin_home(fin).join(".codex");
-    fs::create_dir_all(&codex_home).map_err(|error| {
-        format!(
-            "failed to create fin codex home {}: {error}",
-            codex_home.display()
-        )
-    })
+fn ensure_runtime_homes(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
+    let fin_home = orqa.fin_home(fin);
+    for runtime_dir in [".codex", ".hermes", ".pi/agent", ".pi/sessions"] {
+        let path = fin_home.join(runtime_dir);
+        fs::create_dir_all(&path).map_err(|error| {
+            format!(
+                "failed to create fin runtime directory {}: {error}",
+                path.display()
+            )
+        })?;
+    }
+    Ok(())
 }
 
 fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCommand {
@@ -526,6 +530,8 @@ fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCo
         .env("ORQA_POD", &fin.pod)
         .env("ORQA_FIN", &fin.fin)
         .env("CODEX_HOME", orqa.fin_home(fin).join(".codex"))
+        .env("HERMES_HOME", orqa.fin_home(fin).join(".hermes"))
+        .env("PI_CODING_AGENT_DIR", orqa.fin_home(fin).join(".pi/agent"))
         .args(&command.args);
     process
 }

@@ -57,10 +57,12 @@ ORQA_HOME/
       pod.txt
       pod.toml
       fins/
-        amy/
+        planner/
           fin.txt
           fin.toml
-          .codex/
+          .codex/       # Codex state
+          .hermes/      # Hermes state
+          .pi/          # Pi config and sessions
           mail/
             cur/
             new/
@@ -69,10 +71,12 @@ ORQA_HOME/
             cur/
             new/
             tmp/
-        bob-jones/
+        builder/
           fin.txt
           fin.toml
-          .codex/
+          .codex/       # Codex state
+          .hermes/      # Hermes state
+          .pi/          # Pi config and sessions
           mail/
             cur/
             new/
@@ -97,7 +101,7 @@ ORQA_HOME/pods/<pod>/fins/<fin>/fin.toml
 
 `pod.toml` owns backend definitions. This keeps command formats and framework
 policy in one place for the whole pod. `pod create` enables Codex by default
-and writes commented examples for OpenCode, Pi, and a custom runner:
+and writes commented examples for OpenCode, Hermes, Pi, and a custom runner:
 
 ```toml
 # Orqa pod configuration.
@@ -110,8 +114,8 @@ default_backend = "codex"
 [backends.codex]
 enabled = true
 command = "codex"
-exec_args = ["{prompt}"]
-chat_args = []
+exec_args = ["exec", "--model", "{model}", "{prompt}"]
+chat_args = ["--model", "{model}"]
 
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
@@ -124,17 +128,22 @@ model = "gpt-5.3-codex"
 # exec_args = ["run", "--model", "{model}", "{prompt}"]
 # chat_args = ["--model", "{model}"]
 
+# [backends.hermes]
+# enabled = true
+# command = "hermes"
+# exec_args = ["--model", "{model}", "--oneshot", "{prompt}"]
+# chat_args = ["chat", "--model", "{model}"]
+
 # [backends.pi]
 # enabled = true
 # command = "pi"
 # exec_args = [
-#     "exec",
-#     "--home", "{fin_home}",
-#     "--pod", "{pod}",
-#     "--fin", "{fin}",
+#     "--model", "{model}",
+#     "--session-dir", "{fin_home}/.pi/sessions",
+#     "--print",
 #     "{prompt}",
 # ]
-# chat_args = ["chat", "--home", "{fin_home}", "--pod", "{pod}", "--fin", "{fin}"]
+# chat_args = ["--model", "{model}", "--session-dir", "{fin_home}/.pi/sessions"]
 ```
 
 `fin.toml` records per-fin backend values. A fin inherits the pod default
@@ -142,7 +151,7 @@ backend unless `fin.backend` is uncommented:
 
 ```toml
 [fin]
-slug = "amy"
+slug = "planner"
 # backend = "codex"
 
 [backend]
@@ -152,6 +161,23 @@ model = "gpt-5.3-codex"
 Backend argument lists are stored as argv arrays instead of shell strings. That
 keeps quoting behavior predictable when prompts or paths contain spaces.
 
+The generated examples follow the installed CLI shapes on this machine:
+
+```text
+Backend   exec_args shape                    chat_args shape
+Codex     codex exec ... <prompt>            codex ...
+OpenCode  opencode run ... <prompt>          opencode ...
+Hermes    hermes --oneshot <prompt>          hermes chat ...
+Pi        pi --print <prompt>                pi ...
+```
+
+Runtime state is fin-local where the backend exposes a simple home variable:
+Codex uses `.codex/` through `CODEX_HOME`, Hermes uses `.hermes/` through
+`HERMES_HOME`, and Pi uses `.pi/agent/` through `PI_CODING_AGENT_DIR` plus
+`.pi/sessions/` through the generated `--session-dir` args. OpenCode currently
+uses its normal user-level config and data locations unless you customize its
+backend definition.
+
 The config files are seeded by `pod create` and `fin create`. `orqa fin exec`
 and `orqa loop` use them when `--framework` is omitted. `--framework` remains
 an explicit command override for quick smoke tests and one-off runs.
@@ -160,22 +186,22 @@ an explicit command override for quick smoke tests and one-off runs.
 
 ```sh
 orqa pod create sample-pod
-orqa fin create sample-pod amy
-orqa fin create sample-pod bob-jones
+orqa fin create sample-pod planner
+orqa fin create sample-pod builder
 ```
 
 Send a fully qualified pod-local message:
 
 ```sh
 orqa mail send \
-  --from amy@sample-pod.orqa \
-  --to bob-jones@sample-pod.orqa \
+  --from planner@sample-pod.orqa \
+  --to builder@sample-pod.orqa \
   --subject hello \
   "wake up"
-ORQA_POD=sample-pod ORQA_FIN=bob-jones orqa mail list
-ORQA_POD=sample-pod ORQA_FIN=bob-jones orqa mail read <message-id>
-ORQA_POD=sample-pod ORQA_FIN=bob-jones orqa mail done <message-id>
-ORQA_POD=sample-pod ORQA_FIN=amy orqa task send --to bob-jones --title update-settings "please do this"
+ORQA_POD=sample-pod ORQA_FIN=builder orqa mail list
+ORQA_POD=sample-pod ORQA_FIN=builder orqa mail read <message-id>
+ORQA_POD=sample-pod ORQA_FIN=builder orqa mail done <message-id>
+ORQA_POD=sample-pod ORQA_FIN=planner orqa task send --to builder --title update-settings "please do this"
 ```
 
 Run one wake scan for the pod:
@@ -194,7 +220,7 @@ orqa loop --dry-run sample-pod
 Run a fin directly through the configured backend:
 
 ```sh
-orqa fin exec sample-pod amy -- --help
+orqa fin exec sample-pod planner -- --help
 ```
 
 Everything can run against a temporary or alternate root with `--home`:
@@ -239,19 +265,19 @@ cargo test
 `fin.backend`.
 
 ```sh
-orqa fin exec sample-pod amy -- "work on the next task"
+orqa fin exec sample-pod planner -- "work on the next task"
 ```
 
 Use `--framework` to bypass config and run another executable:
 
 ```sh
-orqa fin exec --framework /bin/echo sample-pod amy -- "hello"
+orqa fin exec --framework /bin/echo sample-pod planner -- "hello"
 ```
 
 Start an interactive backend chat as a fin with the backend's `chat_args`:
 
 ```sh
-orqa fin chat sample-pod amy
+orqa fin chat sample-pod planner
 ```
 
 `fin chat` attaches stdin, stdout, and stderr directly to the terminal while
@@ -264,11 +290,15 @@ ORQA_HOME=<home>
 ORQA_POD=<pod-slug>
 ORQA_FIN=<fin-slug>
 CODEX_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.codex
+HERMES_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.hermes
+PI_CODING_AGENT_DIR=<home>/pods/<pod-slug>/fins/<fin-slug>/.pi/agent
 ```
 
-That lets Codex use the fin-specific `.codex` directory as its config home.
-It also gives commands executed by the fin enough context to use short mail
-addresses.
+The `ORQA_*` variables give commands executed by the fin enough context to use
+short mail addresses. Runtime-specific home variables let supported backends
+keep their own state under the fin home instead of sharing a global user
+profile. Backends that do not use one of these variables can still reference
+`{fin_home}` from `exec_args` or `chat_args`.
 
 Direct fin runs and loop-launched runs use a per-fin lock file:
 
@@ -284,7 +314,7 @@ Pods and fins can also be put to sleep manually:
 
 ```sh
 orqa pod sleep sample-pod
-orqa fin sleep sample-pod amy
+orqa fin sleep sample-pod planner
 ```
 
 Sleeping pods and fins are skipped by the wake loop. Clear sleep state with an
@@ -292,7 +322,7 @@ explicit forced wake:
 
 ```sh
 orqa pod wake sample-pod --force
-orqa fin wake sample-pod amy --force
+orqa fin wake sample-pod planner --force
 ```
 
 Use `loop --force` to run one wake scan while ignoring sleep markers without
@@ -309,7 +339,7 @@ the latest recorded run:
 
 ```sh
 orqa pod status sample-pod
-orqa fin status sample-pod amy
+orqa fin status sample-pod planner
 ```
 
 Each direct or loop-launched fin exec records logs and status under the fin:
@@ -326,18 +356,18 @@ ORQA_HOME/pods/<pod>/fins/<fin>/runs/<run-id>/
 Inspect run history and logs:
 
 ```sh
-orqa fin runs sample-pod amy
-orqa fin run-status sample-pod amy
-orqa fin run-log sample-pod amy
+orqa fin runs sample-pod planner
+orqa fin run-status sample-pod planner
+orqa fin run-log sample-pod planner
 ```
 
 `fin tail` prints the latest run output for one fin. `pod tail` prints the
 latest run output for every fin in a pod, or one fin with `--fin`:
 
 ```sh
-orqa fin tail sample-pod amy
+orqa fin tail sample-pod planner
 orqa pod tail sample-pod
-orqa pod tail sample-pod --fin amy --follow
+orqa pod tail sample-pod --fin planner --follow
 ```
 
 ## Mail
@@ -354,8 +384,8 @@ For example, this message:
 
 ```sh
 orqa mail send \
-  --from amy@sample-pod.orqa \
-  --to bob-jones@sample-pod.orqa \
+  --from planner@sample-pod.orqa \
+  --to builder@sample-pod.orqa \
   --subject update-settings \
   "please update the settings"
 ```
@@ -363,14 +393,14 @@ orqa mail send \
 is delivered to:
 
 ```text
-ORQA_HOME/pods/sample-pod/fins/bob-jones/mail/new/
+ORQA_HOME/pods/sample-pod/fins/builder/mail/new/
 ```
 
 Unread messages in `mail/new` are wake signals. `orqa loop sample-pod` scans
 fin inboxes and prints fins that should run:
 
 ```text
-wake sample-pod/bob-jones pid=12345 unread_mail=1 open_tasks=0
+wake sample-pod/builder pid=12345 unread_mail=1 open_tasks=0
 ```
 
 When a fin finishes handling a message, it can mark that message done. This
@@ -392,14 +422,14 @@ Inside an Orqa-launched fin process, `ORQA_POD` and `ORQA_FIN` are already
 set. In that context, a fin can send mail with just the recipient slug:
 
 ```sh
-orqa mail send --to bob-jones --subject hello "wake up"
+orqa mail send --to builder --subject hello "wake up"
 ```
 
 That resolves to:
 
 ```text
-from: amy@sample-pod.orqa
-to:   bob-jones@sample-pod.orqa
+from: planner@sample-pod.orqa
+to:   builder@sample-pod.orqa
 ```
 
 Outside a fin context, either use fully qualified addresses or provide a
@@ -407,8 +437,8 @@ fully qualified sender so the pod can be inferred:
 
 ```sh
 orqa mail send \
-  --from amy@sample-pod.orqa \
-  --to bob-jones \
+  --from planner@sample-pod.orqa \
+  --to builder \
   --subject hello \
   "wake up"
 ```
@@ -425,8 +455,8 @@ work assignment:
 
 ```sh
 orqa task send \
-  --from amy@sample-pod.orqa \
-  --to bob-jones@sample-pod.orqa \
+  --from planner@sample-pod.orqa \
+  --to builder@sample-pod.orqa \
   --title update-settings \
   "please update the settings"
 ```
@@ -434,7 +464,7 @@ orqa task send \
 That task is delivered to:
 
 ```text
-ORQA_HOME/pods/sample-pod/fins/bob-jones/tasks/new/
+ORQA_HOME/pods/sample-pod/fins/builder/tasks/new/
 ```
 
 Task bodies are Markdown documents with YAML front matter. Fins may provide a
@@ -444,8 +474,8 @@ fill in the canonical metadata.
 Required task properties are:
 
 ```yaml
-from: amy@sample-pod.orqa
-to: bob-jones@sample-pod.orqa
+from: planner@sample-pod.orqa
+to: builder@sample-pod.orqa
 title: update-settings
 priority: normal
 status: open
@@ -459,15 +489,15 @@ for related task ids or names. Extra front matter properties are preserved.
 For example, plain Markdown:
 
 ```sh
-orqa task send --to bob-jones --title update-settings "please update the settings"
+orqa task send --to builder --title update-settings "please update the settings"
 ```
 
 is stored as:
 
 ```markdown
 ---
-from: amy@sample-pod.orqa
-to: bob-jones@sample-pod.orqa
+from: planner@sample-pod.orqa
+to: builder@sample-pod.orqa
 title: update-settings
 priority: normal
 status: open
@@ -481,7 +511,7 @@ please update the settings
 A fin can also send a fuller task document:
 
 ```sh
-cat <<'TASK' | orqa task send --to bob-jones
+cat <<'TASK' | orqa task send --to builder
 ---
 title: update-settings
 priority: high
@@ -565,16 +595,16 @@ orqa fin exec [--framework <framework>] <pod> <fin> [-- <args>...]
 orqa fin chat [--framework <framework>] <pod> <fin> [-- <args>...]
 ```
 
-`fin create` creates the fin home, `.codex/`, `mail/`, `tasks/`, `fin.txt`,
-and `fin.toml`. `fin list` prints fin slugs for the provided pod, or for
-`ORQA_POD` when the pod argument is omitted. `fin exec` launches the configured
-backend unless `--framework` is provided, and passes any arguments after `--` as
-the `{prompt}` template value:
+`fin create` creates the fin home, runtime state directories such as `.codex/`,
+`.hermes/`, and `.pi/`, `mail/`, `tasks/`, `fin.txt`, and `fin.toml`. `fin list`
+prints fin slugs for the provided pod, or for `ORQA_POD` when the pod argument
+is omitted. `fin exec` launches the configured backend unless `--framework` is
+provided, and passes any arguments after `--` as the `{prompt}` template value:
 
 ```sh
-orqa fin exec sample-pod amy -- "work on the next task"
-orqa fin exec --framework /bin/echo sample-pod amy -- "hello"
-orqa fin chat sample-pod amy
+orqa fin exec sample-pod planner -- "work on the next task"
+orqa fin exec --framework /bin/echo sample-pod planner -- "hello"
+orqa fin chat sample-pod planner
 ```
 
 `fin wake` requires `--force` before it removes a fin-level sleep marker.
@@ -596,8 +626,8 @@ orqa mail unread <pod> <fin>
 omitted, `orqa` reads the message body from stdin:
 
 ```sh
-orqa mail send --from amy@sample-pod.orqa --to bob-jones@sample-pod.orqa "hello"
-cat message.txt | orqa mail send --to bob-jones --subject hello
+orqa mail send --from planner@sample-pod.orqa --to builder@sample-pod.orqa "hello"
+cat message.txt | orqa mail send --to builder --subject hello
 ```
 
 `mail list` lists unread messages from `mail/new`; `--all` also includes done
@@ -639,8 +669,8 @@ normal option list:
 orqa task list --status open
 orqa task list --priority high
 orqa task list --kind need
-orqa task list --field owner=amy
-orqa task list --status blocked --field owner=amy
+orqa task list --field owner=planner
+orqa task list --status blocked --field owner=planner
 ```
 
 Sort keys may be front matter keys, `state`, or `id`. Known priorities sort by

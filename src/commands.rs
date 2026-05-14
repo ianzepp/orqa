@@ -91,9 +91,11 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
         FinSubcommand::Create(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
             let home = orqa.fin_home(&fin);
-            fs::create_dir_all(home.join(".codex")).map_err(|error| {
-                format!("failed to create fin directory {}: {error}", home.display())
-            })?;
+            for runtime_dir in [".codex", ".hermes", ".pi/agent", ".pi/sessions"] {
+                fs::create_dir_all(home.join(runtime_dir)).map_err(|error| {
+                    format!("failed to create fin directory {}: {error}", home.display())
+                })?;
+            }
             ensure_maildir(&orqa.mail_home(&fin))?;
             ensure_maildir(&orqa.task_home(&fin))?;
             write_if_missing(&home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;

@@ -21,14 +21,13 @@ pub(crate) fn pod_config_template(pod: &PodRef) -> String {
 slug = "{slug}"
 default_backend = "codex"
 
-# Codex is enabled by default. Adjust command/exec_args/chat_args here if the Codex CLI shape
-# changes on this machine. Empty chat_args means "start command with no argv" for
-# an interactive terminal session.
+# Codex is enabled by default. Adjust command/exec_args/chat_args here if the
+# Codex CLI shape changes on this machine.
 [backends.codex]
 enabled = true
 command = "codex"
-exec_args = ["{{prompt}}"]
-chat_args = []
+exec_args = ["exec", "--model", "{{model}}", "{{prompt}}"]
+chat_args = ["--model", "{{model}}"]
 
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
@@ -42,24 +41,33 @@ model = "gpt-5.3-codex"
 # chat_args = ["--model", "{{model}}"]
 #
 # [backends.opencode.defaults]
-# model = "default"
+# model = "provider/model"
+
+# [backends.hermes]
+# enabled = true
+# command = "hermes"
+# exec_args = ["--model", "{{model}}", "--oneshot", "{{prompt}}"]
+# chat_args = ["chat", "--model", "{{model}}"]
+#
+# [backends.hermes.defaults]
+# model = "anthropic/claude-sonnet-4.6"
 
 # [backends.pi]
 # enabled = true
 # command = "pi"
 # exec_args = [
-#     "exec",
-#     "--home", "{{fin_home}}",
-#     "--pod", "{{pod}}",
-#     "--fin", "{{fin}}",
+#     "--model", "{{model}}",
+#     "--session-dir", "{{fin_home}}/.pi/sessions",
+#     "--print",
 #     "{{prompt}}",
 # ]
 # chat_args = [
-#     "chat",
-#     "--home", "{{fin_home}}",
-#     "--pod", "{{pod}}",
-#     "--fin", "{{fin}}",
+#     "--model", "{{model}}",
+#     "--session-dir", "{{fin_home}}/.pi/sessions",
 # ]
+#
+# [backends.pi.defaults]
+# model = "provider/model"
 
 # [backends.custom]
 # enabled = true

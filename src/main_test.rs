@@ -171,8 +171,12 @@ fn pod_config_template_includes_commented_backend_examples() {
     assert!(toml.contains("slug = \"sample-pod\""));
     assert!(toml.contains("[backends.codex]"));
     assert!(toml.contains("command = \"codex\""));
+    assert!(toml.contains("exec_args = [\"exec\", \"--model\", \"{model}\", \"{prompt}\"]"));
     assert!(toml.contains("# [backends.opencode]"));
+    assert!(toml.contains("# [backends.hermes]"));
+    assert!(toml.contains("# exec_args = [\"--model\", \"{model}\", \"--oneshot\", \"{prompt}\"]"));
     assert!(toml.contains("# [backends.pi]"));
+    assert!(toml.contains("#     \"--session-dir\", \"{fin_home}/.pi/sessions\","));
     assert!(toml.contains("# [backends.custom]"));
 }
 
