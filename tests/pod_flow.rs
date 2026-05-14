@@ -172,6 +172,34 @@ fn fin_create_and_role_commands_manage_role_agents_injection() {
 }
 
 #[test]
+fn fin_create_symlinks_existing_codex_auth() {
+    let root = temp_root();
+    let user_home = root.join("user-home");
+    let user_codex_home = user_home.join(".codex");
+    fs::create_dir_all(&user_codex_home).unwrap();
+    let user_auth = user_codex_home.join("auth.json");
+    fs::write(&user_auth, "{}\n").unwrap();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    let output = command(&root, ["fin", "create", "test-pod", "builder"])
+        .env("HOME", &user_home)
+        .env_remove("CODEX_HOME")
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "orqa failed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+
+    let fin_auth = root.join("pods/test-pod/fins/builder/.codex/auth.json");
+    assert_eq!(fs::read_link(fin_auth).unwrap(), user_auth);
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn fin_exec_runs_from_fin_home_for_agents_discovery() {
     let root = temp_root();
 

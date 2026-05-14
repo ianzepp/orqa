@@ -14,6 +14,7 @@ use crate::{
     mailbox::unread_count,
     model::{FinRef, Orqa, PodRef},
     runs::RunFiles,
+    runtime_home::ensure_fin_runtime_homes,
     status::print_json,
 };
 
@@ -491,17 +492,7 @@ fn fin_chat_interactive(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> 
 }
 
 fn ensure_runtime_homes(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
-    let fin_home = orqa.fin_home(fin);
-    for runtime_dir in [".codex", ".hermes", ".pi/agent", ".pi/sessions"] {
-        let path = fin_home.join(runtime_dir);
-        fs::create_dir_all(&path).map_err(|error| {
-            format!(
-                "failed to create fin runtime directory {}: {error}",
-                path.display()
-            )
-        })?;
-    }
-    Ok(())
+    ensure_fin_runtime_homes(orqa, fin)
 }
 
 fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCommand {

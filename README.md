@@ -184,6 +184,11 @@ Codex uses `.codex/` through `CODEX_HOME`, Hermes uses `.hermes/` through
 uses its normal user-level config and data locations unless you customize its
 backend definition.
 
+When `~/.codex/auth.json` exists, Orqa symlinks it into a fin's `.codex/`
+directory as `auth.json` if the fin does not already have one. This lets Codex
+reuse the user's existing login while keeping other Codex state under the fin
+home.
+
 The config files are seeded by `pod create` and `fin create`. `orqa fin exec`
 and `orqa loop` use them to choose and launch each fin's backend.
 
@@ -303,6 +308,10 @@ short mail addresses. Runtime-specific home variables let supported backends
 keep their own state under the fin home instead of sharing a global user
 profile. Backends that do not use one of these variables can still reference
 `{fin_home}` from `exec_args` or `chat_args`.
+
+For Codex, Orqa automatically links the user's existing `~/.codex/auth.json`
+into the fin-local `.codex/auth.json` when the source exists and the fin does
+not already have an auth file.
 
 Direct fin runs and loop-launched runs use a per-fin lock file:
 

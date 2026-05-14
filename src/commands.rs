@@ -21,6 +21,7 @@ use crate::{
     model::{FinRef, Orqa, PodRef},
     runs::{list_runs, read_run_logs, read_run_record_for, tail_fin, tail_pod},
     runtime::{chat_fin, exec_fin, supervise_fin},
+    runtime_home::ensure_fin_runtime_homes,
     status::{fin_status, pod_status, print_fin_status, print_json, print_pod_status},
 };
 
@@ -122,11 +123,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
         FinSubcommand::Create(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
             let home = orqa.fin_home(&fin);
-            for runtime_dir in [".codex", ".hermes", ".pi/agent", ".pi/sessions"] {
-                fs::create_dir_all(home.join(runtime_dir)).map_err(|error| {
-                    format!("failed to create fin directory {}: {error}", home.display())
-                })?;
-            }
+            ensure_fin_runtime_homes(orqa, &fin)?;
             let role = read_optional_markdown_source(args.role.as_deref(), DEFAULT_ROLE)?;
             ensure_maildir(&orqa.mail_home(&fin))?;
             ensure_maildir(&orqa.task_home(&fin))?;

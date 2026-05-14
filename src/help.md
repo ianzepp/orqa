@@ -151,6 +151,10 @@ short addresses. Runtime-specific home variables keep supported backend state
 under the fin home. Backends can also reference `{fin_home}` from `exec_args`
 or `chat_args`.
 
+For Codex, Orqa links the user's existing `~/.codex/auth.json` into the
+fin-local `.codex/auth.json` when the source exists and the fin does not already
+have an auth file.
+
 ## Status And Runs
 
 Inspect the current runtime state:
