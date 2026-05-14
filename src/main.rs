@@ -37,6 +37,8 @@ enum Command {
     Agent(AgentCommand),
     /// Mail helpers for pod-local agent messages.
     Mail(MailCommand),
+    /// Task helpers for pod-local work items.
+    Task(TaskCommand),
     /// Run the wake loop for a pod.
     Loop(LoopArgs),
 }
@@ -77,6 +79,12 @@ struct MailCommand {
     command: MailSubcommand,
 }
 
+#[derive(Debug, Args)]
+struct TaskCommand {
+    #[command(subcommand)]
+    command: TaskSubcommand,
+}
+
 #[derive(Debug, Subcommand)]
 enum MailSubcommand {
     /// Print the mail directory for an agent.
@@ -93,6 +101,22 @@ enum MailSubcommand {
     Delete(MailMessageArgs),
     /// List unread messages for an agent.
     Unread(AgentRefArgs),
+}
+
+#[derive(Debug, Subcommand)]
+enum TaskSubcommand {
+    /// Print the task directory for an agent.
+    Home(AgentRefArgs),
+    /// Assign a pod-local task.
+    Send(SendTaskArgs),
+    /// List tasks for an agent.
+    List(MailboxArgs),
+    /// Read a task for an agent.
+    Read(MailMessageArgs),
+    /// Mark an open task as done.
+    Done(MailMessageArgs),
+    /// Delete a task.
+    Delete(MailMessageArgs),
 }
 
 #[derive(Debug, Args)]
@@ -145,6 +169,21 @@ struct SendMailArgs {
 }
 
 #[derive(Debug, Args)]
+struct SendTaskArgs {
+    /// Sender address. Defaults to ORQA_AGENT@ORQA_POD.orqa.
+    #[arg(long)]
+    from: Option<String>,
+    /// Assignee address, such as bob-jones or bob-jones@sample-pod.orqa.
+    #[arg(long)]
+    to: String,
+    /// Task title.
+    #[arg(long)]
+    title: String,
+    /// Task body. Reads stdin when omitted.
+    body: Option<String>,
+}
+
+#[derive(Debug, Args)]
 struct MailboxArgs {
     /// Pod slug. Defaults to ORQA_POD.
     #[arg(long)]
@@ -152,7 +191,7 @@ struct MailboxArgs {
     /// Agent slug. Defaults to ORQA_AGENT.
     #[arg(long)]
     agent: Option<String>,
-    /// Include done messages from mail/cur.
+    /// Include done items from cur.
     #[arg(long)]
     all: bool,
 }
@@ -194,6 +233,7 @@ fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
         Command::Pod(command) => pod(orqa, command),
         Command::Agent(command) => agent(orqa, command),
         Command::Mail(command) => mail(orqa, command),
+        Command::Task(command) => task(orqa, command),
         Command::Loop(args) => loop_pod(orqa, args),
     }
 }
@@ -236,6 +276,7 @@ fn agent(orqa: &Orqa, command: AgentCommand) -> Result<(), String> {
                 )
             })?;
             ensure_maildir(&orqa.mail_home(&agent))?;
+            ensure_maildir(&orqa.task_home(&agent))?;
             write_if_missing(&home.join("agent.txt"), &format!("slug={}\n", agent.agent))?;
             println!("{}", home.display());
             Ok(())
@@ -265,6 +306,21 @@ fn mail(orqa: &Orqa, command: MailCommand) -> Result<(), String> {
     }
 }
 
+fn task(orqa: &Orqa, command: TaskCommand) -> Result<(), String> {
+    match command.command {
+        TaskSubcommand::Home(args) => {
+            let agent = AgentRef::new(&args.pod, &args.agent)?;
+            println!("{}", orqa.task_home(&agent).display());
+            Ok(())
+        }
+        TaskSubcommand::Send(args) => send_task(orqa, args),
+        TaskSubcommand::List(args) => list_items(orqa, args, ItemKind::Task),
+        TaskSubcommand::Read(args) => read_item(orqa, args, ItemKind::Task),
+        TaskSubcommand::Done(args) => done_item(orqa, args, ItemKind::Task),
+        TaskSubcommand::Delete(args) => delete_item(orqa, args, ItemKind::Task),
+    }
+}
+
 fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
     let pod = PodRef::new(&args.pod)?;
     let agents_dir = orqa.pod_home(&pod).join("agents");
@@ -283,10 +339,16 @@ fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
 
         let agent_slug = entry.file_name().to_string_lossy().to_string();
         let agent = AgentRef::new(&pod.slug, &agent_slug)?;
-        let unread = unread_count(&orqa.mail_home(&agent))?;
+        let unread_mail = unread_count(&orqa.mail_home(&agent))?;
+        let open_tasks = unread_count(&orqa.task_home(&agent))?;
 
-        if unread > 0 {
-            println!("wake {} unread={}", agent.label(), unread);
+        if unread_mail > 0 || open_tasks > 0 {
+            println!(
+                "wake {} unread_mail={} open_tasks={}",
+                agent.label(),
+                unread_mail,
+                open_tasks
+            );
         }
     }
 
@@ -377,25 +439,98 @@ fn unread_mail(orqa: &Orqa, args: AgentRefArgs) -> Result<(), String> {
 }
 
 fn list_mail(orqa: &Orqa, args: MailboxArgs) -> Result<(), String> {
-    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
-    let mail_home = orqa.mail_home(&agent);
+    list_items(orqa, args, ItemKind::Mail)
+}
 
-    for path in sorted_files(&mail_home.join("new"))? {
-        println!("new {} {}", message_id(&path)?, message_subject(&path)?);
+fn read_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
+    read_item(orqa, args, ItemKind::Mail)
+}
+
+fn done_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
+    done_item(orqa, args, ItemKind::Mail)
+}
+
+fn delete_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
+    delete_item(orqa, args, ItemKind::Mail)
+}
+
+fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
+    let from = resolve_sender(args.from.as_deref())?;
+    let to = resolve_address(&args.to, Some(&from.pod))?;
+
+    if from.pod != to.pod {
+        return Err(format!(
+            "cross-pod tasks are not supported: {} -> {}",
+            from.label(),
+            to.label()
+        ));
+    }
+
+    let to_agent = AgentRef::new(&to.pod, &to.agent)?;
+    let task_home = orqa.task_home(&to_agent);
+    ensure_maildir(&task_home)?;
+
+    let body = match args.body {
+        Some(body) => body,
+        None => read_stdin()?,
+    };
+
+    let task = format!(
+        "From: {}\nTo: {}\nTitle: {}\n\n{}\n",
+        from.label(),
+        to.label(),
+        args.title,
+        body
+    );
+    let path = deliver_mail(&task_home, &task)?;
+
+    println!("{}", path.display());
+    println!("queued task for {}", to_agent.label());
+    Ok(())
+}
+
+#[derive(Clone, Copy)]
+enum ItemKind {
+    Mail,
+    Task,
+}
+
+impl ItemKind {
+    fn home(self, orqa: &Orqa, agent: &AgentRef) -> PathBuf {
+        match self {
+            Self::Mail => orqa.mail_home(agent),
+            Self::Task => orqa.task_home(agent),
+        }
+    }
+
+    fn title_header(self) -> &'static str {
+        match self {
+            Self::Mail => "Subject: ",
+            Self::Task => "Title: ",
+        }
+    }
+}
+
+fn list_items(orqa: &Orqa, args: MailboxArgs, kind: ItemKind) -> Result<(), String> {
+    let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
+    let home = kind.home(orqa, &agent);
+
+    for path in sorted_files(&home.join("new"))? {
+        println!("new {} {}", message_id(&path)?, message_title(&path, kind)?);
     }
 
     if args.all {
-        for path in sorted_files(&mail_home.join("cur"))? {
-            println!("cur {} {}", message_id(&path)?, message_subject(&path)?);
+        for path in sorted_files(&home.join("cur"))? {
+            println!("cur {} {}", message_id(&path)?, message_title(&path, kind)?);
         }
     }
 
     Ok(())
 }
 
-fn read_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
+fn read_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
     let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
-    let path = resolve_message_path(&orqa.mail_home(&agent), &args.message)?;
+    let path = resolve_message_path(&kind.home(orqa, &agent), &args.message)?;
     let message = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
 
@@ -403,21 +538,21 @@ fn read_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn done_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
+fn done_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
     let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
-    let mail_home = orqa.mail_home(&agent);
-    let path = resolve_message_path(&mail_home, &args.message)?;
+    let home = kind.home(orqa, &agent);
+    let path = resolve_message_path(&home, &args.message)?;
     let id = message_id(&path)?;
 
-    if mail_state(&mail_home, &path)? == "cur" {
+    if mail_state(&home, &path)? == "cur" {
         println!("{}", path.display());
         return Ok(());
     }
 
-    let done_path = mail_home.join("cur").join(id);
+    let done_path = home.join("cur").join(id);
     fs::rename(&path, &done_path).map_err(|error| {
         format!(
-            "failed to mark message done {} -> {}: {error}",
+            "failed to mark item done {} -> {}: {error}",
             path.display(),
             done_path.display()
         )
@@ -427,12 +562,12 @@ fn done_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
     Ok(())
 }
 
-fn delete_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
+fn delete_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
     let agent = resolve_agent(args.pod.as_deref(), args.agent.as_deref())?;
-    let path = resolve_message_path(&orqa.mail_home(&agent), &args.message)?;
+    let path = resolve_message_path(&kind.home(orqa, &agent), &args.message)?;
 
     fs::remove_file(&path)
-        .map_err(|error| format!("failed to delete message {}: {error}", path.display()))?;
+        .map_err(|error| format!("failed to delete item {}: {error}", path.display()))?;
     println!("deleted {}", path.display());
     Ok(())
 }
@@ -528,17 +663,17 @@ fn message_id(path: &Path) -> Result<String, String> {
         .ok_or_else(|| format!("message path has no filename: {}", path.display()))
 }
 
-fn message_subject(path: &Path) -> Result<String, String> {
+fn message_title(path: &Path, kind: ItemKind) -> Result<String, String> {
     let message = fs::read_to_string(path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
 
     for line in message.lines() {
-        if let Some(subject) = line.strip_prefix("Subject: ") {
-            return Ok(subject.to_string());
+        if let Some(title) = line.strip_prefix(kind.title_header()) {
+            return Ok(title.to_string());
         }
     }
 
-    Ok("(no subject)".to_string())
+    Ok("(no title)".to_string())
 }
 
 fn mail_state(mail_home: &Path, path: &Path) -> Result<&'static str, String> {
@@ -653,6 +788,10 @@ impl Orqa {
 
     fn mail_home(&self, agent: &AgentRef) -> PathBuf {
         self.agent_home(agent).join("mail")
+    }
+
+    fn task_home(&self, agent: &AgentRef) -> PathBuf {
+        self.agent_home(agent).join("tasks")
     }
 }
 

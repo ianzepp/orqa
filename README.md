@@ -3,17 +3,17 @@
 `orqa` is a small local coordinator for background agents.
 
 It does not try to be a full orchestration platform. Its job is to keep a pod
-and agent filesystem layout, give agents a simple local mail channel, scan for
-wake signals, and shell out to the configured agent framework when an agent
-should run.
+and agent filesystem layout, give agents simple local mail and task channels,
+scan for wake signals, and shell out to the configured agent framework when an
+agent should run.
 
 ## Concepts
 
 A **pod** is a collection of agents that can communicate with each other.
 
 An **agent** belongs to exactly one pod. Each agent has its own home directory
-inside that pod, including an isolated `.codex` directory for Codex state and a
-Maildir inbox for pod-local messages.
+inside that pod, including an isolated `.codex` directory for Codex state, a
+Maildir inbox for pod-local messages, and a Maildir-style task queue.
 
 `ORQA_HOME` is the root directory for all pods. It defaults to `~/.orqa`.
 
@@ -30,10 +30,18 @@ ORQA_HOME/
             cur/
             new/
             tmp/
+          tasks/
+            cur/
+            new/
+            tmp/
         bob-jones/
           agent.txt
           .codex/
           mail/
+            cur/
+            new/
+            tmp/
+          tasks/
             cur/
             new/
             tmp/
@@ -61,6 +69,7 @@ orqa mail send \
 ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail list
 ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail read <message-id>
 ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail done <message-id>
+ORQA_POD=sample-pod ORQA_AGENT=amy orqa task send --to bob-jones --title update-settings "please do this"
 ```
 
 Scan the pod for agents with unread mail:
@@ -185,6 +194,36 @@ orqa mail send \
 If `orqa` cannot infer the pod, it returns an error asking for `agent@pod.orqa`
 or the relevant environment variables.
 
+## Tasks
+
+Tasks use the same storage pattern as mail, but live under `tasks/`.
+
+Sending mail to another agent is a communication request. Sending a task is a
+work assignment:
+
+```sh
+orqa task send \
+  --from amy@sample-pod.orqa \
+  --to bob-jones@sample-pod.orqa \
+  --title update-settings \
+  "please update the settings"
+```
+
+That task is delivered to:
+
+```text
+ORQA_HOME/pods/sample-pod/agents/bob-jones/tasks/new/
+```
+
+Open tasks in `tasks/new` are wake signals, just like unread mail. When the
+assignee finishes a task, it can mark the task done:
+
+```sh
+orqa task done <task-id>
+```
+
+This moves the task from `tasks/new` to `tasks/cur` and clears that wake signal.
+
 ## Commands
 
 ### `orqa doctor`
@@ -213,7 +252,8 @@ orqa pod home sample-pod
 
 ### `orqa agent create <pod> <agent>`
 
-Creates an agent home directory, its `.codex` directory, and its Maildir inbox.
+Creates an agent home directory, its `.codex` directory, its Maildir inbox, and
+its task queue.
 
 ```sh
 orqa agent create sample-pod amy
@@ -312,10 +352,68 @@ lower-level helper; agents usually want `orqa mail list`.
 orqa mail unread sample-pod bob-jones
 ```
 
+### `orqa task home <pod> <agent>`
+
+Prints the task queue path for an agent.
+
+```sh
+orqa task home sample-pod amy
+```
+
+### `orqa task send`
+
+Assigns a pod-local task.
+
+```sh
+orqa task send --from amy@sample-pod.orqa --to bob-jones@sample-pod.orqa --title update-settings "please do this"
+orqa task send --to bob-jones --title update-settings "please do this"
+```
+
+If no task body is provided as an argument, `orqa` reads the body from stdin:
+
+```sh
+cat task.md | orqa task send --to bob-jones --title update-settings
+```
+
+### `orqa task list`
+
+Lists open tasks for the current agent context. Use `--all` to include done
+tasks from `tasks/cur`.
+
+```sh
+orqa task list
+orqa task list --all
+orqa task list --pod sample-pod --agent bob-jones
+```
+
+### `orqa task read <task>`
+
+Prints a task. `<task>` may be the id from `task list` or a full path.
+
+```sh
+orqa task read 1778757485781904.31898.0.orqa
+```
+
+### `orqa task done <task>`
+
+Marks an open task done by moving it from `tasks/new` to `tasks/cur`.
+
+```sh
+orqa task done 1778757485781904.31898.0.orqa
+```
+
+### `orqa task delete <task>`
+
+Deletes a task from `tasks/new` or `tasks/cur`.
+
+```sh
+orqa task delete 1778757485781904.31898.0.orqa
+```
+
 ### `orqa loop <pod>`
 
-Scans a pod for agents with unread mail. Today this reports wakeable agents;
-future versions can use the same wake criteria to run them.
+Scans a pod for agents with unread mail or open tasks. Today this reports
+wakeable agents; future versions can use the same wake criteria to run them.
 
 ```sh
 orqa loop sample-pod
@@ -324,5 +422,5 @@ orqa loop sample-pod
 ## Status
 
 This is intentionally early and small. The current implementation defines the
-filesystem contract, creates pods and agents, delivers local Maildir messages,
-detects unread-mail wake signals, and shells out to an agent framework.
+filesystem contract, creates pods and agents, delivers local Maildir messages
+and tasks, detects wake signals, and shells out to an agent framework.
