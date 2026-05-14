@@ -1,6 +1,7 @@
 mod cli;
 mod commands;
 mod config;
+mod issues;
 mod mailbox;
 mod model;
 mod runs;
@@ -14,7 +15,7 @@ use std::{env, ffi::OsStr, process::ExitCode};
 use clap::{CommandFactory, FromArgMatches};
 
 use cli::{Cli, Command};
-use commands::{fin, mail, pod, task};
+use commands::{fin, mail, ops, pod, task};
 use model::Orqa;
 use runtime::{loop_pod, plan};
 use service::service;
@@ -53,6 +54,7 @@ fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
         Command::Fin(command) => fin(orqa, command),
         Command::Mail(command) => mail(orqa, command),
         Command::Task(command) => task(orqa, command),
+        Command::Ops(command) => ops(orqa, command),
         Command::Loop(args) => loop_pod(orqa, args),
         Command::Plan(args) => plan(orqa, args),
         Command::Service(command) => service(orqa, command),

@@ -5,6 +5,7 @@ use std::{fs, path::PathBuf};
 
 use crate::{
     cli::{FinRefArgs, MailListArgs, MailMessageArgs, SendMailArgs, SendTaskArgs, TaskListArgs},
+    issues::create_operator_issue,
     model::{FinRef, Orqa},
 };
 
@@ -13,7 +14,10 @@ pub(crate) use storage::{
     remove_sleep_marker, resolve_address, resolve_fin, resolve_message_path, resolve_sender,
     sorted_files, unread_count, write_if_missing, write_sleep_marker,
 };
-pub(crate) use tasks::{TaskFilters, canonical_task_body, collect_tasks, sort_tasks};
+pub(crate) use tasks::{
+    TaskFilters, canonical_task_body, collect_tasks, field_value, sort_tasks, split_front_matter,
+    upsert_field,
+};
 
 #[cfg(test)]
 pub(crate) use storage::unique_mail_name;
@@ -32,15 +36,22 @@ pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
         ));
     }
 
-    let from_fin = FinRef::new(&from.pod, &from.fin)?;
-    let to_fin = FinRef::new(&to.pod, &to.fin)?;
-    let mail_home = orqa.mail_home(&to_fin);
-    ensure_maildir(&mail_home)?;
-
     let body = match args.body {
         Some(body) => body,
         None => read_stdin()?,
     };
+
+    if to.fin == "operator" {
+        let path = create_operator_issue(orqa, &from, &args.subject, &body)?;
+        println!("{}", path.display());
+        println!("opened operator issue for {}", from.pod);
+        return Ok(());
+    }
+
+    let from_fin = FinRef::new(&from.pod, &from.fin)?;
+    let to_fin = FinRef::new(&to.pod, &to.fin)?;
+    let mail_home = orqa.mail_home(&to_fin);
+    ensure_maildir(&mail_home)?;
 
     let message = format!(
         "From: {}\nTo: {}\nSubject: {}\n\n{}\n",

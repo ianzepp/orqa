@@ -282,6 +282,17 @@ orqa mail delete <message-id>
 Unread messages live in `mail/new` and wake the receiving fin. Marking a message
 done moves it to `mail/cur`, clearing that wake signal.
 
+`operator@<pod>.orqa` is a reserved address. Mail sent there becomes an
+operator issue instead of normal fin mail:
+
+```sh
+orqa mail send \
+  --from release@sample-pod.orqa \
+  --to operator@sample-pod.orqa \
+  --subject "Cloudflare auth expired" \
+  "Cloudflare deploy is blocked until the operator logs in again."
+```
+
 ## Tasks
 
 Tasks use the same storage pattern as mail, but live under `tasks/`. Use tasks
@@ -337,6 +348,26 @@ orqa task delete <task-id>
 
 Open tasks live in `tasks/new` and wake the assignee. Marking a task done moves
 it to `tasks/cur`, clearing that wake signal.
+
+## Operator Issues
+
+Operator issues are task-like records for work that needs human or privileged
+operator action. Fins create them by mailing `operator@<pod>.orqa`.
+
+List, read, acknowledge, resolve, or dismiss issues:
+
+```sh
+orqa ops
+orqa ops issues
+orqa ops issue read <issue-id>
+orqa ops issue ack <issue-id>
+orqa ops issue resolve <issue-id> --note "Re-authenticated Cloudflare."
+orqa ops issue dismiss <issue-id> --note "No longer relevant."
+```
+
+Resolving or dismissing an issue moves it to the closed issue store and sends a
+normal mail message back to the originating fin. That returned mail is a wake
+signal, so the fin can resume through the usual loop.
 
 ## Sleep And Wake
 

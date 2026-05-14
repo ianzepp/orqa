@@ -551,6 +551,83 @@ fn service_run_scans_all_pods() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn mail_to_operator_opens_issue_and_resolution_mails_fin() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "deploy"]);
+    orqa(&root, ["fin", "create", "deploy", "release"]);
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "release@deploy.orqa",
+            "--to",
+            "operator@deploy.orqa",
+            "--subject",
+            "Railway auth expired",
+            "--",
+            "---\nseverity: blocked\nkind: auth\n---\n\nRailway CLI is not logged in.",
+        ],
+    );
+
+    let issues = orqa_output(&root, ["ops", "issues"]);
+    assert!(issues.contains("pod=deploy"));
+    assert!(issues.contains("fin=release"));
+    assert!(issues.contains("severity=blocked"));
+    assert!(issues.contains("kind=auth"));
+    assert!(issues.contains("title=\"Railway auth expired\""));
+
+    let issue_id = issues
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap();
+    let issue = orqa_output(&root, ["ops", "issue", "read", issue_id]);
+    assert!(issue.contains("status: open"));
+    assert!(issue.contains("Railway CLI is not logged in."));
+
+    orqa(
+        &root,
+        [
+            "ops",
+            "issue",
+            "resolve",
+            issue_id,
+            "--note",
+            "Re-authenticated Railway. Try deploy again.",
+        ],
+    );
+
+    let closed = orqa_output(&root, ["ops", "issues", "--all"]);
+    assert!(closed.contains("closed"));
+    assert!(closed.contains("status=resolved"));
+
+    let mail = orqa_output(
+        &root,
+        ["mail", "list", "--pod", "deploy", "--fin", "release"],
+    );
+    assert!(mail.contains("Re: Railway auth expired"));
+    let message_id = mail
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap();
+    let message = orqa_output(
+        &root,
+        [
+            "mail", "read", "--pod", "deploy", "--fin", "release", message_id,
+        ],
+    );
+    assert!(message.contains("From: operator@deploy.orqa"));
+    assert!(message.contains("Issue resolved."));
+    assert!(message.contains("Re-authenticated Railway. Try deploy again."));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn orqa<const N: usize>(root: &Path, args: [&str; N]) {
     let output = command(root, args).output().unwrap();
     assert!(

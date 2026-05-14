@@ -225,6 +225,17 @@ ORQA_POD=sample-pod ORQA_FIN=builder orqa mail done <message-id>
 ORQA_POD=sample-pod ORQA_FIN=planner orqa task send --to builder --title update-settings "please do this"
 ```
 
+Raise an operator issue by mailing the reserved operator address:
+
+```sh
+orqa mail send \
+  --from builder@sample-pod.orqa \
+  --to operator@sample-pod.orqa \
+  --subject "Cloudflare auth expired" \
+  "Cloudflare deploy is blocked until the operator logs in again."
+orqa ops issues
+```
+
 Run one wake scan for the pod:
 
 ```sh
@@ -440,6 +451,21 @@ Messages can also be deleted from either `mail/new` or `mail/cur`:
 orqa mail delete <message-id>
 ```
 
+`operator@<pod>.orqa` is reserved. Mail sent to that address is promoted into
+an operator issue instead of being delivered to a fin inbox:
+
+```sh
+orqa mail send \
+  --from release@sample-pod.orqa \
+  --to operator@sample-pod.orqa \
+  --subject "Railway auth expired" \
+  "Railway CLI is not logged in."
+```
+
+The issue keeps the original body and derives its pod, fin, and title from the
+mail. If the body starts with YAML front matter, fields such as `severity`,
+`kind`, or `related_run` are preserved.
+
 ### Short Addresses
 
 Inside an Orqa-launched fin process, `ORQA_POD` and `ORQA_FIN` are already
@@ -574,6 +600,7 @@ Commands:
   fin     Create or operate fins inside a pod
   mail    Mail helpers for pod-local fin messages
   task    Task helpers for pod-local work items
+  ops     Human operator surface for cross-pod monitoring and issues
   loop    Run the wake loop for a pod
   plan    Show the wake plan for a pod without running fins
   service Manage the background wake-loop service
@@ -722,6 +749,26 @@ orqa task list --sort priority --reverse
 
 `task read`, `task done`, and `task delete` accept a task id, filename, or full
 path. `task done` moves the task from `tasks/new` to `tasks/cur`.
+
+### Ops Commands
+
+```text
+orqa ops
+orqa ops issues [--all] [--json]
+orqa ops issue read <issue> [--json]
+orqa ops issue ack <issue> [--json]
+orqa ops issue resolve <issue> [--note <note>]
+orqa ops issue dismiss <issue> [--note <note>]
+```
+
+`orqa ops` prints operator issue counts. `ops issues` lists open and
+acknowledged issues from `operator/issues/new` and `operator/issues/cur`;
+`--all` also includes closed issues from `operator/issues/closed`.
+
+Issues are created when a fin mails `operator@<pod>.orqa`. `ops issue ack`
+moves an open issue from `new` to `cur`. `resolve` and `dismiss` move the issue
+to `closed`, record the operator note, and send a normal mail reply back to the
+originating fin.
 
 ### Wake Loop
 

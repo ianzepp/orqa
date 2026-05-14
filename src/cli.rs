@@ -30,6 +30,8 @@ pub(crate) enum Command {
     Mail(MailCommand),
     /// Task helpers for pod-local work items.
     Task(TaskCommand),
+    /// Human operator surface for cross-pod monitoring and issues.
+    Ops(OpsCommand),
     /// Run the wake loop for a pod.
     Loop(LoopArgs),
     /// Show the wake plan for a pod without running fins.
@@ -121,6 +123,38 @@ pub(crate) struct TaskCommand {
 pub(crate) struct ServiceCommand {
     #[command(subcommand)]
     pub(crate) command: ServiceSubcommand,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OpsCommand {
+    #[command(subcommand)]
+    pub(crate) command: Option<OpsSubcommand>,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum OpsSubcommand {
+    /// List operator issues.
+    Issues(OpsIssueListArgs),
+    /// Read or update one operator issue.
+    Issue(OpsIssueCommand),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OpsIssueCommand {
+    #[command(subcommand)]
+    pub(crate) command: OpsIssueSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum OpsIssueSubcommand {
+    /// Read an operator issue.
+    Read(OpsIssueReadArgs),
+    /// Acknowledge an operator issue.
+    Ack(OpsIssueReadArgs),
+    /// Resolve an operator issue and mail the originating fin.
+    Resolve(OpsIssueResolutionArgs),
+    /// Dismiss an operator issue and mail the originating fin.
+    Dismiss(OpsIssueResolutionArgs),
 }
 
 #[derive(Debug, Args)]
@@ -535,6 +569,34 @@ pub(crate) struct MailMessageArgs {
     pub(crate) fin: Option<String>,
     /// Message id, filename, or path.
     pub(crate) message: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OpsIssueListArgs {
+    /// Include resolved and dismissed issues.
+    #[arg(long)]
+    pub(crate) all: bool,
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OpsIssueReadArgs {
+    /// Issue id, filename, or path.
+    pub(crate) issue: String,
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct OpsIssueResolutionArgs {
+    /// Issue id, filename, or path.
+    pub(crate) issue: String,
+    /// Resolution note mailed back to the originating fin.
+    #[arg(long)]
+    pub(crate) note: Option<String>,
 }
 use std::{ffi::OsString, path::PathBuf};
 

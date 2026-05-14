@@ -29,6 +29,10 @@ impl Orqa {
         self.fin_home(fin).join("tasks")
     }
 
+    pub(crate) fn issues_home(&self) -> PathBuf {
+        self.home.join("operator").join("issues")
+    }
+
     pub(crate) fn lock_path(&self, fin: &FinRef) -> PathBuf {
         self.fin_home(fin).join("run.lock")
     }

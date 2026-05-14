@@ -6,13 +6,15 @@ use std::{
 
 use crate::{
     cli::{
-        FinCommand, FinRoleSubcommand, FinSubcommand, MailCommand, MailSubcommand,
-        PodCharterSubcommand, PodCommand, PodSubcommand, TaskCommand, TaskSubcommand,
+        FinCommand, FinRoleSubcommand, FinSubcommand, MailCommand, MailSubcommand, OpsCommand,
+        OpsIssueSubcommand, OpsSubcommand, PodCharterSubcommand, PodCommand, PodSubcommand,
+        TaskCommand, TaskSubcommand,
     },
     config::{
         DEFAULT_CHARTER, DEFAULT_ROLE, fin_agents_template, fin_config_template,
         pod_agents_template, pod_config_template,
     },
+    issues::{ack_issue, issue_counts, list_issues, read_issue, resolve_issue},
     mailbox::{
         ItemKind, delete_item, delete_mail, done_item, done_mail, ensure_maildir, list_mail,
         list_tasks, read_item, read_mail, remove_sleep_marker, send_mail, send_task, unread_mail,
@@ -347,5 +349,24 @@ pub(crate) fn task(orqa: &Orqa, command: TaskCommand) -> Result<(), String> {
         TaskSubcommand::Read(args) => read_item(orqa, args, ItemKind::Task),
         TaskSubcommand::Done(args) => done_item(orqa, args, ItemKind::Task),
         TaskSubcommand::Delete(args) => delete_item(orqa, args, ItemKind::Task),
+    }
+}
+
+pub(crate) fn ops(orqa: &Orqa, command: OpsCommand) -> Result<(), String> {
+    match command.command {
+        None => {
+            let (open, acknowledged, closed) = issue_counts(orqa)?;
+            println!("issues_open={open}");
+            println!("issues_acknowledged={acknowledged}");
+            println!("issues_closed={closed}");
+            Ok(())
+        }
+        Some(OpsSubcommand::Issues(args)) => list_issues(orqa, args),
+        Some(OpsSubcommand::Issue(command)) => match command.command {
+            OpsIssueSubcommand::Read(args) => read_issue(orqa, args),
+            OpsIssueSubcommand::Ack(args) => ack_issue(orqa, args),
+            OpsIssueSubcommand::Resolve(args) => resolve_issue(orqa, args, "resolved"),
+            OpsIssueSubcommand::Dismiss(args) => resolve_issue(orqa, args, "dismissed"),
+        },
     }
 }
