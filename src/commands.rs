@@ -25,12 +25,15 @@ use crate::{
     runs::{list_runs, read_run_logs, read_run_record_for, tail_fin, tail_pod},
     runtime::{chat_fin, exec_fin, supervise_fin},
     runtime_home::ensure_fin_runtime_homes,
-    status::{fin_status, pod_status, print_fin_status, print_json, print_pod_status},
+    status::{
+        fin_status, pod_status, print_fin_status, print_json, print_pod_list_status,
+        print_pod_status,
+    },
 };
 
 pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
     match command.command {
-        PodSubcommand::List => print_dirs(&orqa.home.join("pods")),
+        PodSubcommand::List => list_pods(orqa),
         PodSubcommand::Create(args) => {
             let pod = PodRef::new(&args.slug)?;
             let home = orqa.pod_home(&pod);
@@ -243,6 +246,14 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
         FinSubcommand::Chat(args) => chat_fin(orqa, args),
         FinSubcommand::Supervise(args) => supervise_fin(orqa, args),
     }
+}
+
+fn list_pods(orqa: &Orqa) -> Result<(), String> {
+    for pod in list_dirs(&orqa.home.join("pods"))? {
+        let pod = PodRef::new(&pod)?;
+        print_pod_list_status(&pod_status(orqa, &pod)?);
+    }
+    Ok(())
 }
 
 pub(crate) fn list_dirs(dir: &Path) -> Result<Vec<String>, String> {

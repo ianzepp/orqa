@@ -797,15 +797,28 @@ fn pod_doctor_reports_backend_spawn_failures() {
 }
 
 #[test]
-fn pod_and_fin_list_print_sorted_slugs() {
+fn pod_list_prints_sorted_status_and_fin_list_prints_sorted_slugs() {
     let root = temp_root();
 
     orqa(&root, ["pod", "create", "zeta-pod"]);
     orqa(&root, ["pod", "create", "alpha-pod"]);
     orqa(&root, ["fin", "create", "alpha-pod", "zoe"]);
     orqa(&root, ["fin", "create", "alpha-pod", "amy"]);
+    orqa(&root, ["pod", "sleep", "zeta-pod"]);
 
-    assert_eq!(orqa_output(&root, ["pod", "list"]), "alpha-pod\nzeta-pod\n");
+    let pods = orqa_output(&root, ["pod", "list"]);
+    let lines = pods.lines().collect::<Vec<_>>();
+    assert_eq!(lines.len(), 2);
+    assert!(lines[0].starts_with("alpha-pod "));
+    assert!(lines[0].contains("fins=2"));
+    assert!(lines[0].contains("sleeping=false"));
+    assert!(lines[0].contains("wakeable=0"));
+    assert!(lines[0].contains("running=0"));
+    assert!(lines[0].contains("unread_mail=0"));
+    assert!(lines[0].contains("open_tasks=0"));
+    assert!(lines[1].starts_with("zeta-pod "));
+    assert!(lines[1].contains("fins=0"));
+    assert!(lines[1].contains("sleeping=true"));
     assert_eq!(
         orqa_output(&root, ["fin", "list", "alpha-pod"]),
         "amy\nzoe\n"

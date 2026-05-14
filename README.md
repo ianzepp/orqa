@@ -686,7 +686,8 @@ goal and operating context for the pod; pass it inline, from `@file.md`, or from
 stdin with `-`. The pod-level `AGENTS.md` injects that charter and tells backend
 runtimes how to use Orqa mail, tasks, status, and fin discovery from inside the
 pod. `pod charter set` replaces both `CHARTER.md` and the generated pod
-`AGENTS.md`. `pod list` prints known pod slugs, one per line. `pod doctor`
+`AGENTS.md`. `pod list` prints one status line per pod with fin count, sleep
+state, wakeable/running counts, unread mail, and open tasks. `pod doctor`
 checks required pod and fin files, resolves each fin's backend command, and
 runs a short backend probe to verify connectivity. `pod sleep` writes a
 pod-level sleep marker, and `pod wake` requires `--force` before it removes that

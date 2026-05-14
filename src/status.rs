@@ -94,6 +94,19 @@ pub(crate) fn print_pod_status(status: &PodStatus) {
     }
 }
 
+pub(crate) fn print_pod_list_status(status: &PodStatus) {
+    println!(
+        "{} fins={} sleeping={} wakeable={} running={} unread_mail={} open_tasks={}",
+        status.pod,
+        status.fin_count,
+        status.sleeping,
+        status.wakeable,
+        status.running,
+        status.unread_mail,
+        status.open_tasks
+    );
+}
+
 pub(crate) fn print_fin_status(status: &FinStatus) {
     println!("fin {}", status.fin);
     println!("home={}", status.home.display());
