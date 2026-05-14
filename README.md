@@ -72,13 +72,13 @@ ORQA_POD=sample-pod ORQA_AGENT=bob-jones orqa mail done <message-id>
 ORQA_POD=sample-pod ORQA_AGENT=amy orqa task send --to bob-jones --title update-settings "please do this"
 ```
 
-Scan the pod for agents with unread mail:
+Run one wake scan for the pod:
 
 ```sh
 orqa loop sample-pod
 ```
 
-Run an agent through the default framework, currently `codex`:
+Run an agent directly through the default framework, currently `codex`:
 
 ```sh
 orqa agent run sample-pod amy -- --help
@@ -117,6 +117,16 @@ CODEX_HOME=<home>/pods/<pod-slug>/agents/<agent-slug>/.codex
 That lets Codex use the agent-specific `.codex` directory as its config home.
 It also gives commands executed by the agent enough context to use short mail
 addresses.
+
+Direct agent runs and loop-launched runs use a per-agent lock file:
+
+```text
+ORQA_HOME/pods/<pod>/agents/<agent>/run.lock
+```
+
+The lock records the child process PID. If the lock exists and the PID is still
+alive, another wake scan skips that agent. If the PID is gone, `orqa` treats the
+lock as stale, removes it, and the agent can run again.
 
 ## Mail
 
@@ -507,12 +517,17 @@ orqa task delete 1778757485781904.31898.0.orqa
 
 ### `orqa loop <pod>`
 
-Scans a pod for agents with unread mail or open tasks. Today this reports
-wakeable agents; future versions can use the same wake criteria to run them.
+Scans a pod for agents with unread mail or open tasks. Wakeable agents are
+launched through the configured framework.
 
 ```sh
 orqa loop sample-pod
+orqa loop sample-pod --framework codex -- "handle your open Orqa mail and tasks"
 ```
+
+For each wakeable agent, `orqa loop` creates `run.lock` with the spawned process
+PID. Later scans skip that agent while the PID is alive. Stale locks are removed
+when the PID no longer exists.
 
 ## Status
 

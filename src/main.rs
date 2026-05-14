@@ -4,7 +4,7 @@ use std::{
     fs,
     io::{self, Read},
     path::{Path, PathBuf},
-    process::{Command as ProcessCommand, ExitCode},
+    process::{Command as ProcessCommand, ExitCode, Stdio},
     sync::atomic::{AtomicUsize, Ordering},
     time::{SystemTime, UNIX_EPOCH},
 };
@@ -123,6 +123,12 @@ enum TaskSubcommand {
 struct LoopArgs {
     /// Pod slug.
     pod: String,
+    /// Agent framework executable.
+    #[arg(long, default_value = "codex")]
+    framework: OsString,
+    /// Arguments passed to the agent framework.
+    #[arg(last = true)]
+    args: Vec<OsString>,
 }
 
 #[derive(Debug, Args)]
@@ -374,12 +380,11 @@ fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
         let open_tasks = unread_count(&orqa.task_home(&agent))?;
 
         if unread_mail > 0 || open_tasks > 0 {
-            println!(
-                "wake {} unread_mail={} open_tasks={}",
-                agent.label(),
+            let wake = Wake {
                 unread_mail,
-                open_tasks
-            );
+                open_tasks,
+            };
+            wake_agent(orqa, &agent, &args.framework, &args.args, wake)?;
         }
     }
 
@@ -388,7 +393,27 @@ fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
 
 fn run_agent(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
     let agent = AgentRef::new(&args.pod, &args.agent)?;
-    let home = orqa.agent_home(&agent);
+    run_agent_foreground(orqa, &agent, &args.framework, &args.args)
+}
+
+fn run_agent_foreground(
+    orqa: &Orqa,
+    agent: &AgentRef,
+    framework: &OsString,
+    args: &[OsString],
+) -> Result<(), String> {
+    if let Some(lock) = AgentLock::try_existing(orqa, agent)? {
+        if lock.is_live() {
+            return Err(format!(
+                "agent {} is already running as pid {}",
+                agent.label(),
+                lock.pid
+            ));
+        }
+        lock.remove()?;
+    }
+
+    let home = orqa.agent_home(agent);
     let codex_home = home.join(".codex");
 
     fs::create_dir_all(&codex_home).map_err(|error| {
@@ -398,26 +423,189 @@ fn run_agent(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
         )
     })?;
 
-    let status = ProcessCommand::new(&args.framework)
+    let mut child = ProcessCommand::new(framework)
         .env("ORQA_HOME", &orqa.home)
         .env("ORQA_POD", &agent.pod)
         .env("ORQA_AGENT", &agent.agent)
         .env("CODEX_HOME", &codex_home)
-        .args(&args.args)
-        .status()
-        .map_err(|error| format!("failed to run {:?}: {error}", args.framework))?;
+        .args(args)
+        .spawn()
+        .map_err(|error| format!("failed to run {framework:?}: {error}"))?;
+    let lock = AgentLock::write(orqa, agent, child.id(), framework)?;
+    let status = child
+        .wait()
+        .map_err(|error| format!("failed to wait for {framework:?}: {error}"));
+    lock.release();
+    let status = status?;
 
     if status.success() {
         Ok(())
     } else {
         Err(format!(
-            "{:?} exited with {}",
-            args.framework,
+            "{framework:?} exited with {}",
             status
                 .code()
                 .map_or_else(|| "signal".to_string(), |code| code.to_string())
         ))
     }
+}
+
+#[derive(Clone, Copy)]
+struct Wake {
+    unread_mail: usize,
+    open_tasks: usize,
+}
+
+fn wake_agent(
+    orqa: &Orqa,
+    agent: &AgentRef,
+    framework: &OsString,
+    args: &[OsString],
+    wake: Wake,
+) -> Result<(), String> {
+    match AgentLock::try_existing(orqa, agent)? {
+        Some(lock) if lock.is_live() => {
+            println!(
+                "skip {} pid={} unread_mail={} open_tasks={}",
+                agent.label(),
+                lock.pid,
+                wake.unread_mail,
+                wake.open_tasks
+            );
+            Ok(())
+        }
+        Some(lock) => {
+            lock.remove()?;
+            spawn_wake_agent(orqa, agent, framework, args, wake)
+        }
+        None => spawn_wake_agent(orqa, agent, framework, args, wake),
+    }
+}
+
+fn spawn_wake_agent(
+    orqa: &Orqa,
+    agent: &AgentRef,
+    framework: &OsString,
+    args: &[OsString],
+    wake: Wake,
+) -> Result<(), String> {
+    let home = orqa.agent_home(agent);
+    let codex_home = home.join(".codex");
+    fs::create_dir_all(&codex_home).map_err(|error| {
+        format!(
+            "failed to create agent codex home {}: {error}",
+            codex_home.display()
+        )
+    })?;
+
+    let child = ProcessCommand::new(framework)
+        .env("ORQA_HOME", &orqa.home)
+        .env("ORQA_POD", &agent.pod)
+        .env("ORQA_AGENT", &agent.agent)
+        .env("CODEX_HOME", &codex_home)
+        .args(args)
+        .spawn()
+        .map_err(|error| format!("failed to spawn {framework:?}: {error}"))?;
+    let pid = child.id();
+
+    AgentLock::write(orqa, agent, pid, framework)?;
+    println!(
+        "wake {} pid={} unread_mail={} open_tasks={}",
+        agent.label(),
+        pid,
+        wake.unread_mail,
+        wake.open_tasks
+    );
+
+    Ok(())
+}
+
+struct AgentLock {
+    path: PathBuf,
+    pid: u32,
+}
+
+impl AgentLock {
+    fn try_existing(orqa: &Orqa, agent: &AgentRef) -> Result<Option<Self>, String> {
+        let path = orqa.lock_path(agent);
+        if !path.exists() {
+            return Ok(None);
+        }
+
+        let contents = fs::read_to_string(&path)
+            .map_err(|error| format!("failed to read lock {}: {error}", path.display()))?;
+        let pid = lock_pid(&contents)
+            .ok_or_else(|| format!("lock {} does not contain a valid pid", path.display()))?;
+
+        Ok(Some(Self { path, pid }))
+    }
+
+    fn write(
+        orqa: &Orqa,
+        agent: &AgentRef,
+        pid: u32,
+        framework: &OsString,
+    ) -> Result<Self, String> {
+        let path = orqa.lock_path(agent);
+        let parent = path
+            .parent()
+            .ok_or_else(|| format!("lock path has no parent: {}", path.display()))?;
+        fs::create_dir_all(parent).map_err(|error| {
+            format!(
+                "failed to create lock directory {}: {error}",
+                parent.display()
+            )
+        })?;
+
+        let contents = format!(
+            "pid={pid}\npod={}\nagent={}\nframework={:?}\n",
+            agent.pod, agent.agent, framework
+        );
+        fs::write(&path, contents)
+            .map_err(|error| format!("failed to write lock {}: {error}", path.display()))?;
+
+        Ok(Self { path, pid })
+    }
+
+    fn is_live(&self) -> bool {
+        process_is_alive(self.pid)
+    }
+
+    fn remove(&self) -> Result<(), String> {
+        if self.path.exists() {
+            fs::remove_file(&self.path).map_err(|error| {
+                format!("failed to remove lock {}: {error}", self.path.display())
+            })?;
+        }
+
+        Ok(())
+    }
+
+    fn release(self) {
+        let _ = self.remove();
+    }
+}
+
+fn lock_pid(contents: &str) -> Option<u32> {
+    contents
+        .lines()
+        .find_map(|line| line.strip_prefix("pid=")?.parse::<u32>().ok())
+}
+
+#[cfg(unix)]
+fn process_is_alive(pid: u32) -> bool {
+    ProcessCommand::new("kill")
+        .arg("-0")
+        .arg(pid.to_string())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .status()
+        .is_ok_and(|status| status.success())
+}
+
+#[cfg(not(unix))]
+fn process_is_alive(_pid: u32) -> bool {
+    false
 }
 
 fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
@@ -1059,6 +1247,10 @@ impl Orqa {
     fn task_home(&self, agent: &AgentRef) -> PathBuf {
         self.agent_home(agent).join("tasks")
     }
+
+    fn lock_path(&self, agent: &AgentRef) -> PathBuf {
+        self.agent_home(agent).join("run.lock")
+    }
 }
 
 struct PodRef {
@@ -1277,5 +1469,11 @@ mod tests {
     fn sorts_known_priorities_by_severity() {
         assert!(priority_sort_value("high") < priority_sort_value("normal"));
         assert!(priority_sort_value("normal") < priority_sort_value("low"));
+    }
+
+    #[test]
+    fn parses_lock_pid() {
+        assert_eq!(lock_pid("pid=123\nagent=amy\n"), Some(123));
+        assert_eq!(lock_pid("agent=amy\n"), None);
     }
 }
