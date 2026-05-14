@@ -754,21 +754,25 @@ path. `task done` moves the task from `tasks/new` to `tasks/cur`.
 
 ```text
 orqa ops
-orqa ops issues [--all] [--json]
+orqa ops issues [--all] [--pod <pod>] [--fin <fin>]
+                [--status <status>] [--severity <severity>] [--kind <kind>]
+                [--field <key=value>] [--json]
 orqa ops issue read <issue> [--json]
 orqa ops issue ack <issue> [--json]
-orqa ops issue resolve <issue> [--note <note>]
-orqa ops issue dismiss <issue> [--note <note>]
+orqa ops issue resolve <issue> [--note <note>] [--wake]
+orqa ops issue dismiss <issue> [--note <note>] [--wake]
 ```
 
 `orqa ops` prints operator issue counts. `ops issues` lists open and
 acknowledged issues from `operator/issues/new` and `operator/issues/cur`;
 `--all` also includes closed issues from `operator/issues/closed`.
 
-Issues are created when a fin mails `operator@<pod>.orqa`. `ops issue ack`
-moves an open issue from `new` to `cur`. `resolve` and `dismiss` move the issue
-to `closed`, record the operator note, and send a normal mail reply back to the
-originating fin.
+Issues are created when a fin mails `operator@<pod>.orqa`. Filters match issue
+front matter exactly, and `--field` can be repeated for custom fields such as
+`source=operator-mail` or `related_run=<run>`. `ops issue ack` moves an open
+issue from `new` to `cur`. `resolve` and `dismiss` move the issue to `closed`,
+record the operator note, and send a normal mail reply back to the originating
+fin. Pass `--wake` to clear that fin's sleep marker after sending the reply.
 
 ### Wake Loop
 

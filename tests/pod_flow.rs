@@ -579,6 +579,19 @@ fn mail_to_operator_opens_issue_and_resolution_mails_fin() {
     assert!(issues.contains("severity=blocked"));
     assert!(issues.contains("kind=auth"));
     assert!(issues.contains("title=\"Railway auth expired\""));
+    assert!(orqa_output(&root, ["ops", "issues", "--pod", "deploy"]).contains("pod=deploy"));
+    assert!(orqa_output(&root, ["ops", "issues", "--fin", "release"]).contains("fin=release"));
+    assert!(
+        orqa_output(&root, ["ops", "issues", "--severity", "blocked"]).contains("severity=blocked")
+    );
+    assert!(orqa_output(&root, ["ops", "issues", "--kind", "auth"]).contains("kind=auth"));
+    assert!(
+        orqa_output(&root, ["ops", "issues", "--field", "status=open"]).contains("status=open")
+    );
+    assert_eq!(
+        orqa_output(&root, ["ops", "issues", "--pod", "other-pod"]),
+        ""
+    );
 
     let issue_id = issues
         .lines()
@@ -589,6 +602,8 @@ fn mail_to_operator_opens_issue_and_resolution_mails_fin() {
     assert!(issue.contains("status: open"));
     assert!(issue.contains("Railway CLI is not logged in."));
 
+    orqa(&root, ["fin", "sleep", "deploy", "release"]);
+    assert!(orqa_output(&root, ["fin", "status", "deploy", "release"]).contains("sleeping=true"));
     orqa(
         &root,
         [
@@ -598,8 +613,10 @@ fn mail_to_operator_opens_issue_and_resolution_mails_fin() {
             issue_id,
             "--note",
             "Re-authenticated Railway. Try deploy again.",
+            "--wake",
         ],
     );
+    assert!(orqa_output(&root, ["fin", "status", "deploy", "release"]).contains("sleeping=false"));
 
     let closed = orqa_output(&root, ["ops", "issues", "--all"]);
     assert!(closed.contains("closed"));

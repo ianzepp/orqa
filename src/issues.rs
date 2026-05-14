@@ -10,8 +10,8 @@ use serde::Serialize;
 use crate::{
     cli::{OpsIssueListArgs, OpsIssueReadArgs, OpsIssueResolutionArgs},
     mailbox::{
-        deliver_mail, ensure_maildir, field_value, message_id, sorted_files, split_front_matter,
-        upsert_field,
+        deliver_mail, ensure_maildir, field_value, message_id, remove_sleep_marker, sorted_files,
+        split_front_matter, upsert_field,
     },
     model::{FinRef, MailAddress, Orqa},
     status::print_json,
@@ -75,7 +75,9 @@ pub(crate) fn create_operator_issue(
 
 pub(crate) fn list_issues(orqa: &Orqa, args: OpsIssueListArgs) -> Result<(), String> {
     ensure_issue_dirs(orqa)?;
-    let issues = collect_issues(orqa, args.all)?;
+    let filters = IssueFilters::new(&args)?;
+    let mut issues = collect_issues(orqa, args.all)?;
+    issues.retain(|issue| filters.matches(issue));
     if args.json {
         return print_json(&IssueList { issues });
     }
@@ -148,6 +150,11 @@ pub(crate) fn resolve_issue(
     let next = orqa.issues_home().join("closed").join(&id);
     move_issue_file(&updated, &next)?;
     mail_issue_resolution(orqa, &detail, terminal_status, &note)?;
+    if args.wake {
+        let fin = issue_fin(&detail)?;
+        remove_sleep_marker(&orqa.fin_sleep_path(&fin))?;
+        println!("wake {} reason=issue-{}", fin.label(), terminal_status);
+    }
     println!("{}", next.display());
     Ok(())
 }
@@ -194,6 +201,68 @@ fn collect_issues(orqa: &Orqa, include_closed: bool) -> Result<Vec<IssueSummary>
     }
     issues.sort_by(|left, right| left.id.cmp(&right.id));
     Ok(issues)
+}
+
+struct IssueFilters {
+    fields: Vec<(String, String)>,
+}
+
+impl IssueFilters {
+    fn new(args: &OpsIssueListArgs) -> Result<Self, String> {
+        let mut fields = Vec::new();
+
+        if let Some(pod) = &args.pod {
+            fields.push(("pod".to_string(), pod.to_string()));
+        }
+        if let Some(fin) = &args.fin {
+            fields.push(("fin".to_string(), fin.to_string()));
+        }
+        if let Some(status) = &args.status {
+            fields.push(("status".to_string(), status.to_string()));
+        }
+        if let Some(severity) = &args.severity {
+            fields.push(("severity".to_string(), severity.to_string()));
+        }
+        if let Some(kind) = &args.kind {
+            fields.push(("kind".to_string(), kind.to_string()));
+        }
+        for field in &args.fields {
+            let (key, value) = field
+                .split_once('=')
+                .ok_or_else(|| format!("invalid --field {field:?}; expected key=value"))?;
+            if key.trim().is_empty() {
+                return Err(format!("invalid --field {field:?}; key cannot be empty"));
+            }
+            fields.push((key.trim().to_string(), value.trim().to_string()));
+        }
+
+        Ok(Self { fields })
+    }
+
+    fn matches(&self, issue: &IssueSummary) -> bool {
+        self.fields.iter().all(|(key, value)| {
+            issue
+                .field(key)
+                .is_some_and(|issue_value| issue_value == value)
+        })
+    }
+}
+
+impl IssueSummary {
+    fn field(&self, key: &str) -> Option<&str> {
+        match key {
+            "state" => Some(&self.state),
+            "id" => Some(&self.id),
+            "pod" => Some(&self.pod),
+            "fin" => Some(&self.fin),
+            "title" => Some(&self.title),
+            "status" => Some(&self.status),
+            "severity" => Some(&self.severity),
+            "kind" => Some(&self.kind),
+            _ => None,
+        }
+        .map(String::as_str)
+    }
 }
 
 fn collect_issues_in_state(
@@ -273,6 +342,13 @@ fn mail_issue_resolution(
     );
     deliver_mail(&mail_home, &message)?;
     Ok(())
+}
+
+fn issue_fin(issue: &IssueDetail) -> Result<FinRef, String> {
+    FinRef::new(
+        &issue_field(&issue.fields, "pod"),
+        &issue_field(&issue.fields, "fin"),
+    )
 }
 
 fn resolve_issue_path(orqa: &Orqa, issue: &str) -> Result<PathBuf, String> {

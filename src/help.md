@@ -358,16 +358,17 @@ List, read, acknowledge, resolve, or dismiss issues:
 
 ```sh
 orqa ops
-orqa ops issues
+orqa ops issues --pod sample-pod --severity blocked
 orqa ops issue read <issue-id>
 orqa ops issue ack <issue-id>
-orqa ops issue resolve <issue-id> --note "Re-authenticated Cloudflare."
+orqa ops issue resolve <issue-id> --note "Re-authenticated Cloudflare." --wake
 orqa ops issue dismiss <issue-id> --note "No longer relevant."
 ```
 
 Resolving or dismissing an issue moves it to the closed issue store and sends a
 normal mail message back to the originating fin. That returned mail is a wake
-signal, so the fin can resume through the usual loop.
+signal, so the fin can resume through the usual loop. Pass `--wake` to clear the
+originating fin's sleep marker at the same time.
 
 ## Sleep And Wake
 

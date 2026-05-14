@@ -576,6 +576,24 @@ pub(crate) struct OpsIssueListArgs {
     /// Include resolved and dismissed issues.
     #[arg(long)]
     pub(crate) all: bool,
+    /// Filter by pod slug.
+    #[arg(long)]
+    pub(crate) pod: Option<String>,
+    /// Filter by originating fin slug.
+    #[arg(long)]
+    pub(crate) fin: Option<String>,
+    /// Filter by issue status front matter.
+    #[arg(long)]
+    pub(crate) status: Option<String>,
+    /// Filter by issue severity front matter.
+    #[arg(long)]
+    pub(crate) severity: Option<String>,
+    /// Filter by issue kind front matter.
+    #[arg(long)]
+    pub(crate) kind: Option<String>,
+    /// Filter by arbitrary front matter field, as key=value.
+    #[arg(long = "field")]
+    pub(crate) fields: Vec<String>,
     /// Emit machine-readable JSON.
     #[arg(long)]
     pub(crate) json: bool,
@@ -597,6 +615,9 @@ pub(crate) struct OpsIssueResolutionArgs {
     /// Resolution note mailed back to the originating fin.
     #[arg(long)]
     pub(crate) note: Option<String>,
+    /// Clear the originating fin's sleep marker after sending the resolution mail.
+    #[arg(long)]
+    pub(crate) wake: bool,
 }
 use std::{ffi::OsString, path::PathBuf};
 
