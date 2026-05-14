@@ -58,6 +58,8 @@ pub(crate) enum PodSubcommand {
     Home(SlugArgs),
     /// Print pod runtime status.
     Status(PodStatusArgs),
+    /// Check pod filesystem, config, backend command, and LLM connectivity.
+    Doctor(PodDoctorArgs),
     /// Print recent run output for fins in a pod.
     Tail(PodTailArgs),
     /// Pause all wake-loop runs for a pod.
@@ -358,6 +360,21 @@ pub(crate) struct PodStatusArgs {
     /// Emit machine-readable JSON.
     #[arg(long)]
     pub(crate) json: bool,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodDoctorArgs {
+    /// Pod slug.
+    pub(crate) pod: String,
+    /// Restrict checks to one fin.
+    #[arg(long)]
+    pub(crate) fin: Option<String>,
+    /// Probe prompt passed to each fin backend.
+    #[arg(long, default_value = "Reply with exactly: orqa-ok")]
+    pub(crate) prompt: String,
+    /// Seconds to wait for each backend probe.
+    #[arg(long, default_value_t = 120)]
+    pub(crate) timeout: u64,
 }
 
 #[derive(Debug, Args)]

@@ -164,6 +164,14 @@ orqa pod status sample-pod
 orqa fin status sample-pod planner
 ```
 
+Check pod readiness, including filesystem shape, config resolution, backend
+execution, and upstream LLM connectivity:
+
+```sh
+orqa pod doctor sample-pod
+orqa pod doctor sample-pod --fin planner --timeout 60
+```
+
 Each fin exec records a small run directory under the fin home:
 
 ```text

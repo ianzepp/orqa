@@ -14,6 +14,7 @@ use crate::{
         DEFAULT_CHARTER, DEFAULT_ROLE, fin_agents_template, fin_config_template,
         pod_agents_template, pod_config_template,
     },
+    doctor::pod_doctor,
     issues::{ack_issue, issue_counts, list_issues, read_issue, resolve_issue},
     mailbox::{
         ItemKind, delete_item, delete_mail, done_item, done_mail, ensure_maildir, list_mail,
@@ -80,6 +81,7 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
                 Ok(())
             }
         }
+        PodSubcommand::Doctor(args) => pod_doctor(orqa, args),
         PodSubcommand::Tail(args) => {
             let pod = PodRef::new(&args.pod)?;
             if let Some(fin) = &args.fin {

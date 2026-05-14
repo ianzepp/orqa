@@ -377,6 +377,14 @@ orqa pod status sample-pod
 orqa fin status sample-pod planner
 ```
 
+Check pod readiness, including filesystem shape, config resolution, backend
+execution, and upstream LLM connectivity:
+
+```sh
+orqa pod doctor sample-pod
+orqa pod doctor sample-pod --fin planner --timeout 60
+```
+
 Each direct or loop-launched fin exec records logs and status under the fin:
 
 ```text
@@ -622,6 +630,7 @@ orqa pod home <slug>
 orqa pod charter get <slug>
 orqa pod charter set <slug> <prompt|@file|->
 orqa pod status <slug>
+orqa pod doctor <slug> [--fin <fin>] [--prompt <prompt>] [--timeout <seconds>]
 orqa pod tail <slug> [--fin <fin>] [--lines <n>] [--follow]
 orqa pod sleep <slug>
 orqa pod wake <slug> --force
@@ -633,9 +642,11 @@ goal and operating context for the pod; pass it inline, from `@file.md`, or from
 stdin with `-`. The pod-level `AGENTS.md` injects that charter and tells backend
 runtimes how to use Orqa mail, tasks, status, and fin discovery from inside the
 pod. `pod charter set` replaces both `CHARTER.md` and the generated pod
-`AGENTS.md`. `pod list` prints known pod slugs, one per line. `pod sleep` writes
-a pod-level sleep marker, and `pod wake` requires `--force` before it removes
-that marker.
+`AGENTS.md`. `pod list` prints known pod slugs, one per line. `pod doctor`
+checks required pod and fin files, resolves each fin's backend command, and
+runs a short backend probe to verify connectivity. `pod sleep` writes a
+pod-level sleep marker, and `pod wake` requires `--force` before it removes that
+marker.
 
 ### Fin Commands
 

@@ -459,6 +459,35 @@ chat_args = ["chat", "pod={{pod}}", "fin={{fin}}"]
 }
 
 #[test]
+fn pod_doctor_checks_files_config_and_backend_probe() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_echo_backend(&root, "test-pod");
+
+    let output = orqa_output(
+        &root,
+        [
+            "pod",
+            "doctor",
+            "test-pod",
+            "--fin",
+            "amy",
+            "--timeout",
+            "5",
+        ],
+    );
+
+    assert!(output.contains("ok check=pod home"));
+    assert!(output.contains("ok test-pod/amy check=backend backend=echo"));
+    assert!(output.contains("ok test-pod/amy check=probe"));
+    assert!(output.contains("doctor pod=test-pod status=ok"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn pod_and_fin_list_print_sorted_slugs() {
     let root = temp_root();
 
