@@ -505,13 +505,15 @@ fn ensure_runtime_homes(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
 
 fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCommand {
     let mut process = ProcessCommand::new(&command.command);
+    let fin_home = orqa.fin_home(fin);
     process
+        .current_dir(&fin_home)
         .env("ORQA_HOME", &orqa.home)
         .env("ORQA_POD", &fin.pod)
         .env("ORQA_FIN", &fin.fin)
-        .env("CODEX_HOME", orqa.fin_home(fin).join(".codex"))
-        .env("HERMES_HOME", orqa.fin_home(fin).join(".hermes"))
-        .env("PI_CODING_AGENT_DIR", orqa.fin_home(fin).join(".pi/agent"))
+        .env("CODEX_HOME", fin_home.join(".codex"))
+        .env("HERMES_HOME", fin_home.join(".hermes"))
+        .env("PI_CODING_AGENT_DIR", fin_home.join(".pi/agent"))
         .args(&command.args);
     process
 }

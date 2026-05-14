@@ -54,10 +54,12 @@ brew install ianzepp/tap/orqa
 ORQA_HOME/
   pods/
     sample-pod/
+      AGENTS.md      # pod-level runtime instructions
       pod.txt
       pod.toml
       fins/
         planner/
+          AGENTS.md  # fin-specific role instructions
           fin.txt
           fin.toml
           .codex/       # Codex state
@@ -72,6 +74,7 @@ ORQA_HOME/
             new/
             tmp/
         builder/
+          AGENTS.md
           fin.txt
           fin.toml
           .codex/       # Codex state
@@ -275,6 +278,11 @@ orqa fin chat sample-pod planner
 
 `fin chat` attaches stdin, stdout, and stderr directly to the terminal while
 using the same fin environment and lock behavior as `fin exec`.
+
+Backend processes start with their current directory set to the fin home. That
+lets runtimes that discover instruction files from the working directory read
+both the fin-level `AGENTS.md` and the pod-level `AGENTS.md` in parent
+directories.
 
 When a fin runs, `orqa` sets these environment variables:
 
@@ -567,9 +575,11 @@ orqa pod wake <slug> --force
 ```
 
 `pod create` creates `ORQA_HOME/pods/<slug>/`, its `fins/` directory,
-`pod.txt`, and `pod.toml`. `pod list` prints known pod slugs, one per line.
-`pod sleep` writes a pod-level sleep marker, and `pod wake` requires `--force`
-before it removes that marker.
+`AGENTS.md`, `pod.txt`, and `pod.toml`. The pod-level `AGENTS.md` tells backend
+runtimes how to use Orqa mail, tasks, status, and fin discovery from inside the
+pod. `pod list` prints known pod slugs, one per line. `pod sleep` writes a
+pod-level sleep marker, and `pod wake` requires `--force` before it removes that
+marker.
 
 ### Fin Commands
 
@@ -588,11 +598,12 @@ orqa fin exec <pod> <fin> [-- <args>...]
 orqa fin chat <pod> <fin> [-- <args>...]
 ```
 
-`fin create` creates the fin home, runtime state directories such as `.codex/`,
-`.hermes/`, and `.pi/`, `mail/`, `tasks/`, `fin.txt`, and `fin.toml`. `fin list`
-prints fin slugs for the provided pod, or for `ORQA_POD` when the pod argument
-is omitted. `fin exec` launches the configured backend and passes any arguments
-after `--` as the `{prompt}` template value:
+`fin create` creates the fin home, fin-level `AGENTS.md`, runtime state
+directories such as `.codex/`, `.hermes/`, and `.pi/`, `mail/`, `tasks/`,
+`fin.txt`, and `fin.toml`. The fin-level `AGENTS.md` is a role stub for that
+specific fin. `fin list` prints fin slugs for the provided pod, or for
+`ORQA_POD` when the pod argument is omitted. `fin exec` launches the configured
+backend and passes any arguments after `--` as the `{prompt}` template value:
 
 ```sh
 orqa fin exec sample-pod planner -- "work on the next task"

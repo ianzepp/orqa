@@ -26,9 +26,11 @@ inbox, and task queue.
 ORQA_HOME/
   pods/
     sample-pod/
+      AGENTS.md
       pod.toml
       fins/
         planner/
+          AGENTS.md
           fin.toml
           .codex/       # Codex state
           .hermes/      # Hermes state
@@ -117,6 +119,9 @@ orqa fin chat sample-pod planner
 
 `fin chat` attaches stdin, stdout, and stderr directly to the terminal while
 using the same fin environment and lock behavior as `fin exec`.
+
+Backend processes start in the fin home, so runtimes can discover the
+fin-level `AGENTS.md` and the pod-level `AGENTS.md` in parent directories.
 
 When Orqa launches a fin, it sets:
 

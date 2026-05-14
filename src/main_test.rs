@@ -2,7 +2,7 @@ use std::{env, fs};
 
 use crate::{
     cli::TaskListArgs,
-    config::{fin_config_template, pod_config_template},
+    config::{fin_agents_template, fin_config_template, pod_agents_template, pod_config_template},
     mailbox::{
         TaskFilters, canonical_task_body, deliver_mail, ensure_maildir, message_id,
         priority_sort_value, quote_value, remove_sleep_marker, resolve_address,
@@ -197,6 +197,17 @@ fn pod_config_template_includes_commented_backend_examples() {
 }
 
 #[test]
+fn pod_agents_template_documents_orqa_commands() {
+    let pod = PodRef::new("sample-pod").unwrap();
+    let markdown = pod_agents_template(&pod);
+
+    assert!(markdown.contains("sample-pod"));
+    assert!(markdown.contains("orqa fin list"));
+    assert!(markdown.contains("orqa mail send --to <fin>"));
+    assert!(markdown.contains("orqa task send --to <fin>"));
+}
+
+#[test]
 fn fin_config_template_inherits_pod_backend_by_default() {
     let fin = FinRef::new("sample-pod", "amy").unwrap();
     let toml = fin_config_template(&fin);
@@ -204,4 +215,14 @@ fn fin_config_template_inherits_pod_backend_by_default() {
     assert!(toml.contains("[fin]"));
     assert!(toml.contains("slug = \"amy\""));
     assert!(toml.contains("# backend = \"codex\""));
+}
+
+#[test]
+fn fin_agents_template_names_fin_role_stub() {
+    let fin = FinRef::new("sample-pod", "planner").unwrap();
+    let markdown = fin_agents_template(&fin);
+
+    assert!(markdown.contains("planner"));
+    assert!(markdown.contains("sample-pod"));
+    assert!(markdown.contains("Describe this fin's purpose here."));
 }

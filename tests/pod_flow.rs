@@ -41,6 +41,44 @@ exec_args = ["pod={{pod}}", "fin={{fin}}", "prompt={{prompt}}"]
 }
 
 #[test]
+fn pod_and_fin_create_seed_agents_files() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "planner"]);
+
+    let pod_agents = fs::read_to_string(root.join("pods/test-pod/AGENTS.md")).unwrap();
+    let fin_agents = fs::read_to_string(root.join("pods/test-pod/fins/planner/AGENTS.md")).unwrap();
+
+    assert!(pod_agents.contains("orqa fin list"));
+    assert!(pod_agents.contains("orqa mail send --to <fin>"));
+    assert!(pod_agents.contains("orqa task send --to <fin>"));
+    assert!(fin_agents.contains("You are the `planner` fin"));
+    assert!(fin_agents.contains("Describe this fin's purpose here."));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn fin_exec_runs_from_fin_home_for_agents_discovery() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_pwd_backend(&root, "test-pod");
+
+    orqa(&root, ["fin", "exec", "test-pod", "amy"]);
+
+    let cwd = fs::read_to_string(root.join("pods/test-pod/fins/amy/cwd.txt")).unwrap();
+    assert_eq!(
+        fs::canonicalize(Path::new(cwd.trim())).unwrap(),
+        fs::canonicalize(root.join("pods/test-pod/fins/amy")).unwrap()
+    );
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn loop_uses_generated_pod_config_backend_for_wakeable_fin() {
     let root = temp_root();
 
@@ -407,6 +445,25 @@ fn set_echo_backend(root: &Path, pod: &str) {
 enabled = true
 command = "/bin/echo"
 exec_args = ["{{prompt}}"]
+"#
+        ),
+    )
+    .unwrap();
+}
+
+fn set_pwd_backend(root: &Path, pod: &str) {
+    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let config = fs::read_to_string(&pod_config).unwrap();
+    let config = config.replace("default_backend = \"codex\"", "default_backend = \"pwd\"");
+    fs::write(
+        &pod_config,
+        format!(
+            r#"{config}
+
+[backends.pwd]
+enabled = true
+command = "/bin/sh"
+exec_args = ["-c", "pwd > {{fin_home}}/cwd.txt"]
 "#
         ),
     )

@@ -5,7 +5,7 @@ use crate::{
         FinCommand, FinSubcommand, MailCommand, MailSubcommand, PodCommand, PodSubcommand,
         TaskCommand, TaskSubcommand,
     },
-    config::{fin_config_template, pod_config_template},
+    config::{fin_agents_template, fin_config_template, pod_agents_template, pod_config_template},
     mailbox::{
         ItemKind, delete_item, delete_mail, done_item, done_mail, ensure_maildir, list_mail,
         list_tasks, read_item, read_mail, remove_sleep_marker, send_mail, send_task, unread_mail,
@@ -28,6 +28,7 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
             })?;
             write_if_missing(&home.join("pod.txt"), &format!("slug={}\n", pod.slug))?;
             write_if_missing(&home.join("pod.toml"), &pod_config_template(&pod))?;
+            write_if_missing(&home.join("AGENTS.md"), &pod_agents_template(&pod))?;
             println!("{}", home.display());
             Ok(())
         }
@@ -100,6 +101,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             ensure_maildir(&orqa.task_home(&fin))?;
             write_if_missing(&home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
             write_if_missing(&home.join("fin.toml"), &fin_config_template(&fin))?;
+            write_if_missing(&home.join("AGENTS.md"), &fin_agents_template(&fin))?;
             println!("{}", home.display());
             Ok(())
         }
