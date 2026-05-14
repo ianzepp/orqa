@@ -2,8 +2,11 @@ use std::{
     env,
     ffi::OsString,
     fs,
+    io::{self, Read},
     path::{Path, PathBuf},
     process::{Command as ProcessCommand, ExitCode},
+    sync::atomic::{AtomicUsize, Ordering},
+    time::{SystemTime, UNIX_EPOCH},
 };
 
 use clap::{Args, Parser, Subcommand};
@@ -78,6 +81,10 @@ struct MailCommand {
 enum MailSubcommand {
     /// Print the mail directory for an agent.
     Home(AgentRefArgs),
+    /// Send a pod-local message.
+    Send(SendMailArgs),
+    /// List unread messages for an agent.
+    Unread(AgentRefArgs),
 }
 
 #[derive(Debug, Args)]
@@ -114,9 +121,26 @@ struct RunArgs {
     args: Vec<OsString>,
 }
 
+#[derive(Debug, Args)]
+struct SendMailArgs {
+    /// Sender address, such as amy@sample-pod.orqa.
+    #[arg(long)]
+    from: String,
+    /// Recipient address, such as bob-jones@sample-pod.orqa.
+    #[arg(long)]
+    to: String,
+    /// Message subject.
+    #[arg(long, default_value = "(no subject)")]
+    subject: String,
+    /// Message body. Reads stdin when omitted.
+    body: Option<String>,
+}
+
 struct Orqa {
     home: PathBuf,
 }
+
+static MAIL_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 fn main() -> ExitCode {
     let cli = Cli::parse();
@@ -178,12 +202,7 @@ fn agent(orqa: &Orqa, command: AgentCommand) -> Result<(), String> {
                     home.display()
                 )
             })?;
-            fs::create_dir_all(home.join("mail")).map_err(|error| {
-                format!(
-                    "failed to create mail directory for {}: {error}",
-                    agent.label()
-                )
-            })?;
+            ensure_maildir(&orqa.mail_home(&agent))?;
             write_if_missing(&home.join("agent.txt"), &format!("slug={}\n", agent.agent))?;
             println!("{}", home.display());
             Ok(())
@@ -201,16 +220,39 @@ fn mail(orqa: &Orqa, command: MailCommand) -> Result<(), String> {
     match command.command {
         MailSubcommand::Home(args) => {
             let agent = AgentRef::new(&args.pod, &args.agent)?;
-            println!("{}", orqa.agent_home(&agent).join("mail").display());
+            println!("{}", orqa.mail_home(&agent).display());
             Ok(())
         }
+        MailSubcommand::Send(args) => send_mail(orqa, args),
+        MailSubcommand::Unread(args) => unread_mail(orqa, args),
     }
 }
 
 fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
     let pod = PodRef::new(&args.pod)?;
-    println!("loop wake scan for pod {}", pod.slug);
-    println!("pod_home={}", orqa.pod_home(&pod).display());
+    let agents_dir = orqa.pod_home(&pod).join("agents");
+    let agents = fs::read_dir(&agents_dir).map_err(|error| {
+        format!(
+            "failed to read agents directory {}: {error}",
+            agents_dir.display()
+        )
+    })?;
+
+    for entry in agents {
+        let entry = entry.map_err(|error| format!("failed to read agent directory: {error}"))?;
+        if !entry.path().is_dir() {
+            continue;
+        }
+
+        let agent_slug = entry.file_name().to_string_lossy().to_string();
+        let agent = AgentRef::new(&pod.slug, &agent_slug)?;
+        let unread = unread_count(&orqa.mail_home(&agent))?;
+
+        if unread > 0 {
+            println!("wake {} unread={}", agent.label(), unread);
+        }
+    }
+
     Ok(())
 }
 
@@ -248,6 +290,128 @@ fn run_agent(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
     }
 }
 
+fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
+    let from = MailAddress::parse(&args.from)?;
+    let to = MailAddress::parse(&args.to)?;
+
+    if from.pod != to.pod {
+        return Err(format!(
+            "cross-pod mail is not supported: {} -> {}",
+            from.label(),
+            to.label()
+        ));
+    }
+
+    let from_agent = AgentRef::new(&from.pod, &from.agent)?;
+    let to_agent = AgentRef::new(&to.pod, &to.agent)?;
+    let mail_home = orqa.mail_home(&to_agent);
+    ensure_maildir(&mail_home)?;
+
+    let body = match args.body {
+        Some(body) => body,
+        None => read_stdin()?,
+    };
+
+    let message = format!(
+        "From: {}\nTo: {}\nSubject: {}\n\n{}\n",
+        from.label(),
+        to.label(),
+        args.subject,
+        body
+    );
+    let path = deliver_mail(&mail_home, &message)?;
+
+    println!("{}", path.display());
+    println!("queued wake for {}", to_agent.label());
+
+    let _ = from_agent;
+    Ok(())
+}
+
+fn unread_mail(orqa: &Orqa, args: AgentRefArgs) -> Result<(), String> {
+    let agent = AgentRef::new(&args.pod, &args.agent)?;
+    let new_dir = orqa.mail_home(&agent).join("new");
+
+    for path in sorted_files(&new_dir)? {
+        println!("{}", path.display());
+    }
+
+    Ok(())
+}
+
+fn ensure_maildir(mail_home: &Path) -> Result<(), String> {
+    for dir in ["cur", "new", "tmp"] {
+        fs::create_dir_all(mail_home.join(dir)).map_err(|error| {
+            format!("failed to create maildir {}: {error}", mail_home.display())
+        })?;
+    }
+
+    Ok(())
+}
+
+fn deliver_mail(mail_home: &Path, message: &str) -> Result<PathBuf, String> {
+    let name = unique_mail_name()?;
+    let tmp_path = mail_home.join("tmp").join(&name);
+    let new_path = mail_home.join("new").join(&name);
+
+    fs::write(&tmp_path, message)
+        .map_err(|error| format!("failed to write mail {}: {error}", tmp_path.display()))?;
+    fs::rename(&tmp_path, &new_path).map_err(|error| {
+        format!(
+            "failed to move mail into inbox {}: {error}",
+            new_path.display()
+        )
+    })?;
+
+    Ok(new_path)
+}
+
+fn unread_count(mail_home: &Path) -> Result<usize, String> {
+    Ok(sorted_files(&mail_home.join("new"))?.len())
+}
+
+fn sorted_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut paths = Vec::new();
+    for entry in
+        fs::read_dir(dir).map_err(|error| format!("failed to read {}: {error}", dir.display()))?
+    {
+        let entry =
+            entry.map_err(|error| format!("failed to read {} entry: {error}", dir.display()))?;
+        if entry.path().is_file() {
+            paths.push(entry.path());
+        }
+    }
+
+    paths.sort();
+    Ok(paths)
+}
+
+fn unique_mail_name() -> Result<String, String> {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("system clock is before Unix epoch: {error}"))?;
+    let counter = MAIL_COUNTER.fetch_add(1, Ordering::Relaxed);
+
+    Ok(format!(
+        "{}.{}.{}.orqa",
+        now.as_micros(),
+        std::process::id(),
+        counter
+    ))
+}
+
+fn read_stdin() -> Result<String, String> {
+    let mut body = String::new();
+    io::stdin()
+        .read_to_string(&mut body)
+        .map_err(|error| format!("failed to read stdin: {error}"))?;
+    Ok(body)
+}
+
 fn write_if_missing(path: &Path, contents: &str) -> Result<(), String> {
     if path.exists() {
         return Ok(());
@@ -276,6 +440,10 @@ impl Orqa {
             .join(&agent.pod)
             .join("agents")
             .join(&agent.agent)
+    }
+
+    fn mail_home(&self, agent: &AgentRef) -> PathBuf {
+        self.agent_home(agent).join("mail")
     }
 }
 
@@ -312,6 +480,34 @@ impl AgentRef {
     }
 }
 
+struct MailAddress {
+    agent: String,
+    pod: String,
+}
+
+impl MailAddress {
+    fn parse(address: &str) -> Result<Self, String> {
+        let (agent, domain) = address
+            .split_once('@')
+            .ok_or_else(|| format!("invalid local address {address:?}; expected agent@pod.orqa"))?;
+        let pod = domain
+            .strip_suffix(".orqa")
+            .ok_or_else(|| format!("invalid local address {address:?}; expected agent@pod.orqa"))?;
+
+        validate_slug(agent)?;
+        validate_slug(pod)?;
+
+        Ok(Self {
+            agent: agent.to_string(),
+            pod: pod.to_string(),
+        })
+    }
+
+    fn label(&self) -> String {
+        format!("{}@{}.orqa", self.agent, self.pod)
+    }
+}
+
 fn validate_slug(slug: &str) -> Result<(), String> {
     let valid = !slug.is_empty()
         && slug
@@ -332,4 +528,39 @@ fn default_home() -> PathBuf {
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".orqa")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_lowercase_slug_parts() {
+        assert!(validate_slug("sample-pod").is_ok());
+        assert!(validate_slug("bob-jones").is_ok());
+        assert!(validate_slug("amy2").is_ok());
+    }
+
+    #[test]
+    fn rejects_path_like_slugs() {
+        assert!(validate_slug("../sample-pod").is_err());
+        assert!(validate_slug("SamplePod").is_err());
+        assert!(validate_slug("").is_err());
+    }
+
+    #[test]
+    fn parses_local_mail_addresses() {
+        let address = MailAddress::parse("amy@sample-pod.orqa").unwrap();
+
+        assert_eq!(address.agent, "amy");
+        assert_eq!(address.pod, "sample-pod");
+        assert_eq!(address.label(), "amy@sample-pod.orqa");
+    }
+
+    #[test]
+    fn rejects_non_orqa_mail_addresses() {
+        assert!(MailAddress::parse("amy@example.com").is_err());
+        assert!(MailAddress::parse("amy").is_err());
+        assert!(MailAddress::parse("Amy@sample-pod.orqa").is_err());
+    }
 }
