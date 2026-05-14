@@ -169,23 +169,6 @@ fn plan_fin(
     let lock = FinLock::try_existing(orqa, fin)?;
     let pid = lock.as_ref().map(|lock| lock.pid);
     let running = lock.as_ref().is_some_and(FinLock::is_live);
-    let backend = match resolve_run_command(orqa, fin, framework, args) {
-        Ok(command) => Some(command.backend),
-        Err(error) => {
-            return Ok(FinWakePlan {
-                fin: fin.fin.clone(),
-                decision: WakeDecision::WouldSkip,
-                reason: WakeReason::BackendError,
-                fin_sleeping,
-                running,
-                pid,
-                unread_mail,
-                open_tasks,
-                backend: None,
-                detail: Some(error),
-            });
-        }
-    };
 
     let (decision, reason) = if pod_sleeping && !force {
         (WakeDecision::WouldSkip, WakeReason::PodSleeping)
@@ -201,6 +184,27 @@ fn plan_fin(
         (WakeDecision::WouldWake, WakeReason::Task)
     } else {
         (WakeDecision::WouldSkip, WakeReason::NoAction)
+    };
+    let backend = if decision == WakeDecision::WouldWake {
+        match resolve_run_command(orqa, fin, framework, args) {
+            Ok(command) => Some(command.backend),
+            Err(error) => {
+                return Ok(FinWakePlan {
+                    fin: fin.fin.clone(),
+                    decision: WakeDecision::WouldSkip,
+                    reason: WakeReason::BackendError,
+                    fin_sleeping,
+                    running,
+                    pid,
+                    unread_mail,
+                    open_tasks,
+                    backend: None,
+                    detail: Some(error),
+                });
+            }
+        }
+    } else {
+        None
     };
 
     Ok(FinWakePlan {
@@ -254,13 +258,7 @@ pub(crate) fn supervise_fin(orqa: &Orqa, args: RunArgs) -> Result<(), String> {
     if outcome.success {
         Ok(())
     } else {
-        Err(format!(
-            "{:?} exited with {}",
-            command.command,
-            outcome
-                .code
-                .map_or_else(|| "signal".to_string(), |code| code.to_string())
-        ))
+        Err(exit_error(&command.command, outcome.code))
     }
 }
 
@@ -324,13 +322,14 @@ fn run_fin_foreground(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> Re
         return Ok(());
     }
 
-    Err(format!(
-        "{:?} exited with {}",
-        command.command,
-        outcome
-            .code
-            .map_or_else(|| "signal".to_string(), |code| code.to_string())
-    ))
+    Err(exit_error(&command.command, outcome.code))
+}
+
+fn exit_error(command: &OsString, code: Option<i32>) -> String {
+    format!(
+        "{command:?} exited with {}",
+        code.map_or_else(|| "signal".to_string(), |code| code.to_string())
+    )
 }
 
 pub(crate) fn resolve_run_command(
@@ -367,27 +366,11 @@ pub(crate) fn run_fin_logged(
         lock.remove()?;
     }
 
-    let home = orqa.fin_home(fin);
-    let codex_home = home.join(".codex");
+    ensure_codex_home(orqa, fin)?;
     let run = RunFiles::create(orqa, fin, &command.backend, &command.command, &command.args)?;
 
-    fs::create_dir_all(&codex_home).map_err(|error| {
-        format!(
-            "failed to create fin codex home {}: {error}",
-            codex_home.display()
-        )
-    })?;
-
-    let mut process = ProcessCommand::new(&command.command);
-    process
-        .env("ORQA_HOME", &orqa.home)
-        .env("ORQA_POD", &fin.pod)
-        .env("ORQA_FIN", &fin.fin)
-        .env("CODEX_HOME", &codex_home)
-        .args(&command.args);
-
     let output = if capture_output {
-        let child = process
+        let mut child = fin_process(orqa, fin, command)
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -395,7 +378,7 @@ pub(crate) fn run_fin_logged(
                 let _ = run.mark_spawn_failed(&error.to_string());
                 format!("failed to run {:?}: {error}", command.command)
             })?;
-        let lock = FinLock::write(orqa, fin, child.id(), &command.command)?;
+        let lock = write_child_lock(orqa, fin, &mut child, &command.command, &run)?;
         run.mark_spawned(child.id())?;
         let output = child
             .wait_with_output()
@@ -412,7 +395,7 @@ pub(crate) fn run_fin_logged(
     } else {
         let stdout = run.stdout_file()?;
         let stderr = run.stderr_file()?;
-        let mut child = process
+        let mut child = fin_process(orqa, fin, command)
             .stdin(Stdio::null())
             .stdout(Stdio::from(stdout))
             .stderr(Stdio::from(stderr))
@@ -421,7 +404,7 @@ pub(crate) fn run_fin_logged(
                 let _ = run.mark_spawn_failed(&error.to_string());
                 format!("failed to spawn {:?}: {error}", command.command)
             })?;
-        let lock = FinLock::write(orqa, fin, child.id(), &command.command)?;
+        let lock = write_child_lock(orqa, fin, &mut child, &command.command, &run)?;
         run.mark_spawned(child.id())?;
         let status = child
             .wait()
@@ -445,6 +428,45 @@ pub(crate) struct RunOutcome {
     code: Option<i32>,
     stdout: Vec<u8>,
     stderr: Vec<u8>,
+}
+
+fn ensure_codex_home(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
+    let codex_home = orqa.fin_home(fin).join(".codex");
+    fs::create_dir_all(&codex_home).map_err(|error| {
+        format!(
+            "failed to create fin codex home {}: {error}",
+            codex_home.display()
+        )
+    })
+}
+
+fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCommand {
+    let mut process = ProcessCommand::new(&command.command);
+    process
+        .env("ORQA_HOME", &orqa.home)
+        .env("ORQA_POD", &fin.pod)
+        .env("ORQA_FIN", &fin.fin)
+        .env("CODEX_HOME", orqa.fin_home(fin).join(".codex"))
+        .args(&command.args);
+    process
+}
+
+fn write_child_lock(
+    orqa: &Orqa,
+    fin: &FinRef,
+    child: &mut std::process::Child,
+    command: &OsString,
+    run: &RunFiles,
+) -> Result<FinLock, String> {
+    match FinLock::write(orqa, fin, child.id(), command) {
+        Ok(lock) => Ok(lock),
+        Err(error) => {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = run.mark_spawn_failed(&error);
+            Err(error)
+        }
+    }
 }
 
 pub(crate) struct FinLock {

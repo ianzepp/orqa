@@ -4,6 +4,7 @@ use std::{
     io::Write,
     path::{Path, PathBuf},
     process::{ExitStatus, Output},
+    sync::atomic::{AtomicUsize, Ordering},
     thread,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
@@ -11,6 +12,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::model::{FinRef, Orqa};
+
+static RUN_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub(crate) struct RunRecord {
@@ -25,6 +28,15 @@ pub(crate) struct RunRecord {
     pub(crate) stdout_log: PathBuf,
     pub(crate) stderr_log: PathBuf,
     pub(crate) events_log: PathBuf,
+}
+
+impl RunRecord {
+    fn with_status(&self, status: &str, exit_code: Option<i32>) -> Self {
+        let mut record = self.clone();
+        record.status = status.to_string();
+        record.exit_code = exit_code;
+        record
+    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -45,6 +57,7 @@ pub(crate) struct RunLogs {
 pub(crate) struct RunFiles {
     pub(crate) record: RunRecord,
     status_path: PathBuf,
+    ledger_path: PathBuf,
 }
 
 impl RunFiles {
@@ -84,16 +97,17 @@ impl RunFiles {
         write_file(&record.stdout_log, "")?;
         write_file(&record.stderr_log, "")?;
         write_file(&record.events_log, "")?;
-        write_file(&run_dir.join("command.txt"), &command_text(framework, args))?;
+        let command_text = command_text(framework, args);
+        write_file(&run_dir.join("command.txt"), &command_text)?;
         write_latest(orqa, fin, &record.id)?;
 
         let files = Self {
             status_path: run_dir.join("status.json"),
+            ledger_path: orqa.runs_ledger_path(fin),
             record,
         };
         files.write_status("planned", None, None)?;
-        files.append_event("planned", &[("command", command_text(framework, args))])?;
-        append_ledger(orqa, fin, &files.record)?;
+        files.append_event("planned", &[("command", command_text)])?;
         Ok(files)
     }
 
@@ -111,32 +125,18 @@ impl RunFiles {
             &self.record.stderr_log,
             &String::from_utf8_lossy(&output.stderr),
         )?;
-        let exit_code = output.status.code();
-        self.write_status("finished", exit_code, None)?;
-        self.append_event(
-            "finished",
-            &[(
-                "exit_code",
-                exit_code.map_or_else(|| "signal".to_string(), |code| code.to_string()),
-            )],
-        )
+        self.mark_finished_status(output.status)
     }
 
     pub(crate) fn mark_finished_status(&self, status: ExitStatus) -> Result<(), String> {
         let exit_code = status.code();
-        self.write_status("finished", exit_code, None)?;
-        self.append_event(
-            "finished",
-            &[(
-                "exit_code",
-                exit_code.map_or_else(|| "signal".to_string(), |code| code.to_string()),
-            )],
-        )
+        self.finish_with_exit(exit_code)
     }
 
     pub(crate) fn mark_spawn_failed(&self, message: &str) -> Result<(), String> {
         self.write_status("spawn-failed", None, None)?;
-        self.append_event("spawn-failed", &[("error", message.to_string())])
+        self.append_event("spawn-failed", &[("error", message.to_string())])?;
+        self.append_ledger(&self.record.with_status("spawn-failed", None))
     }
 
     pub(crate) fn stdout_file(&self) -> Result<fs::File, String> {
@@ -153,9 +153,7 @@ impl RunFiles {
         exit_code: Option<i32>,
         pid: Option<u32>,
     ) -> Result<(), String> {
-        let mut record = self.record.clone();
-        record.status = status.to_string();
-        record.exit_code = exit_code;
+        let record = self.record.with_status(status, exit_code);
         let mut value = serde_json::to_value(&record)
             .map_err(|error| format!("failed to encode run status: {error}"))?;
         if let Some(pid) = pid {
@@ -166,6 +164,18 @@ impl RunFiles {
             &serde_json::to_string_pretty(&value)
                 .map_err(|error| format!("failed to encode run status: {error}"))?,
         )
+    }
+
+    fn finish_with_exit(&self, exit_code: Option<i32>) -> Result<(), String> {
+        self.write_status("finished", exit_code, None)?;
+        self.append_event(
+            "finished",
+            &[(
+                "exit_code",
+                exit_code.map_or_else(|| "signal".to_string(), |code| code.to_string()),
+            )],
+        )?;
+        self.append_ledger(&self.record.with_status("finished", exit_code))
     }
 
     fn append_event(&self, event: &str, fields: &[(&str, String)]) -> Result<(), String> {
@@ -184,6 +194,17 @@ impl RunFiles {
                 "{}\n",
                 serde_json::to_string(&value)
                     .map_err(|error| format!("failed to encode run event: {error}"))?
+            ),
+        )
+    }
+
+    fn append_ledger(&self, record: &RunRecord) -> Result<(), String> {
+        append_line(
+            &self.ledger_path,
+            &format!(
+                "{}\n",
+                serde_json::to_string(record)
+                    .map_err(|error| format!("failed to encode run ledger: {error}"))?
             ),
         )
     }
@@ -307,17 +328,6 @@ fn resolve_run_id(orqa: &Orqa, fin: &FinRef, run: Option<&str>) -> Result<String
     }
 }
 
-fn append_ledger(orqa: &Orqa, fin: &FinRef, record: &RunRecord) -> Result<(), String> {
-    append_line(
-        &orqa.runs_ledger_path(fin),
-        &format!(
-            "{}\n",
-            serde_json::to_string(record)
-                .map_err(|error| format!("failed to encode run ledger: {error}"))?
-        ),
-    )
-}
-
 fn write_latest(orqa: &Orqa, fin: &FinRef, run: &str) -> Result<(), String> {
     write_file(&orqa.latest_run_path(fin), &format!("{run}\n"))
 }
@@ -326,7 +336,13 @@ fn run_id() -> Result<String, String> {
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|error| format!("system clock is before Unix epoch: {error}"))?;
-    Ok(format!("{}.{}", now.as_secs(), std::process::id()))
+    let counter = RUN_COUNTER.fetch_add(1, Ordering::Relaxed);
+    Ok(format!(
+        "{}.{}.{}",
+        now.as_micros(),
+        std::process::id(),
+        counter
+    ))
 }
 
 fn now_epoch() -> u64 {

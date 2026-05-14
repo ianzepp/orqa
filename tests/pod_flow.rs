@@ -126,6 +126,37 @@ fn plan_and_dry_run_explain_wake_decisions_without_running() {
 }
 
 #[test]
+fn plan_ignores_backend_errors_until_fin_is_wakeable() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    fs::remove_file(root.join("pods/test-pod/pod.toml")).unwrap();
+
+    let idle = orqa_output(&root, ["plan", "test-pod"]);
+    assert!(idle.contains("decision=would-skip"));
+    assert!(idle.contains("reason=no-action"));
+
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "amy@test-pod.orqa",
+            "--to",
+            "amy@test-pod.orqa",
+            "wake",
+        ],
+    );
+    let wakeable = orqa_output(&root, ["plan", "test-pod"]);
+    assert!(wakeable.contains("decision=would-skip"));
+    assert!(wakeable.contains("reason=backend-error"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn fin_run_records_status_and_tail_output() {
     let root = temp_root();
 
@@ -154,6 +185,53 @@ fn fin_run_records_status_and_tail_output() {
 
     let tail = orqa_output(&root, ["fin", "tail", "test-pod", "amy"]);
     assert!(tail.contains("from-run"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
+fn repeated_fin_runs_get_distinct_finished_records() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+
+    for body in ["first", "second"] {
+        orqa_output(
+            &root,
+            [
+                "fin",
+                "run",
+                "--framework",
+                "/bin/echo",
+                "test-pod",
+                "amy",
+                "--",
+                body,
+            ],
+        );
+    }
+
+    let runs = orqa_output(&root, ["fin", "runs", "test-pod", "amy"]);
+    let run_lines = runs.lines().collect::<Vec<_>>();
+    assert_eq!(run_lines.len(), 2);
+    assert_ne!(
+        run_lines[0].split_once(' ').map(|(id, _)| id),
+        run_lines[1].split_once(' ').map(|(id, _)| id)
+    );
+    assert!(
+        run_lines
+            .iter()
+            .all(|line| line.contains("status=finished"))
+    );
+
+    let ledger = fs::read_to_string(root.join("pods/test-pod/fins/amy/runs.jsonl")).unwrap();
+    assert_eq!(ledger.lines().count(), 2);
+    assert!(
+        ledger
+            .lines()
+            .all(|line| line.contains("\"status\":\"finished\""))
+    );
 
     fs::remove_dir_all(root).unwrap();
 }
