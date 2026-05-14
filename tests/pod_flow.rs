@@ -488,6 +488,39 @@ fn pod_doctor_checks_files_config_and_backend_probe() {
 }
 
 #[test]
+fn pod_doctor_reports_backend_spawn_failures() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "test-pod"]);
+    orqa(&root, ["fin", "create", "test-pod", "amy"]);
+    set_missing_backend(&root, "test-pod");
+
+    let output = command(
+        &root,
+        [
+            "pod",
+            "doctor",
+            "test-pod",
+            "--fin",
+            "amy",
+            "--timeout",
+            "1",
+        ],
+    )
+    .output()
+    .unwrap();
+
+    assert!(!output.status.success());
+    let stdout = String::from_utf8(output.stdout).unwrap();
+    let stderr = String::from_utf8(output.stderr).unwrap();
+    assert!(stdout.contains("ok test-pod/amy check=backend backend=missing"));
+    assert!(stdout.contains("fail test-pod/amy check=probe"));
+    assert!(stderr.contains("pod test-pod doctor failed"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn pod_and_fin_list_print_sorted_slugs() {
     let root = temp_root();
 
@@ -674,6 +707,61 @@ fn mail_to_operator_opens_issue_and_resolution_mails_fin() {
     fs::remove_dir_all(root).unwrap();
 }
 
+#[test]
+fn operator_issue_ack_and_dismiss_move_issue_and_mail_fin() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "support"]);
+    orqa(&root, ["fin", "create", "support", "helper"]);
+    orqa(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "helper@support.orqa",
+            "--to",
+            "operator@support.orqa",
+            "--subject",
+            "Need policy call",
+            "I need a human decision.",
+        ],
+    );
+
+    let issues = orqa_output(&root, ["ops", "issues"]);
+    let issue_id = issues
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap();
+    orqa(&root, ["ops", "issue", "ack", issue_id]);
+    let acknowledged = orqa_output(&root, ["ops", "issues", "--status", "acknowledged"]);
+    assert!(acknowledged.contains("status=acknowledged"));
+
+    orqa(
+        &root,
+        [
+            "ops",
+            "issue",
+            "dismiss",
+            issue_id,
+            "--note",
+            "Operator decided this is not needed.",
+        ],
+    );
+    let closed = orqa_output(&root, ["ops", "issues", "--all", "--status", "dismissed"]);
+    assert!(closed.contains("closed"));
+    assert!(closed.contains("status=dismissed"));
+
+    let mail = orqa_output(
+        &root,
+        ["mail", "list", "--pod", "support", "--fin", "helper"],
+    );
+    assert!(mail.contains("Re: Need policy call"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
 fn orqa<const N: usize>(root: &Path, args: [&str; N]) {
     let output = command(root, args).output().unwrap();
     assert!(
@@ -774,6 +862,28 @@ fn set_path_backend(root: &Path, pod: &str) {
 enabled = true
 command = "/bin/sh"
 exec_args = ["-c", "printf '%s' \"$PATH\" > {{fin_home}}/path.txt"]
+"#
+        ),
+    )
+    .unwrap();
+}
+
+fn set_missing_backend(root: &Path, pod: &str) {
+    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let config = fs::read_to_string(&pod_config).unwrap();
+    let config = config.replace(
+        "default_backend = \"codex\"",
+        "default_backend = \"missing\"",
+    );
+    fs::write(
+        &pod_config,
+        format!(
+            r#"{config}
+
+[backends.missing]
+enabled = true
+command = "/definitely/missing/orqa-test-backend"
+exec_args = ["{{prompt}}"]
 "#
         ),
     )

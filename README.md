@@ -271,23 +271,31 @@ src/
   cli.rs              clap command and argument definitions
   commands.rs         top-level command handlers
   config.rs           pod and fin config templates
+  doctor.rs           pod readiness and backend connectivity checks
+  issues.rs           operator issue storage and lifecycle
   mailbox/
     mod.rs            mail and task command behavior
     storage.rs        Maildir storage, addresses, ids, and sleep markers
     tasks.rs          task front matter, filtering, sorting, and formatting
   model.rs            Orqa paths plus pod, fin, and address types
+  runs.rs             run records, logs, latest pointers, and tailing
   runtime.rs          wake loop, process spawning, and run locks
+  runtime_home.rs     fin-local runtime home setup
+  service.rs          launchd/systemd service management
+  status.rs           pod and fin status summaries
   main_test.rs        unit tests loaded from src/main.rs
 tests/
+  help_command.rs     embedded operational guide smoke test
   hygiene.rs          source hygiene ratchet
+  pod_flow.rs         CLI integration flows
 ```
 
 Run the normal checks with:
 
 ```sh
-cargo fmt
+cargo fmt --check
 cargo clippy --all-targets -- -D warnings
-cargo test
+cargo test --locked
 ```
 
 ## Fin Execution
