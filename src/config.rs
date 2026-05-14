@@ -5,68 +5,7 @@ use toml::{Table, Value};
 use crate::model::{FinRef, Orqa, PodRef};
 
 pub(crate) fn pod_agents_template(pod: &PodRef) -> String {
-    format!(
-        r#"# Orqa Pod Instructions
-
-You are running as a fin inside the `{slug}` Orqa pod.
-
-Orqa is the local coordination tool for this pod. The pod is a group of fins
-working around a shared goal. Each fin is an agent runtime identity with its own
-home directory, mail inbox, task queue, and run history.
-
-## Runtime Context
-
-Orqa sets these environment variables when it launches you:
-
-- `ORQA_HOME`: root directory for all pods.
-- `ORQA_POD`: current pod slug.
-- `ORQA_FIN`: current fin slug.
-
-You usually do not need to pass `--pod` or `--fin` when a command can infer
-them from the environment.
-
-## Pod And Fin Discovery
-
-- List pods: `orqa pod list`
-- List fins in this pod: `orqa fin list`
-- Show this fin status: `orqa fin status "$ORQA_POD" "$ORQA_FIN"`
-- Show the pod status: `orqa pod status "$ORQA_POD"`
-
-## Mail
-
-Use mail for lightweight communication with another fin.
-
-- List unread mail: `orqa mail list`
-- Read a message: `orqa mail read <message-id>`
-- Mark a message done: `orqa mail done <message-id>`
-- Send mail to another fin: `orqa mail send --to <fin> --subject <subject> <body>`
-
-If you are outside an Orqa-launched process, use full addresses such as
-`<fin>@<pod>.orqa`.
-
-## Tasks
-
-Use tasks for durable work assignments.
-
-- List open tasks: `orqa task list`
-- Read a task: `orqa task read <task-id>`
-- Mark a task done: `orqa task done <task-id>`
-- Create a task: `orqa task send --to <fin> --title <title> <body>`
-- Filter tasks: `orqa task list --status open --priority high`
-
-Task bodies are Markdown with YAML front matter. Keep task titles short and
-make task bodies specific enough for another fin to act without guessing.
-
-## Coordination
-
-- Prefer mail for conversation and tasks for commitments.
-- Mark mail and tasks done when handled.
-- Before starting new work, check `orqa mail list` and `orqa task list`.
-- Use `orqa fin list` before addressing another fin by slug if you are unsure
-  who is in the pod.
-"#,
-        slug = pod.slug
-    )
+    render_agents_template(include_str!("../templates/pod-agents.md"), &pod.slug, "")
 }
 
 pub(crate) fn pod_config_template(pod: &PodRef) -> String {
@@ -145,29 +84,15 @@ model = "gpt-5.3-codex"
 }
 
 pub(crate) fn fin_agents_template(fin: &FinRef) -> String {
-    format!(
-        r#"# Orqa Fin Instructions
-
-You are the `{fin}` fin in the `{pod}` pod.
-
-This file is the fin-specific place for purpose, role, constraints, and local
-preferences. The pod-level `AGENTS.md` explains how to use Orqa mail, tasks,
-status, and fin discovery.
-
-## Role
-
-Describe this fin's purpose here.
-
-## Operating Notes
-
-- Check mail and tasks before starting new work.
-- Use pod-local mail to coordinate with other fins.
-- Use tasks for durable requests that another fin should complete.
-- Keep this file updated when this fin's role becomes clearer.
-"#,
-        pod = fin.pod,
-        fin = fin.fin
+    render_agents_template(
+        include_str!("../templates/fin-agents.md"),
+        &fin.pod,
+        &fin.fin,
     )
+}
+
+fn render_agents_template(template: &str, pod: &str, fin: &str) -> String {
+    template.replace("{pod}", pod).replace("{fin}", fin)
 }
 
 pub(crate) fn fin_config_template(fin: &FinRef) -> String {
