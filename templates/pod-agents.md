@@ -43,6 +43,18 @@ Use mail for lightweight communication with another fin.
 If you are outside an Orqa-launched process, use full addresses such as
 `<fin>@<pod>.orqa`.
 
+Mail `operator@$ORQA_POD.orqa` when you are blocked on something that needs
+human or privileged operator action, such as expired auth, missing secrets,
+deploy permissions, billing/quota issues, or an unclear policy decision. Mail
+to that reserved address becomes an operator issue:
+
+```sh
+orqa mail send \
+  --to "operator@$ORQA_POD.orqa" \
+  --subject "Cloudflare auth expired" \
+  "Cloudflare deploy is blocked until the operator logs in again."
+```
+
 ## Tasks
 
 Use tasks for durable work assignments.
@@ -59,6 +71,7 @@ make task bodies specific enough for another fin to act without guessing.
 ## Coordination
 
 - Prefer mail for conversation and tasks for commitments.
+- Escalate operator-owned blockers by mailing `operator@$ORQA_POD.orqa`.
 - Mark mail and tasks done when handled.
 - Before starting new work, check `orqa mail list` and `orqa task list`.
 - Use `orqa fin list` before addressing another fin by slug if you are unsure

@@ -210,6 +210,7 @@ fn pod_agents_template_documents_orqa_commands() {
     assert!(markdown.contains("Build the thing."));
     assert!(markdown.contains("orqa fin list"));
     assert!(markdown.contains("orqa mail send --to <fin>"));
+    assert!(markdown.contains("operator@$ORQA_POD.orqa"));
     assert!(markdown.contains("orqa task send --to <fin>"));
 }
 
