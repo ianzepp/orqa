@@ -50,6 +50,7 @@ pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
 
     let from_fin = FinRef::new(&from.pod, &from.fin)?;
     let to_fin = FinRef::new(&to.pod, &to.fin)?;
+    ensure_target_fin(orqa, &to_fin)?;
     let mail_home = orqa.mail_home(&to_fin);
     ensure_maildir(&mail_home)?;
 
@@ -109,6 +110,7 @@ pub(crate) fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
     }
 
     let to_fin = FinRef::new(&to.pod, &to.fin)?;
+    ensure_target_fin(orqa, &to_fin)?;
     let task_home = orqa.task_home(&to_fin);
     ensure_maildir(&task_home)?;
 
@@ -130,6 +132,15 @@ fn is_operator_bridge(pod: &str) -> bool {
 
 fn is_operator_mail_bridge(from_pod: &str, to_pod: &str) -> bool {
     from_pod == "operator" || to_pod == "operator"
+}
+
+fn ensure_target_fin(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
+    let config = orqa.fin_home(fin).join("fin.toml");
+    if config.exists() {
+        Ok(())
+    } else {
+        Err(format!("target fin {} does not exist", fin.label()))
+    }
 }
 
 pub(crate) fn list_tasks(orqa: &Orqa, args: TaskListArgs) -> Result<(), String> {

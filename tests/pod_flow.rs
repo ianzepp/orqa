@@ -694,6 +694,50 @@ fn operator_pod_can_bridge_mail_and_tasks_cross_pod() {
 }
 
 #[test]
+fn mail_and_tasks_reject_unknown_target_fins() {
+    let root = temp_root();
+
+    orqa(&root, ["pod", "create", "target-pod"]);
+    orqa(&root, ["fin", "create", "target-pod", "ceo"]);
+
+    let mail = orqa_output_failing(
+        &root,
+        [
+            "mail",
+            "send",
+            "--from",
+            "ceo@target-pod.orqa",
+            "--to",
+            "dispatcher",
+            "--subject",
+            "Wrong target",
+            "This should fail.",
+        ],
+    );
+    assert!(mail.contains("target fin target-pod/dispatcher does not exist"));
+    assert!(!root.join("pods/target-pod/fins/dispatcher").exists());
+
+    let task = orqa_output_failing(
+        &root,
+        [
+            "task",
+            "send",
+            "--from",
+            "ceo@target-pod.orqa",
+            "--to",
+            "dispatcher",
+            "--title",
+            "Wrong target",
+            "This should fail.",
+        ],
+    );
+    assert!(task.contains("target fin target-pod/dispatcher does not exist"));
+    assert!(!root.join("pods/target-pod/fins/dispatcher").exists());
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn pod_doctor_checks_files_config_and_backend_probe() {
     let root = temp_root();
 
