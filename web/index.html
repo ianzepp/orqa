@@ -40,11 +40,21 @@
         <div class="prompt-panel" aria-label="Copyable Codex prompt">
           <div class="panel-head">
             <h2>Give This To Codex</h2>
-            <button class="copy-button" type="button" data-copy-target="codex-prompt">
-              Copy Prompt
-            </button>
           </div>
-          <textarea id="codex-prompt" class="prompt-box" readonly spellcheck="false">You are helping me install and try Orqa, a local CLI coordinator for groups of local agent runtimes.
+          <div class="prompt-shell">
+            <button
+              class="copy-icon-button"
+              type="button"
+              data-copy-target="codex-prompt"
+              aria-label="Copy prompt"
+              title="Copy prompt"
+            >
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+            </button>
+            <textarea id="codex-prompt" class="prompt-box" readonly spellcheck="false">You are helping me install and try Orqa, a local CLI coordinator for groups of local agent runtimes.
 
 Goal:
 Install orqa, create a small demo group with two agents, and show me how to use mail, tasks, wake planning, and a Codex-backed agent run.
@@ -69,6 +79,7 @@ Instructions:
    orqa --home /tmp/orqa-demo fin status demo builder
 9. Explain what files were created under /tmp/orqa-demo.
 10. Do not run destructive cleanup unless I ask.</textarea>
+          </div>
         </div>
       </section>
 

@@ -147,13 +147,40 @@ textarea {
   padding: 0 12px;
 }
 
+.copy-icon-button {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  display: inline-grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border: 1px solid var(--color-border-strong);
+  background: color-mix(in srgb, var(--color-code-bg) 86%, var(--color-code-text));
+  color: var(--color-code-text);
+  cursor: pointer;
+}
+
+.copy-icon-button svg {
+  width: 17px;
+  height: 17px;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 2;
+}
+
 .theme-toggle:hover,
-.copy-button:hover {
+.copy-button:hover,
+.copy-icon-button:hover {
   border-color: var(--color-accent);
 }
 
 .theme-toggle:focus-visible,
 .copy-button:focus-visible,
+.copy-icon-button:focus-visible,
 a:focus-visible,
 .prompt-box:focus-visible {
   outline: 3px solid color-mix(in srgb, var(--color-accent) 40%, transparent);
@@ -277,12 +304,16 @@ pre code {
   padding: 18px;
 }
 
+.prompt-shell {
+  position: relative;
+}
+
 .prompt-box {
   display: block;
   width: 100%;
-  min-height: min(66vh, 760px);
+  height: calc((1.55em * 5) + 36px);
   margin: 0;
-  padding: 18px;
+  padding: 18px 58px 18px 18px;
   resize: vertical;
   border: 0;
   background: var(--color-code-bg);

@@ -34,7 +34,9 @@ async function copyText(button, targetId) {
     return;
   }
 
-  const originalText = button.textContent;
+  const originalHtml = button.innerHTML;
+  const originalLabel = button.getAttribute("aria-label");
+  const originalTitle = button.getAttribute("title");
   const text = "value" in target ? target.value : target.textContent.trim();
 
   if (navigator.clipboard) {
@@ -51,10 +53,23 @@ async function copyText(button, targetId) {
     fallback.remove();
   }
 
-  button.textContent = "Copied";
+  if (button.classList.contains("copy-icon-button")) {
+    button.setAttribute("aria-label", "Copied");
+    button.setAttribute("title", "Copied");
+  } else {
+    button.textContent = "Copied";
+  }
 
   window.setTimeout(() => {
-    button.textContent = originalText;
+    button.innerHTML = originalHtml;
+
+    if (originalLabel) {
+      button.setAttribute("aria-label", originalLabel);
+    }
+
+    if (originalTitle) {
+      button.setAttribute("title", originalTitle);
+    }
   }, 1400);
 }
 
