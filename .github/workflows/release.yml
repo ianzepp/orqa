@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to build and publish"
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -18,12 +24,14 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
-          - os: macos-13
+          - os: macos-15-intel
             target: x86_64-apple-darwin
           - os: macos-14
             target: aarch64-apple-darwin
     steps:
       - uses: actions/checkout@v5
+        with:
+          ref: ${{ inputs.tag || github.ref_name }}
       - name: Add Rust target
         run: rustup target add "${{ matrix.target }}"
       - name: Build
@@ -53,11 +61,12 @@ jobs:
       - name: Publish release
         env:
           GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          gh release create "$GITHUB_REF_NAME" \
+          gh release create "$RELEASE_TAG" \
             ./*.tar.gz \
             ./*.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" \
-            --title "orqa $GITHUB_REF_NAME" \
+            --title "orqa $RELEASE_TAG" \
             --notes "First public orqa release." \
             --verify-tag
