@@ -292,10 +292,15 @@ impl App {
         let icon = if self.any_fin_active() {
             self.spinner_frame()
         } else {
-            "◦"
+            "✓"
         };
-        let left_text_width =
-            4 + self.pod_slug.chars().count() + self.pod_root.display().to_string().chars().count();
+        let icon_style = if self.any_fin_active() {
+            accent
+        } else {
+            Style::default().fg(self.theme.ok)
+        };
+        let pod_path = display_path(&self.pod_root);
+        let left_text_width = 3 + self.pod_slug.chars().count() + pod_path.chars().count();
         let right = self.running_summary();
         let spacer_width = area
             .width
@@ -305,11 +310,11 @@ impl App {
 
         let spans = vec![
             Span::styled(" ", base),
-            Span::styled(icon, accent),
-            Span::styled("  ", base),
+            Span::styled(icon, icon_style),
+            Span::styled(" ", base),
             Span::styled(&self.pod_slug, accent),
             Span::styled("  ", base),
-            Span::styled(self.pod_root.display().to_string(), dim),
+            Span::styled(pod_path, dim),
             Span::styled(" ".repeat(spacer_width), base),
             Span::styled(right, dim),
             Span::styled(" ", base),
@@ -596,5 +601,17 @@ fn abbreviated_duration(duration: Duration) -> String {
         format!("{}m", seconds / 60)
     } else {
         format!("{}h", seconds / (60 * 60))
+    }
+}
+
+fn display_path(path: &std::path::Path) -> String {
+    let Some(home) = std::env::var_os("HOME").map(std::path::PathBuf::from) else {
+        return path.display().to_string();
+    };
+
+    match path.strip_prefix(&home) {
+        Ok(rest) if rest.as_os_str().is_empty() => "~".to_string(),
+        Ok(rest) => format!("~/{}", rest.display()),
+        Err(_) => path.display().to_string(),
     }
 }
