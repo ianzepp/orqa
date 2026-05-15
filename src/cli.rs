@@ -22,9 +22,12 @@ pub(crate) enum Command {
     /// Print the operational guide for agents using Orqa.
     #[command(name = "help")]
     Guide,
-    /// Initialize Orqa in the current directory (creates .orqa/ and registers the pod).
+    /// Initialize a new pod in the current (or specified) directory.
+    /// This is the recommended way to start using Orqa inside a project.
     Init(InitArgs),
     /// Create or inspect pods.
+    ///
+    /// Use `orqa init` for the most common case of starting a pod inside a project directory.
     Pod(PodCommand),
     /// Create or operate fins inside a pod.
     Fin(FinCommand),
@@ -48,7 +51,11 @@ pub(crate) struct PodCommand {
 pub(crate) enum PodSubcommand {
     /// List pods.
     List,
-    /// Create a pod home directory.
+    /// Create a pod.
+    ///
+    /// Without --path, creates a legacy pod under ORQA_HOME/pods/.
+    /// With --path, creates a new-style pod rooted in the given directory
+    /// (equivalent to `orqa init`, but requires an explicit slug).
     Create(PodCreateArgs),
     /// Get or set a pod charter.
     Charter(PodCharterCommand),
@@ -296,10 +303,10 @@ pub(crate) struct SlugArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct PodCreateArgs {
-    /// Pod slug.
+    /// Pod slug (required).
     pub(crate) slug: String,
-    /// Create the pod in this directory instead of the default Orqa home
-    /// (new-style pod rooted in a real project folder).
+    /// Create the pod rooted in this directory (new-style pod).
+    /// This is the explicit/power-user equivalent of `orqa init`.
     #[arg(long, value_name = "DIR")]
     pub(crate) path: Option<PathBuf>,
     /// Pod charter text, @file path, or - for stdin.
@@ -309,9 +316,9 @@ pub(crate) struct PodCreateArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct InitArgs {
-    /// Pod slug (defaults to current directory name if valid).
+    /// Pod slug (defaults to the current directory name).
     pub(crate) slug: Option<String>,
-    /// Target directory (defaults to current directory).
+    /// Directory in which to initialize the pod (defaults to current directory).
     #[arg(long, value_name = "DIR")]
     pub(crate) path: Option<PathBuf>,
     /// Pod charter text, @file path, or - for stdin.

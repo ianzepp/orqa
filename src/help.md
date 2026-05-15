@@ -52,14 +52,23 @@ digits, and hyphens.
 
 ## Creating Pods And Fins
 
-Create a pod:
+The recommended way to start a pod inside a project is:
 
 ```sh
-orqa pod create sample-pod
-orqa pod create sample-pod --charter "Build a focused launch plan."
+cd my-project
+orqa init
 ```
 
-Create fins inside it:
+This creates a `.orqa/` directory in the current folder and registers the pod.
+
+For explicit control (or scripting), use:
+
+```sh
+orqa pod create my-pod --path /path/to/project
+orqa pod create my-pod --path . --charter "Build a focused launch plan."
+```
+
+Create fins inside the pod:
 
 ```sh
 orqa fin create sample-pod planner --role "Turn the charter into tasks."
