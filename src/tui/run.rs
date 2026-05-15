@@ -132,6 +132,7 @@ fn run_event_loop(
                         }
 
                         // === Composer input (Phase 4) ===
+                        #[allow(clippy::collapsible_match)]
                         KeyCode::Char(c) => {
                             if !key
                                 .modifiers

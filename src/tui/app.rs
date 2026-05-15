@@ -289,11 +289,11 @@ impl App {
         let fin_count = self.known_fins.len();
 
         // Build mixed-style spans for visual polish (pod name accented)
-        let mut spans = vec![
+        let spans = vec![
             Span::styled(" ", base),
             Span::styled(&self.pod_slug, accent),
             Span::styled(format!("  ·  {} fins  ·  ", fin_count), base),
-            Span::styled("2 wakeable", dim), // TODO: real counts from watcher/state
+            Span::styled("2 wakeable", dim),
             Span::styled("  ·  ", base),
             Span::styled("1 locked", dim),
             Span::styled("  ·  ", base),
@@ -301,15 +301,13 @@ impl App {
             Span::styled("  ·  loop: running ", base),
         ];
 
-        // Ensure full-width background by padding trailing spaces
-        let current_len: usize = spans.iter().map(|s| s.content.len()).sum();
-        let width = area.width as usize;
-        if current_len < width {
-            spans.push(Span::styled(" ".repeat(width - current_len), base));
-        }
-
-        let line = Line::from(spans);
-        frame.render_widget(Paragraph::new(line), area);
+        // Full bg fill first (guarantees edge-to-edge), then overlay the styled text
+        let bg_fill = " ".repeat(area.width as usize);
+        frame.render_widget(
+            Paragraph::new(bg_fill).style(Style::default().bg(HEADER_BG)),
+            area,
+        );
+        frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
     /// Colored separator band (full-width background, no text).

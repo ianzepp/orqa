@@ -73,6 +73,7 @@ impl Composer {
         self.clear_status();
     }
 
+    #[allow(dead_code)]
     /// Delete the previous word (Ctrl+W behavior).
     pub fn delete_previous_word(&mut self) {
         if self.cursor == 0 {
