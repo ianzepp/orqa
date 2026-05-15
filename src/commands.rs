@@ -218,6 +218,7 @@ fn create_pod_in_dir(
         &pod_data.join("AGENTS.md"),
         &pod_agents_template(&pod_ref, &charter),
     )?;
+    seed_operator_fin(&pod_ref, &pod_data)?;
 
     register_pod(orqa, slug, &root)?;
 
@@ -233,12 +234,47 @@ fn create_pod_in_dir(
     Ok(())
 }
 
-/// If a `.gitignore` file exists in `target_dir`, append `/.orqa` to it
-/// (unless it's already ignored). Returns `true` if we modified the file.
+fn seed_operator_fin(pod: &PodRef, pod_data: &Path) -> Result<(), String> {
+    let fin = FinRef::new(&pod.slug, "operator")?;
+    let fin_home = pod_data.join("fins").join("operator");
+    let role = "\
+Human operator identity for the TUI. Use this fin as the stable local address
+for messages that require human attention.";
+
+    ensure_maildir(&fin_home.join("mail"))?;
+    ensure_maildir(&fin_home.join("tasks"))?;
+    fs::create_dir_all(fin_home.join("runs"))
+        .map_err(|error| format!("failed to create operator runs directory: {error}"))?;
+
+    write_if_missing(&fin_home.join("fin.txt"), "slug=operator\n")?;
+    write_if_missing(
+        &fin_home.join("fin.toml"),
+        &fin_config_template_with_backend(&fin, None),
+    )?;
+    write_if_missing(
+        &fin_home.join("ROLE.md"),
+        &markdown_with_trailing_newline(role),
+    )?;
+    write_if_missing(
+        &fin_home.join("AGENTS.md"),
+        &fin_agents_template(&fin, role),
+    )?;
+    write_sleep_marker(&fin_home.join("sleep.lock"))?;
+
+    Ok(())
+}
+
+/// Ensure `target_dir/.gitignore` ignores `/.orqa`.
+/// Returns `true` if we created or modified the file.
 fn ensure_orqa_gitignored(target_dir: &Path) -> Result<bool, String> {
     let gitignore_path = target_dir.join(".gitignore");
     if !gitignore_path.exists() {
-        return Ok(false);
+        fs::write(
+            &gitignore_path,
+            "# Orqa coordination data (local only)\n/.orqa\n",
+        )
+        .map_err(|e| format!("failed to create .gitignore: {e}"))?;
+        return Ok(true);
     }
 
     let content = fs::read_to_string(&gitignore_path)

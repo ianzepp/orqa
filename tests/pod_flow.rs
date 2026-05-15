@@ -65,6 +65,40 @@ fn pod_and_fin_create_seed_agents_files() {
 }
 
 #[test]
+fn init_seeds_operator_fin_for_tui_identity() {
+    let root = temp_root();
+    let project = root.join("sample-project");
+    fs::create_dir_all(&project).unwrap();
+
+    orqa(
+        &root,
+        [
+            "init",
+            "sample-project",
+            "--path",
+            project.to_str().unwrap(),
+        ],
+    );
+
+    let operator = project.join(".orqa/fins/operator");
+    let fin_config = fs::read_to_string(operator.join("fin.toml")).unwrap();
+    let role = fs::read_to_string(operator.join("ROLE.md")).unwrap();
+    let agents = fs::read_to_string(operator.join("AGENTS.md")).unwrap();
+    let gitignore = fs::read_to_string(project.join(".gitignore")).unwrap();
+
+    assert!(project.join(".orqa/pod.toml").exists());
+    assert!(operator.join("mail/new").exists());
+    assert!(operator.join("tasks/new").exists());
+    assert!(operator.join("sleep.lock").exists());
+    assert!(fin_config.contains("slug = \"operator\""));
+    assert!(role.contains("Human operator identity for the TUI"));
+    assert!(agents.contains("You are the `operator` fin"));
+    assert!(gitignore.contains("/.orqa"));
+
+    fs::remove_dir_all(root).unwrap();
+}
+
+#[test]
 fn pod_create_and_charter_commands_manage_charter_agents_injection() {
     let root = temp_root();
 
