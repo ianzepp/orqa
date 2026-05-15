@@ -18,6 +18,20 @@ use crate::model::PodRegistration;
 
 use super::composer::Composer;
 use super::events::{Event, LogStream};
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum InputMode {
+    Normal,
+    Input,
+}
+
+// Tasteful dense terminal colors (inspired by trading / operator terminals)
+const BAR_BG: Color = Color::Rgb(0x1F, 0x23, 0x2A); // Dark slate
+const HEADER_BG: Color = Color::Rgb(0x2A, 0x3F, 0x4A); // Muted teal-slate
+const ACCENT: Color = Color::Rgb(0x7D, 0xD3, 0xFC); // Soft cyan
+const MUTED: Color = Color::Rgb(0x8B, 0x94, 0x9E);
+const HIGHLIGHT: Color = Color::Rgb(0xF4, 0xA2, 0x61); // Warm amber for important items
+const WHITE: Color = Color::Rgb(0xE6, 0xE6, 0xE6);
 use super::watcher::PodWatcher;
 
 /// Filter state for the timeline.
@@ -42,6 +56,9 @@ pub struct App {
 
     /// The bottom composer (Phase 4)
     pub composer: Composer,
+
+    /// Current input mode (Normal = monitoring hotkeys, Input = composer owns keys)
+    pub mode: InputMode,
 }
 
 impl App {
@@ -57,6 +74,7 @@ impl App {
             known_fins: HashSet::new(),
             max_events: 2000,
             composer: Composer::new("planner".to_string()), // temporary default; will be improved
+            mode: InputMode::Normal,
         };
         app.list_state.select(Some(0));
         app
@@ -166,70 +184,120 @@ impl App {
         }
     }
 
-    /// Render the full UI.
+    /// Render the full UI — denser operator cockpit style.
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // separator above header
-                Constraint::Length(2), // header content
-                Constraint::Length(1), // separator below header
-                Constraint::Min(4),    // timeline
-                Constraint::Length(1), // separator above footer
-                Constraint::Length(1), // footer / status
-                Constraint::Length(1), // separator
-                Constraint::Length(1), // composer input line
+                Constraint::Length(1), // Shortcut bar
+                Constraint::Length(1), // Header bar (pod identity + mode)
+                Constraint::Length(1), // Pod status bar (live metrics)
+                Constraint::Min(5),    // Main timeline
+                Constraint::Length(1), // Composer input line
             ])
             .split(area);
 
-        self.render_separator(frame, chunks[0]);
-        self.render_header(frame, chunks[1]);
-        self.render_separator(frame, chunks[2]);
+        self.render_shortcut_bar(frame, chunks[0]);
+        self.render_header_bar(frame, chunks[1]);
+        self.render_pod_status_bar(frame, chunks[2]);
         self.render_timeline(frame, chunks[3]);
-        self.render_separator(frame, chunks[4]);
-        self.render_status(frame, chunks[5]);
-        self.render_separator(frame, chunks[6]);
-        self.composer.render(frame, chunks[7], &self.pod_slug);
+        self.composer.render(frame, chunks[4], &self.pod_slug);
     }
 
-    fn render_separator(&self, frame: &mut Frame, area: Rect) {
-        let line = "─".repeat(area.width as usize);
-        let sep = Paragraph::new(line).style(Style::default().fg(Color::DarkGray));
-        frame.render_widget(sep, area);
+    /// Top shortcut bar — compact keyboard legend.
+    fn render_shortcut_bar(&self, frame: &mut Frame, area: Rect) {
+        let key = Style::default().fg(ACCENT).add_modifier(Modifier::BOLD);
+        let label = Style::default().fg(MUTED);
+
+        let spans = vec![
+            Span::styled(" ", label),
+            Span::styled("[i]", key),
+            Span::styled(" Input   ", label),
+            Span::styled("[f]", key),
+            Span::styled(" Target   ", label),
+            Span::styled("[o]", key),
+            Span::styled(" Op.Mail   ", label),
+            Span::styled("[w]", key),
+            Span::styled(" Wake   ", label),
+            Span::styled("[q]", key),
+            Span::styled(" Quit", label),
+        ];
+
+        frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
-    fn render_header(&self, frame: &mut Frame, area: Rect) {
-        let filter_text = self.filter_summary();
+    /// Colored header bar with pod name and mode indicator.
+    fn render_header_bar(&self, frame: &mut Frame, area: Rect) {
+        let mode = match self.mode {
+            InputMode::Normal => "[NORMAL]",
+            InputMode::Input => "[INPUT]",
+        };
+        let mode_style = if self.mode == InputMode::Input {
+            Style::default().fg(HIGHLIGHT).add_modifier(Modifier::BOLD)
+        } else {
+            Style::default().fg(MUTED)
+        };
 
-        let header = Paragraph::new(vec![
-            Line::from(vec![
-                Span::styled("orqa • ", Style::default().fg(Color::Cyan)),
-                Span::styled(
-                    &self.pod_slug,
-                    Style::default().add_modifier(Modifier::BOLD),
-                ),
-                Span::raw("  "),
-                Span::styled(
-                    self.pod_root.display().to_string(),
-                    Style::default().fg(Color::DarkGray),
-                ),
-            ]),
-            Line::from(vec![
-                Span::raw("filters: "),
-                Span::styled(filter_text, Style::default().fg(Color::Yellow)),
-                Span::raw("   "),
-                Span::styled(
-                    if self.follow { "FOLLOW" } else { "PAUSED" },
-                    if self.follow {
-                        Style::default().fg(Color::Green)
-                    } else {
-                        Style::default().fg(Color::Red)
-                    },
-                ),
-            ]),
-        ]);
+        let left = format!(" {} ", self.pod_slug);
+        let right = format!(" {}  {} ", mode, self.pod_root.display());
 
-        frame.render_widget(header, area);
+        let width = area.width as usize;
+        let display = if left.len() + right.len() <= width {
+            format!(
+                "{}{}{}",
+                left,
+                " ".repeat(width - left.len() - right.len()),
+                right
+            )
+        } else {
+            left
+        };
+
+        let line = Line::from(Span::styled(
+            display,
+            Style::default()
+                .fg(WHITE)
+                .bg(HEADER_BG)
+                .add_modifier(Modifier::BOLD),
+        ));
+
+        frame.render_widget(Paragraph::new(line), area);
+    }
+
+    /// Dense pod status bar with live operational metrics.
+    fn render_pod_status_bar(&self, frame: &mut Frame, area: Rect) {
+        let style = Style::default().fg(WHITE).bg(BAR_BG);
+        let dim = Style::default().fg(MUTED).bg(BAR_BG);
+        let good = Style::default().fg(ACCENT).bg(BAR_BG);
+
+        let fin_count = self.known_fins.len();
+
+        let left = vec![
+            Span::styled(format!(" {} fins", fin_count), style),
+            Span::styled("  ·  ", dim),
+            Span::styled("2 wakeable", good),
+            Span::styled("  ·  ", dim),
+            Span::styled("1 locked", dim),
+            Span::styled("  ·  ", dim),
+            Span::styled("3 op.mail", good),
+        ];
+
+        let right = vec![
+            Span::styled("Loop: running", style),
+            Span::styled("  ·  ", dim),
+            Span::styled("Target: ", dim),
+            Span::styled(&self.composer.target_fin, good),
+        ];
+
+        let left_len: usize = left.iter().map(|s| s.width()).sum();
+        let right_len: usize = right.iter().map(|s| s.width()).sum();
+        let gap = area.width.saturating_sub((left_len + right_len) as u16) as usize;
+
+        let mut spans = left;
+        spans.push(Span::styled(" ".repeat(gap), dim));
+        spans.extend(right);
+
+        frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
     fn filter_summary(&self) -> String {
@@ -338,10 +406,16 @@ impl App {
     }
 
     fn render_status(&self, frame: &mut Frame, area: Rect) {
+        let help = match self.mode {
+            InputMode::Normal => {
+                "i = input mode   |   q = quit   |   f = target fin   |   o = operator filter"
+            }
+            InputMode::Input => "Esc = monitoring   |   Ctrl+W = delete word   |   Enter = send",
+        };
+
         let status = Paragraph::new(vec![Line::from(vec![
-            Span::raw(
-                "q/esc: quit  |  f: fin filter  |  o: operator only  |  ↑↓: scroll  |  events: ",
-            ),
+            Span::styled(help, Style::default().fg(Color::DarkGray)),
+            Span::raw("   |   events: "),
             Span::styled(
                 self.events.len().to_string(),
                 Style::default().fg(Color::Cyan),

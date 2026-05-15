@@ -5,17 +5,17 @@
 
 use std::collections::VecDeque;
 
+use ratatui::layout::Rect;
 use ratatui::{
+    Frame,
     style::{Color, Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
-    Frame,
 };
-use ratatui::layout::Rect;
 
 use crate::model::Orqa;
 
-use super::events::Event;
+// use super::events::Event; // not needed yet in composer
 
 /// State for the bottom composer.
 #[derive(Default)]
@@ -72,6 +72,42 @@ impl Composer {
         if self.cursor < self.input.len() {
             self.input.remove(self.cursor);
         }
+        self.clear_status();
+    }
+
+    /// Delete the previous word (Ctrl+W behavior).
+    pub fn delete_previous_word(&mut self) {
+        if self.cursor == 0 {
+            return;
+        }
+
+        // Find the start of the previous word
+        let mut pos = self.cursor;
+
+        // Skip trailing whitespace
+        while pos > 0
+            && self
+                .input
+                .chars()
+                .nth(pos - 1)
+                .map_or(false, |c| c.is_whitespace())
+        {
+            pos -= 1;
+        }
+
+        // Skip the word
+        while pos > 0
+            && self
+                .input
+                .chars()
+                .nth(pos - 1)
+                .map_or(false, |c| !c.is_whitespace())
+        {
+            pos -= 1;
+        }
+
+        self.input.drain(pos..self.cursor);
+        self.cursor = pos;
         self.clear_status();
     }
 
@@ -180,7 +216,12 @@ impl Composer {
         let line = Line::from(vec![
             Span::styled(prompt, Style::default().fg(Color::Cyan)),
             Span::raw(before_cursor),
-            Span::styled("│", Style::default().fg(Color::Yellow).add_modifier(Modifier::SLOW_BLINK)),
+            Span::styled(
+                "│",
+                Style::default()
+                    .fg(Color::Yellow)
+                    .add_modifier(Modifier::SLOW_BLINK),
+            ),
             Span::raw(after_cursor),
             Span::styled(status, Style::default().fg(Color::Green)),
         ]);
