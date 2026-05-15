@@ -31,24 +31,12 @@ impl Orqa {
         self.fin_home(fin).join("tasks")
     }
 
-    pub(crate) fn lock_path(&self, fin: &FinRef) -> PathBuf {
-        self.fin_home(fin).join("run.lock")
-    }
-
     pub(crate) fn runs_home(&self, fin: &FinRef) -> PathBuf {
         self.fin_home(fin).join("runs")
     }
 
     pub(crate) fn run_home(&self, fin: &FinRef, run: &str) -> PathBuf {
         self.runs_home(fin).join(run)
-    }
-
-    pub(crate) fn runs_ledger_path(&self, fin: &FinRef) -> PathBuf {
-        self.fin_home(fin).join("runs.jsonl")
-    }
-
-    pub(crate) fn latest_run_path(&self, fin: &FinRef) -> PathBuf {
-        self.fin_home(fin).join("latest-run")
     }
 
     pub(crate) fn pod_sleep_path(&self, pod: &PodRef) -> PathBuf {
@@ -363,6 +351,41 @@ impl Orqa {
                 .join("fins")
                 .join(&fin.fin)
         }
+    }
+
+    pub(crate) fn effective_pod_home(&self, pod: &PodRef) -> PathBuf {
+        let pod_root = self.pod_root_for_slug(&pod.slug);
+        let orqa_dir = pod_root.join(".orqa");
+
+        if orqa_dir.exists() {
+            orqa_dir
+        } else {
+            self.pod_home(pod)
+        }
+    }
+
+    pub(crate) fn effective_mail_home(&self, fin: &FinRef) -> PathBuf {
+        self.effective_fin_home(fin).join("mail")
+    }
+
+    pub(crate) fn effective_task_home(&self, fin: &FinRef) -> PathBuf {
+        self.effective_fin_home(fin).join("tasks")
+    }
+
+    pub(crate) fn effective_lock_path(&self, fin: &FinRef) -> PathBuf {
+        self.effective_fin_home(fin).join("run.lock")
+    }
+
+    pub(crate) fn effective_run_home(&self, fin: &FinRef, run: &str) -> PathBuf {
+        self.effective_fin_home(fin).join("runs").join(run)
+    }
+
+    pub(crate) fn effective_latest_run_path(&self, fin: &FinRef) -> PathBuf {
+        self.effective_fin_home(fin).join("latest-run")
+    }
+
+    pub(crate) fn effective_runs_ledger_path(&self, fin: &FinRef) -> PathBuf {
+        self.effective_fin_home(fin).join("runs.jsonl")
     }
 
     /// Returns the real pod root directory to use as cwd and HOME for launched agents.

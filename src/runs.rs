@@ -72,7 +72,7 @@ impl RunFiles {
         args: &[OsString],
     ) -> Result<Self, String> {
         let id = run_id()?;
-        let run_dir = orqa.run_home(fin, &id);
+        let run_dir = orqa.effective_run_home(fin, &id);
         fs::create_dir_all(&run_dir).map_err(|error| {
             format!(
                 "failed to create run directory {}: {error}",
@@ -107,7 +107,7 @@ impl RunFiles {
 
         let files = Self {
             status_path: run_dir.join("status.json"),
-            ledger_path: orqa.runs_ledger_path(fin),
+            ledger_path: orqa.effective_runs_ledger_path(fin),
             record,
         };
         files.write_status("planned", None, None)?;
@@ -243,14 +243,15 @@ pub(crate) fn read_run_record_for(
     run: Option<&str>,
 ) -> Result<RunRecord, String> {
     let run_id = resolve_run_id(orqa, fin, run)?;
-    read_run_record(&orqa.run_home(fin, &run_id).join("status.json"))
+    read_run_record(&orqa.effective_run_home(fin, &run_id).join("status.json"))
 }
 
 pub(crate) fn latest_run_started_at(
     orqa: &Orqa,
     fin: &FinRef,
 ) -> Result<Option<SystemTime>, String> {
-    let run = match fs::read_to_string(orqa.latest_run_path(fin)) {
+    let latest_run_path = orqa.effective_latest_run_path(fin);
+    let run = match fs::read_to_string(&latest_run_path) {
         Ok(run) => run.trim().to_string(),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
@@ -269,7 +270,7 @@ pub(crate) fn latest_run_started_at(
             eprintln!(
                 "warning: latest-run pointer for {} is corrupt or unreadable ({}). Treating as no valid last run. Consider removing the pointer file.",
                 fin.label(),
-                orqa.latest_run_path(fin).display()
+                latest_run_path.display()
             );
             Ok(None)
         }
@@ -282,7 +283,7 @@ pub(crate) fn read_run_logs(
     run: Option<&str>,
 ) -> Result<RunLogs, String> {
     let run = resolve_run_id(orqa, fin, run)?;
-    let run_dir = orqa.run_home(fin, &run);
+    let run_dir = orqa.effective_run_home(fin, &run);
     Ok(RunLogs {
         fin: fin.label(),
         run,
@@ -300,7 +301,7 @@ pub(crate) fn tail_fin(
     follow: bool,
 ) -> Result<(), String> {
     let run = resolve_run_id(orqa, fin, run)?;
-    let run_dir = orqa.run_home(fin, &run);
+    let run_dir = orqa.effective_run_home(fin, &run);
     tail_paths(
         &[
             ("stdout", run_dir.join("stdout.log")),
@@ -321,8 +322,14 @@ pub(crate) fn tail_pod(
     follow: bool,
 ) -> Result<(), String> {
     let pod_ref = PodRef::new(pod)?;
-    orqa.ensure_pod_exists(&pod_ref)?;
-    let fins_dir = orqa.pod_home(&pod_ref).join("fins");
+    let pod_home = orqa.effective_pod_home(&pod_ref);
+    if !pod_home.join("pod.toml").exists() {
+        return Err(format!(
+            "pod '{}' does not exist (run 'orqa pod create {}' to create it)",
+            pod_ref.slug, pod_ref.slug
+        ));
+    }
+    let fins_dir = pod_home.join("fins");
     let fin_slugs = list_dirs(&fins_dir)?;
     let mut paths = Vec::new();
     for fin_slug in fin_slugs {
@@ -333,7 +340,7 @@ pub(crate) fn tail_pod(
         let Ok(run) = resolve_run_id(orqa, &fin, None) else {
             continue;
         };
-        let run_dir = orqa.run_home(&fin, &run);
+        let run_dir = orqa.effective_run_home(&fin, &run);
         paths.push((format!("{fin_slug} stdout"), run_dir.join("stdout.log")));
         paths.push((format!("{fin_slug} stderr"), run_dir.join("stderr.log")));
         paths.push((format!("{fin_slug} event"), run_dir.join("events.jsonl")));
@@ -366,7 +373,7 @@ fn read_run_record(path: &Path) -> Result<RunRecord, String> {
 
 fn resolve_run_id(orqa: &Orqa, fin: &FinRef, run: Option<&str>) -> Result<String, String> {
     match run {
-        Some("latest") | None => match fs::read_to_string(orqa.latest_run_path(fin)) {
+        Some("latest") | None => match fs::read_to_string(orqa.effective_latest_run_path(fin)) {
             Ok(value) => {
                 let trimmed = value.trim();
                 if trimmed.is_empty() {
@@ -390,7 +397,7 @@ fn resolve_run_id(orqa: &Orqa, fin: &FinRef, run: Option<&str>) -> Result<String
                 Err(format!(
                     "fin {} latest-run pointer is corrupt. Inspect or remove {} and re-run the fin.",
                     fin.label(),
-                    orqa.latest_run_path(fin).display()
+                    orqa.effective_latest_run_path(fin).display()
                 ))
             }
         },
@@ -399,7 +406,7 @@ fn resolve_run_id(orqa: &Orqa, fin: &FinRef, run: Option<&str>) -> Result<String
 }
 
 fn write_latest(orqa: &Orqa, fin: &FinRef, run: &str) -> Result<(), String> {
-    write_file(&orqa.latest_run_path(fin), &format!("{run}\n"))
+    write_file(&orqa.effective_latest_run_path(fin), &format!("{run}\n"))
 }
 
 fn run_id() -> Result<String, String> {

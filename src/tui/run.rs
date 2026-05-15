@@ -14,6 +14,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use crate::model::{Orqa, PodRegistration};
 
 use super::app::App;
+use super::loopctl::start_pod_loop_daemon;
 use super::watcher::PodWatcher;
 
 /// Run the Operator Cockpit TUI for a detected Phase 05 pod.
@@ -74,8 +75,19 @@ fn run_event_loop(
         path: pod_root.to_path_buf(),
         enabled: true,
     };
+    if let Err(error) = start_pod_loop_daemon(&orqa, &reg) {
+        eprintln!("warning: failed to start pod loop daemon for TUI: {error}");
+    }
+    let app_orqa = Orqa::new(Some(orqa.home.clone()));
+    let app_reg = reg.clone();
     let watcher = PodWatcher::new(orqa, reg)?;
-    let mut app = App::new(pod_slug.to_string(), pod_root.to_path_buf(), watcher);
+    let mut app = App::new(
+        pod_slug.to_string(),
+        pod_root.to_path_buf(),
+        app_orqa,
+        app_reg,
+        watcher,
+    );
 
     loop {
         // Poll watcher for new events
@@ -129,6 +141,15 @@ fn run_event_loop(
 
                         KeyCode::Char('H') if app.mode == super::app::InputMode::Normal => {
                             app.cycle_theme();
+                        }
+                        KeyCode::Char('p') | KeyCode::Char('P')
+                            if app.mode == super::app::InputMode::Normal =>
+                        {
+                            if let Err(error) = app.toggle_pod_pause() {
+                                app.events.push(crate::tui::events::Event::OperatorAction {
+                                    text: format!("failed to toggle pod pause: {error}"),
+                                });
+                            }
                         }
 
                         KeyCode::Char('w')

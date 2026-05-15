@@ -246,8 +246,12 @@ pub(crate) struct RunPolicy {
 }
 
 pub(crate) fn run_policy(orqa: &Orqa, fin: &FinRef) -> Result<RunPolicy, String> {
-    let pod_config = read_toml(&orqa.pod_home(&PodRef::new(&fin.pod)?).join("pod.toml"))?;
-    let fin_config = read_toml(&orqa.fin_home(fin).join("fin.toml"))?;
+    let pod_config = read_toml(
+        &orqa
+            .effective_pod_home(&PodRef::new(&fin.pod)?)
+            .join("pod.toml"),
+    )?;
+    let fin_config = read_toml(&orqa.effective_fin_home(fin).join("fin.toml"))?;
     let pod = pod_config.get("pod").and_then(Value::as_table);
     let fin_table = fin_config.get("fin").and_then(Value::as_table);
 
@@ -263,8 +267,9 @@ fn backend_command_for(
     prompt_args: &[OsString],
     mode: BackendMode,
 ) -> Result<BackendCommand, String> {
-    let pod_config = read_toml(&orqa.pod_home(&PodRef::new(&fin.pod)?).join("pod.toml"))?;
-    let fin_config = read_toml(&orqa.fin_home(fin).join("fin.toml"))?;
+    let pod = PodRef::new(&fin.pod)?;
+    let pod_config = read_toml(&orqa.effective_pod_home(&pod).join("pod.toml"))?;
+    let fin_config = read_toml(&orqa.effective_fin_home(fin).join("fin.toml"))?;
     let backend_name =
         fin_backend(&fin_config)?.unwrap_or_else(|| pod_default_backend(&pod_config));
     let backend = backend_table(&pod_config, &backend_name)?;
@@ -331,14 +336,12 @@ fn backend_values(
 ) -> Result<BTreeMap<String, String>, String> {
     let mut values = BTreeMap::new();
     let pod = PodRef::new(&fin.pod)?;
-    let fin_home = orqa.fin_home(fin);
+    let pod_home = orqa.effective_pod_home(&pod);
+    let fin_home = orqa.effective_fin_home(fin);
 
     values.insert("orqa_home".to_string(), orqa.home.display().to_string());
     values.insert("pod".to_string(), fin.pod.clone());
-    values.insert(
-        "pod_home".to_string(),
-        orqa.pod_home(&pod).display().to_string(),
-    );
+    values.insert("pod_home".to_string(), pod_home.display().to_string());
     values.insert("fin".to_string(), fin.fin.clone());
     values.insert("fin_home".to_string(), fin_home.display().to_string());
     values.insert(
@@ -356,11 +359,11 @@ fn backend_values(
     values.insert("home".to_string(), fin_home.display().to_string());
     values.insert(
         "mail_home".to_string(),
-        orqa.mail_home(fin).display().to_string(),
+        orqa.effective_mail_home(fin).display().to_string(),
     );
     values.insert(
         "task_home".to_string(),
-        orqa.task_home(fin).display().to_string(),
+        orqa.effective_task_home(fin).display().to_string(),
     );
     values.insert("prompt".to_string(), prompt_args_to_string(prompt_args));
 

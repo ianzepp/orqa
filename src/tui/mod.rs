@@ -7,6 +7,7 @@
 pub mod app;
 pub mod composer;
 pub mod events;
+pub mod loopctl;
 pub mod operator;
 pub mod run;
 pub mod theme;

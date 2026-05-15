@@ -17,10 +17,11 @@ use ratatui::{
 };
 
 #[allow(unused_imports)]
-use crate::model::PodRegistration;
+use crate::model::{Orqa, PodRegistration};
 
 use super::composer::Composer;
 use super::events::{Event, LogStream};
+use super::loopctl::{pod_paused, toggle_pod_pause};
 use super::theme::{THEMES, Theme, default_theme};
 use super::watcher::PodWatcher;
 
@@ -43,6 +44,8 @@ pub struct App {
     pub pod_slug: String,
     #[allow(dead_code)]
     pub pod_root: std::path::PathBuf,
+    pub orqa: Orqa,
+    pub pod: PodRegistration,
     pub watcher: Option<PodWatcher>,
     pub events: Vec<Event>,
     pub filters: FilterState,
@@ -63,13 +66,23 @@ pub struct App {
     pub theme: Theme,
     pub expanded: bool,
     pub show_command_palette: bool,
+    pub pod_paused: bool,
 }
 
 impl App {
-    pub fn new(pod_slug: String, pod_root: std::path::PathBuf, watcher: PodWatcher) -> Self {
+    pub fn new(
+        pod_slug: String,
+        pod_root: std::path::PathBuf,
+        orqa: Orqa,
+        pod: PodRegistration,
+        watcher: PodWatcher,
+    ) -> Self {
+        let paused = pod_paused(&orqa, &pod);
         let mut app = Self {
             pod_slug,
             pod_root,
+            orqa,
+            pod,
             watcher: Some(watcher),
             events: Vec::new(),
             filters: FilterState::default(),
@@ -85,6 +98,7 @@ impl App {
             theme: default_theme(),
             expanded: true,
             show_command_palette: false,
+            pod_paused: paused,
         };
         app.list_state.select(Some(0));
         app
@@ -245,6 +259,11 @@ impl App {
         self.show_command_palette = !self.show_command_palette;
     }
 
+    pub fn toggle_pod_pause(&mut self) -> Result<(), String> {
+        self.pod_paused = toggle_pod_pause(&self.orqa, &self.pod)?;
+        Ok(())
+    }
+
     /// Render the cockpit as four main sections: header, content, input, footer.
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let gap = u16::from(self.expanded);
@@ -300,7 +319,9 @@ impl App {
             Style::default().fg(self.theme.ok)
         };
         let pod_path = display_path(&self.pod_root);
-        let left_text_width = 3 + self.pod_slug.chars().count() + pod_path.chars().count();
+        let paused_width = if self.pod_paused { " paused".len() } else { 0 };
+        let left_text_width =
+            3 + self.pod_slug.chars().count() + paused_width + pod_path.chars().count();
         let right = self.running_summary();
         let spacer_width = area
             .width
@@ -313,6 +334,11 @@ impl App {
             Span::styled(icon, icon_style),
             Span::styled(" ", base),
             Span::styled(&self.pod_slug, accent),
+            if self.pod_paused {
+                Span::styled(" paused", Style::default().fg(self.theme.warn))
+            } else {
+                Span::styled("", base)
+            },
             Span::styled("  ", base),
             Span::styled(pod_path, dim),
             Span::styled(" ".repeat(spacer_width), base),
@@ -555,6 +581,10 @@ impl App {
             Line::from(vec![
                 Span::styled(" H", key),
                 Span::styled(" cycle theme", text),
+            ]),
+            Line::from(vec![
+                Span::styled(" P", key),
+                Span::styled(" pause/resume pod wake loop", text),
             ]),
             Line::from(vec![
                 Span::styled(" PgUp/PgDn", key),

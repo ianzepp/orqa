@@ -49,8 +49,11 @@ fn main() -> ExitCode {
             .unwrap_or(60);
         let force = env::var("ORQA_FORCE").map(|v| v == "1").unwrap_or(false);
 
-        let pid_path = orqa.home.join("loop.pid");
+        let pid_path = env::var_os("ORQA_DAEMON_PID_PATH")
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| orqa.home.join("loop.pid"));
         let my_pid = std::process::id();
+        let daemon_pod = env::var("ORQA_DAEMON_POD").ok();
 
         loop {
             // Reconstruct prompt args from the env var set by `orqa loop start -- "..."`.
@@ -71,7 +74,7 @@ fn main() -> ExitCode {
                 });
 
             let run_args = cli::LoopRunArgs {
-                pod: None,
+                pod: daemon_pod.clone(),
                 force,
                 dry_run: false,
                 json: false,
@@ -96,6 +99,8 @@ fn main() -> ExitCode {
 
             std::thread::sleep(std::time::Duration::from_secs(interval));
         }
+
+        return ExitCode::SUCCESS;
     }
 
     let Some(command) = cli.command else {

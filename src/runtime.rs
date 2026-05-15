@@ -148,9 +148,15 @@ pub(crate) fn plan_pod(
     args: &[OsString],
 ) -> Result<WakePlan, String> {
     let pod = PodRef::new(pod)?;
-    orqa.ensure_pod_exists(&pod)?;
-    let pod_sleeping = orqa.pod_sleep_path(&pod).exists();
-    let fins_dir = orqa.pod_home(&pod).join("fins");
+    let pod_home = orqa.effective_pod_home(&pod);
+    if !pod_home.join("pod.toml").exists() {
+        return Err(format!(
+            "pod '{}' does not exist (run 'orqa pod create {}' to create it)",
+            pod.slug, pod.slug
+        ));
+    }
+    let pod_sleeping = pod_home.join("sleep.lock").exists();
+    let fins_dir = pod_home.join("fins");
     let fin_slugs = list_dirs(&fins_dir)?;
     let mut fins = Vec::new();
     for fin_slug in fin_slugs {
@@ -173,9 +179,10 @@ fn plan_fin(
     force: bool,
     args: &[OsString],
 ) -> Result<FinWakePlan, String> {
-    let fin_sleeping = orqa.fin_sleep_path(fin).exists();
-    let unread_mail = unread_count(&orqa.mail_home(fin))?;
-    let open_tasks = unread_count(&orqa.task_home(fin))?;
+    let fin_home = orqa.effective_fin_home(fin);
+    let fin_sleeping = fin_home.join("sleep.lock").exists();
+    let unread_mail = unread_count(&orqa.effective_mail_home(fin))?;
+    let open_tasks = unread_count(&orqa.effective_task_home(fin))?;
     let lock = FinLock::try_existing(orqa, fin)?;
     let pid = lock.as_ref().map(|lock| lock.pid);
     let running = lock.as_ref().is_some_and(FinLock::is_live);
@@ -663,7 +670,7 @@ pub(crate) struct FinLock {
 
 impl FinLock {
     pub(crate) fn try_existing(orqa: &Orqa, fin: &FinRef) -> Result<Option<Self>, String> {
-        let path = orqa.lock_path(fin);
+        let path = orqa.effective_lock_path(fin);
         if !path.exists() {
             return Ok(None);
         }
@@ -677,7 +684,7 @@ impl FinLock {
     }
 
     fn write(orqa: &Orqa, fin: &FinRef, pid: u32, command: &OsString) -> Result<Self, String> {
-        let path = orqa.lock_path(fin);
+        let path = orqa.effective_lock_path(fin);
         let parent = path
             .parent()
             .ok_or_else(|| format!("lock path has no parent: {}", path.display()))?;
