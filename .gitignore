@@ -1,5 +1,6 @@
 /target
 .orqa/tui-loop.pid
+.orqa/tui-loop.log
 .orqa/fins/*/.codex/auth.json
 .orqa/fins/*/.grok/auth.json
 .orqa/fins/*/latest-run

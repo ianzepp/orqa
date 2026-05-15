@@ -1,7 +1,7 @@
 //! Pod-local loop and pause controls for the TUI.
 
 use std::{
-    fs,
+    fs::{self, OpenOptions},
     path::PathBuf,
     process::{Child, Command as ProcessCommand, Stdio},
 };
@@ -47,6 +47,20 @@ pub(crate) fn start_tui_loop_worker(
 
     let exe = std::env::current_exe()
         .map_err(|error| format!("failed to get current executable: {error}"))?;
+    let log_path = orqa.pod_data_home(reg).join("tui-loop.log");
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|error| {
+            format!(
+                "failed to open TUI loop log {}: {error}",
+                log_path.display()
+            )
+        })?;
+    let err_file = log_file
+        .try_clone()
+        .map_err(|error| format!("failed to clone TUI loop log handle: {error}"))?;
     let child = ProcessCommand::new(exe)
         .env("ORQA_DAEMON", "1")
         .env("ORQA_DAEMON_POD", &reg.slug)
@@ -57,8 +71,8 @@ pub(crate) fn start_tui_loop_worker(
         .arg(&orqa.home)
         .current_dir(&reg.path)
         .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
+        .stdout(Stdio::from(log_file))
+        .stderr(Stdio::from(err_file))
         .spawn()
         .map_err(|error| format!("failed to start TUI loop worker: {error}"))?;
 
