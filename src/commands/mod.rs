@@ -4,6 +4,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod mail;
+mod pod;
+mod task;
+
+pub(crate) use mail::mail;
+pub(crate) use task::task;
+
 use crate::{
     cli::{
         FinCommand, FinRoleSubcommand, FinSubcommand, InitArgs, LoopCommand, LoopStartArgs,
@@ -35,7 +42,7 @@ use crate::{
 
 pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
     match command.command {
-        PodSubcommand::List => list_pods(orqa),
+        PodSubcommand::List => pod::list_pods(orqa),
         PodSubcommand::Create(args) => {
             if let Some(target_root) = args.path {
                 // New-style pod via explicit path — delegate to shared implementation
@@ -538,22 +545,6 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
     }
 }
 
-fn list_pods(orqa: &Orqa) -> Result<(), String> {
-    // Phase 05-3+: Prefer registry (new pod roots) — basic listing for now
-    let regs = crate::model::load_registry(orqa).unwrap_or_default();
-    if !regs.is_empty() {
-        for reg in regs.values().filter(|r| r.enabled) {
-            println!("- {} @ {}", reg.slug, reg.path.display());
-        }
-    } else {
-        // Legacy fallback
-        for pod in list_dirs(&orqa.home.join("pods"))? {
-            let pod = PodRef::new(&pod)?;
-            print_pod_list_status(&pod_status(orqa, &pod)?);
-        }
-    }
-    Ok(())
-}
 
 pub(crate) fn list_dirs(dir: &Path) -> Result<Vec<String>, String> {
     if !dir.exists() {
@@ -633,36 +624,7 @@ fn markdown_with_trailing_newline(contents: &str) -> String {
     }
 }
 
-pub(crate) fn mail(orqa: &Orqa, command: MailCommand) -> Result<(), String> {
-    match command.command {
-        MailSubcommand::Home(args) => {
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            println!("{}", orqa.mail_home(&fin).display());
-            Ok(())
-        }
-        MailSubcommand::Send(args) => send_mail(orqa, args),
-        MailSubcommand::List(args) => list_mail(orqa, args),
-        MailSubcommand::Read(args) => read_mail(orqa, args),
-        MailSubcommand::Done(args) => done_mail(orqa, args),
-        MailSubcommand::Delete(args) => delete_mail(orqa, args),
-        MailSubcommand::Unread(args) => unread_mail(orqa, args),
-    }
-}
 
-pub(crate) fn task(orqa: &Orqa, command: TaskCommand) -> Result<(), String> {
-    match command.command {
-        TaskSubcommand::Home(args) => {
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            println!("{}", orqa.task_home(&fin).display());
-            Ok(())
-        }
-        TaskSubcommand::Send(args) => send_task(orqa, args),
-        TaskSubcommand::List(args) => list_tasks(orqa, args),
-        TaskSubcommand::Read(args) => read_item(orqa, args, ItemKind::Task),
-        TaskSubcommand::Done(args) => done_item(orqa, args, ItemKind::Task),
-        TaskSubcommand::Delete(args) => delete_item(orqa, args, ItemKind::Task),
-    }
-}
 
 pub(crate) fn ops(orqa: &Orqa, command: OpsCommand) -> Result<(), String> {
     match command.command {
