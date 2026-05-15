@@ -266,7 +266,10 @@ These will be resolved per-phase or recorded as accepted constraints.
 
 **Active Phase:** 05-6 — Documentation, Help, Migration & Test Hardening
 
-**Status:** COMPLETE (final phase)
+**Status:** COMPLETE (final phase + post-launch tweak)
+
+**Post-Launch Improvement (user request):**
+- `orqa init` now automatically appends `/.orqa` to an existing `.gitignore` in the target directory (if one is present and `.orqa` is not already ignored). This is a very common and expected behavior.
 
 **Delivery Spec:** `docs/pod-root-phase-06-docs-tests-migration-delivery.md`
 

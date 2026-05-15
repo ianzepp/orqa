@@ -195,6 +195,11 @@ pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
     // Register in global config
     register_pod(orqa, &slug, &root)?;
 
+    // Auto-append to .gitignore if one exists (very common desire)
+    if ensure_orqa_gitignored(&root)? {
+        println!("Updated .gitignore to ignore /.orqa");
+    }
+
     println!("Initialized pod '{}' in {}", slug, root.display());
     println!("Next steps:");
     println!("  orqa fin create planner");
@@ -206,6 +211,40 @@ pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
 fn validate_slug_for_init(slug: &str) -> Result<(), String> {
     // Reuse existing validation but with a nicer message
     crate::model::validate_slug(slug).map_err(|e| format!("invalid pod slug: {e}"))
+}
+
+/// If a `.gitignore` file exists in `target_dir`, append `/.orqa` to it
+/// (unless it's already ignored). Returns `true` if we modified the file.
+fn ensure_orqa_gitignored(target_dir: &Path) -> Result<bool, String> {
+    let gitignore_path = target_dir.join(".gitignore");
+    if !gitignore_path.exists() {
+        return Ok(false);
+    }
+
+    let content = fs::read_to_string(&gitignore_path)
+        .map_err(|e| format!("failed to read .gitignore: {e}"))?;
+
+    // Check common forms of ignoring .orqa
+    let already_ignored = content.lines().any(|line| {
+        let t = line.trim();
+        t == ".orqa" || t == "/.orqa" || t == ".orqa/" || t == "/.orqa/" || t.starts_with(".orqa")
+    });
+
+    if already_ignored {
+        return Ok(false);
+    }
+
+    let mut new_content = content;
+    if !new_content.is_empty() && !new_content.ends_with('\n') {
+        new_content.push('\n');
+    }
+
+    new_content.push_str("\n# Orqa coordination data (local only)\n/.orqa\n");
+
+    fs::write(&gitignore_path, new_content)
+        .map_err(|e| format!("failed to update .gitignore: {e}"))?;
+
+    Ok(true)
 }
 
 /// Registers (or updates) a pod in the global ~/.orqa/config.toml
