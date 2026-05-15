@@ -332,3 +332,92 @@ impl Orqa {
         self.pod_data_home(reg).join("hooks")
     }
 }
+
+/// Walks upward from the current working directory looking for a directory
+/// that contains `.orqa/pod.toml`. Returns (slug, pod_root) if found.
+///
+/// The slug is currently derived from the directory name of the pod root.
+/// This is sufficient for Phase 05-2 and can be enhanced later to read the
+/// actual `slug` field from `pod.toml`.
+pub(crate) fn detect_pod_context() -> Option<(String, PathBuf)> {
+    let mut current = match std::env::current_dir() {
+        Ok(dir) => dir,
+        Err(_) => return None,
+    };
+
+    loop {
+        let marker = current.join(".orqa").join("pod.toml");
+        if marker.exists() {
+            // Use the directory name as the slug for now
+            if let Some(name) = current.file_name().and_then(|n| n.to_str()) {
+                // Basic validation that it would be a valid slug
+                if validate_slug(name).is_ok() {
+                    return Some((name.to_string(), current));
+                }
+            }
+            // If the directory name is not a valid slug, we still found a pod
+            // but can't use it cleanly — treat as not detected for safety.
+            return None;
+        }
+
+        // Move to parent
+        match current.parent() {
+            Some(parent) => current = parent.to_path_buf(),
+            None => break,
+        }
+    }
+
+    None
+}
+
+/// Resolves the effective pod slug and root directory using the standard precedence:
+/// 1. Explicit CLI argument (if provided)
+/// 2. ORQA_POD environment variable
+/// 3. Local filesystem detection (nearest .orqa/pod.toml)
+///
+/// Returns (slug, pod_root_path).
+/// If nothing is found, returns an error with a helpful message.
+pub(crate) fn resolve_pod_context(
+    cli_pod: Option<String>,
+    _orqa: &Orqa, // reserved for future registry lookup
+) -> Result<(String, PathBuf), String> {
+    // 1. Explicit CLI arg
+    if let Some(slug) = cli_pod {
+        // For now, if user gave a slug explicitly, we don't have the root.
+        // In Phase 05-2 we will try to look it up from the registry.
+        // For the initial detection win, we fall through to detection if the explicit
+        // slug doesn't have a known root yet. For simplicity in this phase:
+        if let Some((detected_slug, root)) = detect_pod_context() {
+            if detected_slug == slug {
+                return Ok((slug, root));
+            }
+        }
+        // If explicit slug but no local match, we can't know the root yet.
+        // Return a synthetic root under the old location so old code paths still work
+        // during transition. Real registry lookup comes in Phase 05-3.
+        let root = default_home().join("pods").join(&slug);
+        return Ok((slug, root));
+    }
+
+    // 2. ORQA_POD env
+    if let Ok(slug) = env::var("ORQA_POD") {
+        if let Some((detected_slug, root)) = detect_pod_context() {
+            if detected_slug == slug {
+                return Ok((slug, root));
+            }
+        }
+        let root = default_home().join("pods").join(&slug);
+        return Ok((slug, root));
+    }
+
+    // 3. Filesystem detection
+    if let Some((slug, root)) = detect_pod_context() {
+        return Ok((slug, root));
+    }
+
+    Err(
+        "no pod specified and no pod detected in current directory tree. \
+         Pass a pod slug, set ORQA_POD, or cd into a pod root that contains .orqa/pod.toml"
+            .to_string(),
+    )
+}

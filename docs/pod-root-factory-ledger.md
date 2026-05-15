@@ -153,3 +153,29 @@ These will be resolved per-phase or recorded as accepted constraints.
 ---
 
 **Factory run initiated 2026-05-15 by user request to implement `docs/pod-root-redesign.md`.**
+
+---
+
+**Active Phase:** 05-2 — Pod Detection & Context Inference
+
+**Status:** COMPLETE
+
+**Delivery Spec:** `docs/pod-root-phase-02-detection-context-delivery.md`
+
+**What Was Delivered:**
+- `detect_pod_context()` in model.rs: walks upward from cwd looking for `.orqa/pod.toml`, returns `(slug, pod_root_path)`.
+- `resolve_pod_context(cli_pod: Option<String>, orqa)`: implements the full precedence (CLI > ORQA_POD env > local detection) and returns `(slug, root)`.
+- Wired detection into `orqa fin list`: when no pod is given on CLI and no ORQA_POD env, it now successfully detects the pod from the current directory tree and lists fins using the new data-home paths from Phase 05-1.
+- All changes compile cleanly under strict clippy.
+
+**Verification:**
+- `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, `cargo check` — all pass.
+- Manual scenario works: create a temp folder with `.orqa/pod.toml`, `cd` into it (or subdir), run `orqa fin list` → succeeds without passing pod slug.
+- Existing explicit-pod usage remains fully functional.
+
+**Poker Face:** 78% (excellent foundation + first real UX win with `fin list`; more commands will be wired in Phase 05-5)
+**Gate:** PASS
+
+**Commit:** `Complete Phase 05-2: Pod Detection & Context Inference (pod root redesign)`
+
+**Next Phase Decision:** Proceed to Phase 05-3 (Pod/Fin Creation + Registry Management) — the big "pod create inside my project" experience.

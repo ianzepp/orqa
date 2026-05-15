@@ -1,5 +1,5 @@
 use std::{
-    env, fs,
+    fs,
     io::{self, Read},
     path::Path,
 };
@@ -21,6 +21,7 @@ use crate::{
         list_tasks, read_item, read_mail, remove_sleep_marker, send_mail, send_task, unread_mail,
         write_if_missing, write_sleep_marker,
     },
+    model::resolve_pod_context,
     model::{FinRef, Orqa, PodRef},
     report::ops_report,
     runs::{list_runs, read_run_logs, read_run_record_for, tail_fin, tail_pod},
@@ -131,13 +132,24 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
 pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
     match command.command {
         FinSubcommand::List(args) => {
-            let pod = match args.pod {
-                Some(pod) => pod,
-                None => env::var("ORQA_POD")
-                    .map_err(|_| "missing pod; pass a pod or run with ORQA_POD set".to_string())?,
+            let (pod_slug, pod_root) = resolve_pod_context(args.pod.clone(), orqa)?;
+            // For Phase 05-2 we use the new data-home path when we have a root from detection/env/CLI
+            // while still supporting the old layout for explicit old-style pods.
+            // In this phase we prioritize the new path if we have a root.
+            let fins_dir = if pod_root.exists() {
+                // Treat as new-style pod root
+                let reg = crate::model::PodRegistration {
+                    slug: pod_slug.clone(),
+                    path: pod_root,
+                    enabled: true,
+                };
+                orqa.pod_data_home(&reg).join("fins")
+            } else {
+                // Fall back to legacy behavior (for transition)
+                let pod_ref = PodRef::new(&pod_slug)?;
+                orqa.pod_home(&pod_ref).join("fins")
             };
-            let pod = PodRef::new(&pod)?;
-            print_dirs(&orqa.pod_home(&pod).join("fins"))
+            print_dirs(&fins_dir)
         }
         FinSubcommand::Create(args) => {
             let pod = PodRef::new(&args.pod)?;
