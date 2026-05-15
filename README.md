@@ -648,7 +648,7 @@ This moves the task from `tasks/new` to `tasks/cur` and clears that wake signal.
 ## Commands
 
 All commands accept the global `--home <DIR>` option to override `ORQA_HOME`.
-With no command, `orqa` runs `doctor`.
+With no command, `orqa` prints a live status overview (loop daemon, pods, wake signals, and totals) plus a hint to run `--help`.
 
 ### Top Level
 

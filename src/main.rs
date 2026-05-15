@@ -17,7 +17,7 @@ use std::{env, ffi::OsStr, process::ExitCode};
 use clap::{CommandFactory, FromArgMatches};
 
 use cli::{Cli, Command};
-use commands::{fin, loop_command, mail, ops, pod, task};
+use commands::{fin, loop_command, mail, ops, overview, pod, task};
 use model::Orqa;
 use runtime::loop_pod;
 
@@ -76,7 +76,10 @@ fn main() -> ExitCode {
     }
 
     let Some(command) = cli.command else {
-        Cli::command().print_help().ok();
+        if let Err(error) = overview(&orqa) {
+            eprintln!("orqa: {error}");
+            return ExitCode::FAILURE;
+        }
         return ExitCode::SUCCESS;
     };
 
@@ -110,8 +113,6 @@ fn doctor(orqa: &Orqa) -> Result<(), String> {
     println!("orqa_home={}", orqa.home.display());
     Ok(())
 }
-
-
 
 fn print_operational_help() {
     print!("{}", include_str!("help.md"));

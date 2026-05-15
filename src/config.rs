@@ -353,10 +353,7 @@ fn backend_values(
         "hermes_home".to_string(),
         fin_home.join(".hermes").display().to_string(),
     );
-    values.insert(
-        "home".to_string(),
-        fin_home.display().to_string(),
-    );
+    values.insert("home".to_string(), fin_home.display().to_string());
     values.insert(
         "mail_home".to_string(),
         orqa.mail_home(fin).display().to_string(),

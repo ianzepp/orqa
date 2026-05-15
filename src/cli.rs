@@ -216,8 +216,6 @@ pub(crate) enum TaskSubcommand {
     Delete(MailMessageArgs),
 }
 
-
-
 #[derive(Debug, Args)]
 #[command(subcommand_required = true, arg_required_else_help = true)]
 pub(crate) struct LoopCommand {

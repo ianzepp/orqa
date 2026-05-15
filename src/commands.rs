@@ -6,9 +6,9 @@ use std::{
 
 use crate::{
     cli::{
-        FinCommand, FinRoleSubcommand, FinSubcommand, LoopCommand, LoopStartArgs,
-        LoopSubcommand, MailCommand, MailSubcommand, OpsCommand, OpsSubcommand,
-        PodCharterSubcommand, PodCommand, PodSubcommand, TaskCommand, TaskSubcommand,
+        FinCommand, FinRoleSubcommand, FinSubcommand, LoopCommand, LoopStartArgs, LoopSubcommand,
+        MailCommand, MailSubcommand, OpsCommand, OpsSubcommand, PodCharterSubcommand, PodCommand,
+        PodSubcommand, TaskCommand, TaskSubcommand,
     },
     config::{
         DEFAULT_CHARTER, DEFAULT_ROLE, fin_agents_template, fin_config_template,
@@ -396,15 +396,17 @@ fn loop_start(orqa: &Orqa, args: LoopStartArgs) -> Result<(), String> {
     // Prevent multiple startups + clean up stale pidfile
     if pid_path.exists() {
         if is_process_running(&pid_path) {
-            return Err("Loop daemon is already running. Use `orqa loop status` to check.".to_string());
+            return Err(
+                "Loop daemon is already running. Use `orqa loop status` to check.".to_string(),
+            );
         } else {
             // Stale pidfile — remove it
             let _ = std::fs::remove_file(&pid_path);
         }
     }
 
-    let exe = std::env::current_exe()
-        .map_err(|e| format!("failed to get current executable: {}", e))?;
+    let exe =
+        std::env::current_exe().map_err(|e| format!("failed to get current executable: {}", e))?;
 
     let mut cmd = std::process::Command::new(exe);
     cmd.env("ORQA_DAEMON", "1")
@@ -436,9 +438,11 @@ fn loop_stop(orqa: &Orqa) -> Result<(), String> {
         return Ok(());
     }
 
-    let pid_str = std::fs::read_to_string(&pid_path)
-        .map_err(|e| format!("failed to read pidfile: {}", e))?;
-    let pid: u32 = pid_str.trim().parse()
+    let pid_str =
+        std::fs::read_to_string(&pid_path).map_err(|e| format!("failed to read pidfile: {}", e))?;
+    let pid: u32 = pid_str
+        .trim()
+        .parse()
         .map_err(|_| "invalid PID in pidfile".to_string())?;
 
     println!("Stopping loop daemon (pid {})...", pid);
@@ -530,4 +534,69 @@ pub(crate) fn is_process_running(pid_path: &std::path::Path) -> bool {
         }
     }
     false
+}
+
+pub(crate) fn overview(orqa: &Orqa) -> Result<(), String> {
+    println!("orqa — {}", orqa.home.display());
+
+    // Loop daemon status
+    let pid_path = orqa.home.join("loop.pid");
+    if pid_path.exists() {
+        if is_process_running(&pid_path) {
+            if let Ok(pid) = std::fs::read_to_string(&pid_path) {
+                println!("loop: running (pid {})", pid.trim());
+            } else {
+                println!("loop: running");
+            }
+        } else {
+            println!("loop: not running (stale pidfile)");
+            let _ = std::fs::remove_file(&pid_path);
+        }
+    } else {
+        println!("loop: not running");
+    }
+
+    // Pods and wake signals
+    let pods_dir = orqa.home.join("pods");
+    let pods = list_dirs(&pods_dir)?;
+
+    if pods.is_empty() {
+        println!("pods: none");
+        println!();
+        println!("Create your first pod with: orqa pod create <slug>");
+        println!("Run `orqa --help` for a list of commands.");
+        return Ok(());
+    }
+
+    let mut total_fins = 0usize;
+    let mut total_wakeable = 0usize;
+    let mut _total_running = 0usize;
+    let mut total_mail = 0usize;
+    let mut total_tasks = 0usize;
+
+    println!("pods:");
+    for pod_name in &pods {
+        let pod = PodRef::new(pod_name)?;
+        let status = pod_status(orqa, &pod)?;
+        total_fins += status.fin_count;
+        total_wakeable += status.wakeable;
+        _total_running += status.running;
+        total_mail += status.unread_mail;
+        total_tasks += status.open_tasks;
+        print_pod_list_status(&status);
+    }
+
+    println!();
+    println!(
+        "totals: {} pods, {} fins, {} wakeable, {} unread mail, {} open tasks",
+        pods.len(),
+        total_fins,
+        total_wakeable,
+        total_mail,
+        total_tasks
+    );
+    println!();
+    println!("Run `orqa --help` for commands. Run `orqa help` for the agent operational guide.");
+
+    Ok(())
 }
