@@ -4,35 +4,30 @@ use std::{
     path::{Path, PathBuf},
 };
 
+mod fin;
+mod loop_command;
 mod mail;
 mod pod;
 mod task;
 
+pub(crate) use fin::fin;
+pub(crate) use loop_command::{is_process_running, loop_command};
 pub(crate) use mail::mail;
 pub(crate) use task::task;
 
 use crate::{
-    cli::{
-        FinCommand, FinRoleSubcommand, FinSubcommand, InitArgs, LoopCommand, LoopStartArgs,
-        LoopSubcommand, OpsCommand, OpsSubcommand, PodCharterSubcommand, PodCommand, PodSubcommand,
-    },
+    cli::{InitArgs, OpsCommand, OpsSubcommand, PodCharterSubcommand, PodCommand, PodSubcommand},
     config::{
-        DEFAULT_CHARTER, DEFAULT_ROLE, fin_agents_template, fin_config_template_with_backend,
+        DEFAULT_CHARTER, fin_agents_template, fin_config_template_with_backend,
         pod_agents_template, pod_config_template,
     },
     doctor::pod_doctor,
     hooks::{add_hook, disable_hook, enable_hook, list_hooks, remove_hook, run_hooks},
     mailbox::{ensure_maildir, remove_sleep_marker, write_if_missing, write_sleep_marker},
-    model::resolve_pod_context,
     model::{FinRef, Orqa, PodRef},
     report::ops_report,
-    runs::{list_runs, read_run_logs, read_run_record_for, tail_fin, tail_pod},
-    runtime::{chat_fin, exec_fin, loop_pod, plan, supervise_fin},
-    runtime_home::ensure_fin_runtime_homes,
-    status::{
-        fin_status, pod_status, print_fin_status, print_json, print_pod_list_status,
-        print_pod_status,
-    },
+    runs::tail_pod,
+    status::{pod_status, print_json, print_pod_list_status, print_pod_status},
 };
 
 pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
@@ -173,7 +168,7 @@ fn validate_slug_for_init(slug: &str) -> Result<(), String> {
     crate::model::validate_slug(slug).map_err(|e| format!("invalid pod slug: {e}"))
 }
 
-fn validate_backend_name(name: &str) -> Result<(), String> {
+pub(super) fn validate_backend_name(name: &str) -> Result<(), String> {
     if !name.is_empty()
         && name
             .chars()
@@ -359,187 +354,6 @@ fn register_pod(orqa: &Orqa, slug: &str, root: &Path) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
-    match command.command {
-        FinSubcommand::List(args) => {
-            let (pod_slug, pod_root) = resolve_pod_context(args.pod.clone(), orqa)?;
-            // For Phase 05-2 we use the new data-home path when we have a root from detection/env/CLI
-            // while still supporting the old layout for explicit old-style pods.
-            // In this phase we prioritize the new path if we have a root.
-            let fins_dir = if pod_root.exists() {
-                // Treat as new-style pod root
-                let reg = crate::model::PodRegistration {
-                    slug: pod_slug.clone(),
-                    path: pod_root,
-                    enabled: true,
-                };
-                orqa.pod_data_home(&reg).join("fins")
-            } else {
-                // Fall back to legacy behavior (for transition)
-                let pod_ref = PodRef::new(&pod_slug)?;
-                orqa.pod_home(&pod_ref).join("fins")
-            };
-            print_dirs(&fins_dir)
-        }
-        FinSubcommand::Create(args) => {
-            let (pod_arg, fin_slug) = args.resolve_refs()?;
-            let (pod_slug, pod_root) = resolve_pod_context(pod_arg, orqa)?;
-
-            // If we have a real root (from detection or explicit new-style), use new paths
-            let (fin_home, _use_new_paths) = if pod_root.join(".orqa").exists() {
-                let reg = crate::model::PodRegistration {
-                    slug: pod_slug.clone(),
-                    path: pod_root.clone(),
-                    enabled: true,
-                };
-                (orqa.fin_data_home(&reg, &fin_slug), true)
-            } else {
-                let fin_ref = FinRef::new(&pod_slug, &fin_slug)?;
-                (orqa.fin_home(&fin_ref), false)
-            };
-
-            // For existence check, we still use the legacy PodRef for now (will be cleaned in later phases)
-            let pod_ref = PodRef::new(&pod_slug)?;
-            orqa.ensure_pod_exists(&pod_ref)?;
-
-            let fin = FinRef::new(&pod_slug, &fin_slug)?;
-            ensure_fin_runtime_homes(orqa, &fin)?;
-
-            let role = read_optional_markdown_source(args.role.as_deref(), DEFAULT_ROLE)?;
-            if let Some(backend) = &args.backend {
-                validate_backend_name(backend)?;
-            }
-            ensure_maildir(&fin_home.join("mail"))?;
-            ensure_maildir(&fin_home.join("tasks"))?;
-
-            write_if_missing(&fin_home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
-            write_if_missing(
-                &fin_home.join("fin.toml"),
-                &fin_config_template_with_backend(&fin, args.backend.as_deref()),
-            )?;
-            write_if_missing(&fin_home.join("ROLE.md"), &role)?;
-            write_if_missing(
-                &fin_home.join("AGENTS.md"),
-                &fin_agents_template(&fin, &role),
-            )?;
-
-            println!("{}", fin_home.display());
-            Ok(())
-        }
-        FinSubcommand::Role(command) => match command.command {
-            FinRoleSubcommand::Get(args) => {
-                let fin = FinRef::new(&args.pod, &args.fin)?;
-                orqa.ensure_fin_exists(&fin)?;
-                print_file(&orqa.fin_home(&fin).join("ROLE.md"))
-            }
-            FinRoleSubcommand::Set(args) => {
-                let fin = FinRef::new(&args.pod, &args.fin)?;
-                orqa.ensure_fin_exists(&fin)?;
-                let role = read_markdown_source(&args.role)?;
-                let home = orqa.fin_home(&fin);
-                write_text(&home.join("ROLE.md"), &role)?;
-                write_text(&home.join("AGENTS.md"), &fin_agents_template(&fin, &role))?;
-                println!("{}", home.join("ROLE.md").display());
-                Ok(())
-            }
-        },
-        FinSubcommand::Home(args) => {
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            orqa.ensure_fin_exists(&fin)?;
-            println!("{}", orqa.fin_home(&fin).display());
-            Ok(())
-        }
-        FinSubcommand::Status(args) => {
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            orqa.ensure_fin_exists(&fin)?;
-            let status = fin_status(orqa, &fin)?;
-            if args.json {
-                print_json(&status)
-            } else {
-                print_fin_status(&status);
-                Ok(())
-            }
-        }
-        FinSubcommand::Runs(args) => {
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            orqa.ensure_fin_exists(&fin)?;
-            let runs = list_runs(orqa, &fin)?;
-            if args.json {
-                print_json(&runs)
-            } else {
-                for run in runs.runs {
-                    println!(
-                        "{} status={} exit_code={} mode={} backend={} command={}",
-                        run.id,
-                        run.status,
-                        run.exit_code
-                            .map_or_else(|| "-".to_string(), |code| code.to_string()),
-                        run.mode,
-                        run.backend,
-                        run.command
-                    );
-                }
-                Ok(())
-            }
-        }
-        FinSubcommand::RunStatus(args) => {
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            orqa.ensure_fin_exists(&fin)?;
-            let run = read_run_record_for(orqa, &fin, args.run.as_deref())?;
-            if args.json {
-                print_json(&run)
-            } else {
-                println!("run {}", run.id);
-                println!("fin={}", run.fin);
-                println!("status={}", run.status);
-                println!("mode={}", run.mode);
-                println!("backend={}", run.backend);
-                println!("command={}", run.command);
-                if let Some(exit_code) = run.exit_code {
-                    println!("exit_code={exit_code}");
-                }
-                println!("run_dir={}", run.run_dir.display());
-                Ok(())
-            }
-        }
-        FinSubcommand::RunLog(args) => {
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            let logs = read_run_logs(orqa, &fin, args.run.as_deref())?;
-            if args.json {
-                print_json(&logs)
-            } else {
-                print!("{}", logs.stdout);
-                eprint!("{}", logs.stderr);
-                print!("{}", logs.events);
-                Ok(())
-            }
-        }
-        FinSubcommand::Tail(args) => {
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            orqa.ensure_fin_exists(&fin)?;
-            tail_fin(orqa, &fin, args.run.as_deref(), args.lines, args.follow)
-        }
-        FinSubcommand::Sleep(args) => {
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            write_sleep_marker(&orqa.fin_sleep_path(&fin))?;
-            println!("sleep {}", fin.label());
-            Ok(())
-        }
-        FinSubcommand::Wake(args) => {
-            if !args.force {
-                return Err("fin wake requires --force".to_string());
-            }
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            remove_sleep_marker(&orqa.fin_sleep_path(&fin))?;
-            println!("wake {}", fin.label());
-            Ok(())
-        }
-        FinSubcommand::Exec(args) => exec_fin(orqa, args),
-        FinSubcommand::Chat(args) => chat_fin(orqa, args),
-        FinSubcommand::Supervise(args) => supervise_fin(orqa, args),
-    }
-}
-
 pub(crate) fn list_dirs(dir: &Path) -> Result<Vec<String>, String> {
     if !dir.exists() {
         return Ok(Vec::new());
@@ -560,7 +374,7 @@ pub(crate) fn list_dirs(dir: &Path) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
-fn print_dirs(dir: &Path) -> Result<(), String> {
+pub(super) fn print_dirs(dir: &Path) -> Result<(), String> {
     let names = list_dirs(dir)?;
     for name in names {
         println!("{name}");
@@ -569,19 +383,19 @@ fn print_dirs(dir: &Path) -> Result<(), String> {
     Ok(())
 }
 
-fn print_file(path: &Path) -> Result<(), String> {
+pub(super) fn print_file(path: &Path) -> Result<(), String> {
     let contents = fs::read_to_string(path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
     print!("{contents}");
     Ok(())
 }
 
-fn write_text(path: &Path, contents: &str) -> Result<(), String> {
+pub(super) fn write_text(path: &Path, contents: &str) -> Result<(), String> {
     fs::write(path, contents)
         .map_err(|error| format!("failed to write {}: {error}", path.display()))
 }
 
-fn read_optional_markdown_source(
+pub(super) fn read_optional_markdown_source(
     source: Option<&str>,
     default_contents: &str,
 ) -> Result<String, String> {
@@ -591,7 +405,7 @@ fn read_optional_markdown_source(
     }
 }
 
-fn read_markdown_source(source: &str) -> Result<String, String> {
+pub(super) fn read_markdown_source(source: &str) -> Result<String, String> {
     let contents = if source == "-" {
         let mut contents = String::new();
         io::stdin()
@@ -622,170 +436,6 @@ pub(crate) fn ops(orqa: &Orqa, command: OpsCommand) -> Result<(), String> {
     match command.command {
         OpsSubcommand::Report(args) => ops_report(orqa, args),
     }
-}
-
-pub(crate) fn loop_command(orqa: &Orqa, command: LoopCommand) -> Result<(), String> {
-    match command.command {
-        LoopSubcommand::Run(args) => loop_pod(orqa, args),
-        LoopSubcommand::Plan(args) => plan(orqa, args),
-        LoopSubcommand::Start(args) => loop_start(orqa, args),
-        LoopSubcommand::Stop => loop_stop(orqa),
-        LoopSubcommand::Status => loop_status(orqa),
-    }
-}
-
-fn loop_start(orqa: &Orqa, args: LoopStartArgs) -> Result<(), String> {
-    let pid_path = orqa.home.join("loop.pid");
-
-    // Prevent multiple startups + clean up stale pidfile
-    if pid_path.exists() {
-        if is_process_running(&pid_path) {
-            return Err(
-                "Loop daemon is already running. Use `orqa loop status` to check.".to_string(),
-            );
-        } else {
-            // Stale pidfile — remove it
-            let _ = std::fs::remove_file(&pid_path);
-        }
-    }
-
-    let exe =
-        std::env::current_exe().map_err(|e| format!("failed to get current executable: {}", e))?;
-
-    let mut cmd = std::process::Command::new(exe);
-    cmd.env("ORQA_DAEMON", "1")
-        .env("ORQA_INTERVAL", args.interval.to_string())
-        .env("ORQA_FORCE", if args.force { "1" } else { "0" })
-        .arg("--home")
-        .arg(&orqa.home);
-
-    // Forward user prompt args via env var so the child daemon never sees them
-    // as top-level CLI arguments (which would cause clap parse failure before
-    // the ORQA_DAEMON branch is reached).
-    let loop_args: Vec<String> = args
-        .args
-        .iter()
-        .map(|a| a.to_string_lossy().into_owned())
-        .collect();
-    let args_json = serde_json::to_string(&loop_args)
-        .map_err(|e| format!("failed to serialize loop prompt args: {}", e))?;
-    cmd.env("ORQA_LOOP_ARGS", args_json);
-
-    let child = cmd
-        .spawn()
-        .map_err(|e| format!("failed to start loop daemon: {}", e))?;
-
-    std::fs::write(&pid_path, child.id().to_string())
-        .map_err(|e| format!("failed to write pidfile: {}", e))?;
-
-    println!("Loop daemon started (pid {})", child.id());
-    Ok(())
-}
-
-fn loop_stop(orqa: &Orqa) -> Result<(), String> {
-    let pid_path = orqa.home.join("loop.pid");
-
-    if !pid_path.exists() {
-        println!("No loop daemon is running.");
-        return Ok(());
-    }
-
-    let pid_str =
-        std::fs::read_to_string(&pid_path).map_err(|e| format!("failed to read pidfile: {}", e))?;
-    let pid: u32 = pid_str
-        .trim()
-        .parse()
-        .map_err(|_| "invalid PID in pidfile".to_string())?;
-
-    println!("Stopping loop daemon (pid {})...", pid);
-
-    #[cfg(unix)]
-    {
-        // Send graceful SIGTERM first
-        let _ = std::process::Command::new("kill")
-            .arg(pid.to_string())
-            .status();
-
-        // Wait up to 10 seconds for graceful shutdown
-        let start = std::time::Instant::now();
-        while start.elapsed() < std::time::Duration::from_secs(10) {
-            if !is_process_running(&pid_path) {
-                break;
-            }
-            std::thread::sleep(std::time::Duration::from_millis(250));
-        }
-
-        // If still running after timeout, force kill
-        if is_process_running(&pid_path) {
-            println!("Daemon did not exit gracefully — sending SIGKILL...");
-            let _ = std::process::Command::new("kill")
-                .arg("-9")
-                .arg(pid.to_string())
-                .status();
-
-            // Give it a moment
-            std::thread::sleep(std::time::Duration::from_millis(300));
-        }
-    }
-
-    #[cfg(not(unix))]
-    {
-        // Windows fallback
-        let _ = std::process::Command::new("taskkill")
-            .args(["/PID", &pid.to_string(), "/F"])
-            .status();
-    }
-
-    let _ = std::fs::remove_file(&pid_path);
-    println!("Loop daemon stopped.");
-    Ok(())
-}
-
-fn loop_status(orqa: &Orqa) -> Result<(), String> {
-    let pid_path = orqa.home.join("loop.pid");
-
-    if !pid_path.exists() {
-        println!("Loop daemon is not running");
-        return Ok(());
-    }
-
-    if is_process_running(&pid_path) {
-        let pid_str = std::fs::read_to_string(&pid_path).unwrap_or_default();
-        println!("Loop daemon is running (pid {})", pid_str.trim());
-    } else {
-        println!("Loop daemon is not running (stale pidfile)");
-        let _ = std::fs::remove_file(&pid_path);
-    }
-
-    Ok(())
-}
-
-pub(crate) fn is_process_running(pid_path: &std::path::Path) -> bool {
-    if !pid_path.exists() {
-        return false;
-    }
-
-    if let Ok(pid_str) = std::fs::read_to_string(pid_path) {
-        if let Ok(pid) = pid_str.trim().parse::<u32>() {
-            #[cfg(unix)]
-            {
-                // kill -0 just checks if process exists
-                return std::process::Command::new("kill")
-                    .arg("-0")
-                    .arg(pid.to_string())
-                    .status()
-                    .map(|s| s.success())
-                    .unwrap_or(false);
-            }
-
-            #[cfg(not(unix))]
-            {
-                // On Windows, we can use tasklist or assume running if pidfile exists
-                return true;
-            }
-        }
-    }
-    false
 }
 
 pub(crate) fn overview(orqa: &Orqa) -> Result<(), String> {
