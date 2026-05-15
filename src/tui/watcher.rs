@@ -10,6 +10,8 @@ use std::fs;
 use std::path::Path;
 use std::time::SystemTime;
 
+use serde::Deserialize;
+
 use crate::model::{Orqa, PodRegistration};
 
 use super::events::{Event, LogStream};
@@ -29,6 +31,9 @@ struct FinState {
 
     /// Whether we currently believe the fin holds the run.lock.
     has_lock: bool,
+
+    /// Current run id after we have emitted its terminal finish event.
+    finished_run: Option<String>,
 }
 
 /// Watches a single Phase 05 pod and produces timeline events.
@@ -163,6 +168,7 @@ impl PodWatcher {
                 // Run changed
                 let old_run = state.current_run.take();
                 state.current_run = Some(run_id.clone());
+                state.finished_run = None;
                 state.log_offsets.clear(); // reset offsets for new run
 
                 out.push(Event::RunStarted {
@@ -183,8 +189,8 @@ impl PodWatcher {
         }
 
         // 3. Tail the three log files of the current run (if any)
-        if let Some(run_id) = &state.current_run {
-            let run_dir = fin_data.join("runs").join(run_id);
+        if let Some(run_id) = state.current_run.clone() {
+            let run_dir = fin_data.join("runs").join(&run_id);
 
             for (stream, filename) in [
                 (LogStream::Stdout, "stdout.log"),
@@ -194,6 +200,17 @@ impl PodWatcher {
                 let path = run_dir.join(filename);
                 if let Ok(new_events) = Self::tail_log_file(fin, stream, &path, state) {
                     out.extend(new_events);
+                }
+            }
+
+            if state.finished_run.as_ref() != Some(&run_id) {
+                if let Some(exit_code) = finished_run_exit_code(&run_dir.join("status.json")) {
+                    state.finished_run = Some(run_id.clone());
+                    out.push(Event::RunFinished {
+                        fin: fin.to_string(),
+                        run_id: run_id.clone(),
+                        exit_code,
+                    });
                 }
             }
         }
@@ -271,6 +288,22 @@ impl PodWatcher {
 
         Ok(events)
     }
+}
+
+#[derive(Deserialize)]
+struct RunStatus {
+    status: String,
+    exit_code: Option<i32>,
+}
+
+fn finished_run_exit_code(path: &Path) -> Option<Option<i32>> {
+    let contents = fs::read_to_string(path).ok()?;
+    let status: RunStatus = serde_json::from_str(&contents).ok()?;
+    matches!(
+        status.status.as_str(),
+        "finished" | "failed" | "spawn-failed"
+    )
+    .then_some(status.exit_code)
 }
 
 /// Extremely lightweight mail header parser for Phase 2.
