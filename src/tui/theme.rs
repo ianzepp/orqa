@@ -64,3 +64,32 @@ pub const PAPER_LIGHT: Theme = Theme {
 };
 
 pub const THEMES: &[Theme] = &[OPERATOR_DARK, PAPER_LIGHT];
+
+pub fn default_theme() -> Theme {
+    match system_theme_mode() {
+        Some(ThemeMode::Light) => PAPER_LIGHT,
+        Some(ThemeMode::Dark) | None => OPERATOR_DARK,
+    }
+}
+
+#[cfg(target_os = "macos")]
+fn system_theme_mode() -> Option<ThemeMode> {
+    let output = std::process::Command::new("defaults")
+        .args(["read", "-g", "AppleInterfaceStyle"])
+        .output()
+        .ok()?;
+
+    if output.status.success() {
+        let value = String::from_utf8_lossy(&output.stdout);
+        if value.trim().eq_ignore_ascii_case("dark") {
+            return Some(ThemeMode::Dark);
+        }
+    }
+
+    Some(ThemeMode::Light)
+}
+
+#[cfg(not(target_os = "macos"))]
+fn system_theme_mode() -> Option<ThemeMode> {
+    None
+}

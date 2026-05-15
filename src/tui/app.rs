@@ -18,7 +18,7 @@ use crate::model::PodRegistration;
 
 use super::composer::Composer;
 use super::events::{Event, LogStream};
-use super::theme::{OPERATOR_DARK, THEMES, Theme};
+use super::theme::{THEMES, Theme, default_theme};
 use super::watcher::PodWatcher;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -76,7 +76,7 @@ impl App {
             max_events: 2000,
             composer: Composer::new("planner".to_string()), // temporary default; will be improved
             mode: InputMode::Normal,
-            theme: OPERATOR_DARK,
+            theme: default_theme(),
             expanded: true,
         };
         app.list_state.select(Some(0));
