@@ -337,13 +337,12 @@ impl App {
         let pod_path = display_path(&self.pod_root);
         let paused_width = if self.pod_paused { " paused".len() } else { 0 };
         let left_text_width =
-            3 + self.pod_slug.chars().count() + paused_width + pod_path.chars().count();
-        let right = self.header_right_text(area.width.saturating_sub(left_text_width as u16 + 1));
+            5 + self.pod_slug.chars().count() + paused_width + pod_path.chars().count();
+        let right = self.header_right_text(area.width.saturating_sub(left_text_width as u16));
         let spacer_width = area
             .width
             .saturating_sub(left_text_width as u16)
-            .saturating_sub(right.chars().count() as u16)
-            .max(1) as usize;
+            .saturating_sub(right.chars().count() as u16) as usize;
 
         let spans = vec![
             Span::styled(" ", base),
@@ -359,7 +358,6 @@ impl App {
             Span::styled(pod_path, dim),
             Span::styled(" ".repeat(spacer_width), base),
             Span::styled(right, self.header_right_style()),
-            Span::styled(" ", base),
         ];
 
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
