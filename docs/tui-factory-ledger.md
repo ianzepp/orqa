@@ -4,7 +4,7 @@
 **Design Authority:** `docs/tui-operator-cockpit.md` (post-refinement)  
 **Baseline:** Post-Phase 05 pod-root redesign (delivered)  
 **Factory Run Started:** 2026-05-16  
-**Status:** Phase 3 complete — Ready for Phase 4
+**Status:** In progress (Phase 4)
 
 ## Overall Phase Roadmap (High Level)
 
@@ -21,21 +21,22 @@ Factory will execute one phase at a time, persisting a delivery spec before impl
 
 ## Current Phase
 
-**Phase 3: Timeline UI + Filters**
+**Phase 4: Composer, Send & Wake**
 
-**Goal:** Replace the text skeleton with a real scrollable unified timeline view in Ratatui. Implement the core filters (`f` for fin, `o` for operator mail, thread/subject) and smooth keyboard navigation + follow mode. The event engine from Phase 2 now drives a live, filterable visual experience.
+**Goal:** Add the bottom composer that lets the operator type messages, select a target fin, and send them as mail from the local `operator` fin. Implement the critical wake logic (bypass debounce + respect existing run.lock with post-run re-wake). Show synthetic operator actions in the timeline.
 
-**Success Criteria for Phase 3:**
-- A functional scrollable timeline is the main view (using `List` or `Paragraph` + state).
-- Events from `PodWatcher` are rendered with color coding and reasonable formatting.
-- Hotkeys `f`, `o` (and `t`/`/` for thread) work and update the visible list instantly.
-- Follow mode + manual scrolling behave intuitively (pause on scroll up, resume at bottom).
-- Header clearly shows pod, active filters, and status.
-- The TUI remains responsive with hundreds of events.
-- All previous Phase 1/2 guarantees (safe launch, terminal restore, only inside real pods) are preserved.
+**Success Criteria for Phase 4:**
+- A working single-line composer at the bottom showing `operator@<pod> → <target> > `.
+- `f` changes the target fin (with sensible default from pod.toml or discovery).
+- Pressing Enter sends the mail via the real mailbox machinery and triggers the operator wake rules.
+- If the target fin is locked, it is not killed — the re-wake happens after the current run finishes.
+- A synthetic `OperatorAction` event appears in the timeline immediately after sending.
+- Basic input editing + command history (↑/↓) works.
+- Transient feedback in the composer line (“sent”, “woke X”, errors).
+- All previous safety and terminal restore guarantees remain intact.
 - `cargo fmt --check` + strict clippy pass.
-- Good manual experience: create activity in a pod → run `orqa` → see live filtered timeline.
-- Persisted Phase 3 Delivery Spec exists (`docs/tui-phase-03-timeline-ui-filters-delivery.md`).
+- Strong manual verification: send messages while fins are idle and while they are running; verify correct wake behavior.
+- Persisted Phase 4 Delivery Spec exists (`docs/tui-phase-04-composer-send-wake-delivery.md`).
 
 **Blocked On / Open in this Phase:** None.
 
@@ -66,14 +67,7 @@ Factory will execute one phase at a time, persisting a delivery spec before impl
 
 - **2026-05-16** — Phase 1 committed. Poker-face passed. Ready for Phase 2.
 - **2026-05-16** — Phase 2 complete. Poker-face passed.
-- **2026-05-16** — Phase 3 complete:
-  - New `src/tui/app.rs` with `App` + `FilterState` owning the live event buffer, filters, and scroll state.
-  - Full Ratatui layout: header + scrollable `List` timeline + status bar.
-  - Color-coded event rendering for logs, mail, runs, locks, and operator actions.
-  - Working filters: `f` cycles fins, `o` toggles operator-only, `/`/`t` thread query.
-  - Proper follow mode + keyboard scrolling (arrows, PageUp/Down, Home/End).
-  - `run.rs` now uses the real `App` instead of the text skeleton.
-  - All fmt + strict clippy clean. Phase 1/2 safety guarantees preserved.
-- Poker-face passed. Ready for Phase 4 (Composer, Send & Wake).
+- **2026-05-16** — Phase 3 complete. Poker-face passed.
+- **2026-05-16** — Phase 4 delivery spec persisted (`docs/tui-phase-04-composer-send-wake-delivery.md`). Implementation begins.
 
 Keep this ledger updated after every phase gate and commit.

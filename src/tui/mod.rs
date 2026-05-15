@@ -5,6 +5,7 @@
 //! a pod root containing `.orqa/pod.toml`.
 
 pub mod app;
+pub mod composer;
 pub mod events;
 pub mod operator;
 pub mod run;

@@ -16,6 +16,7 @@ use ratatui::{
 #[allow(unused_imports)]
 use crate::model::PodRegistration;
 
+use super::composer::Composer;
 use super::events::{Event, LogStream};
 use super::watcher::PodWatcher;
 
@@ -38,6 +39,9 @@ pub struct App {
     pub follow: bool,
     pub known_fins: HashSet<String>,
     pub max_events: usize,
+
+    /// The bottom composer (Phase 4)
+    pub composer: Composer,
 }
 
 impl App {
@@ -52,6 +56,7 @@ impl App {
             follow: true,
             known_fins: HashSet::new(),
             max_events: 2000,
+            composer: Composer::new("planner".to_string()), // temporary default; will be improved
         };
         app.list_state.select(Some(0));
         app
@@ -169,10 +174,11 @@ impl App {
                 Constraint::Length(1), // separator above header
                 Constraint::Length(2), // header content
                 Constraint::Length(1), // separator below header
-                Constraint::Min(5),    // timeline
+                Constraint::Min(4),    // timeline
                 Constraint::Length(1), // separator above footer
-                Constraint::Length(1), // footer
-                Constraint::Length(1), // separator below footer
+                Constraint::Length(1), // footer / status
+                Constraint::Length(1), // separator
+                Constraint::Length(1), // composer input line
             ])
             .split(area);
 
@@ -183,6 +189,7 @@ impl App {
         self.render_separator(frame, chunks[4]);
         self.render_status(frame, chunks[5]);
         self.render_separator(frame, chunks[6]);
+        self.composer.render(frame, chunks[7], &self.pod_slug);
     }
 
     fn render_separator(&self, frame: &mut Frame, area: Rect) {

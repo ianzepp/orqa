@@ -104,26 +104,23 @@ fn run_event_loop(
                             return Ok(());
                         }
 
-                        // Filters (Phase 3)
+                        // `f` now changes the *composer target fin* (Phase 4)
                         KeyCode::Char('f') | KeyCode::Char('F') => {
                             let mut fins: Vec<String> = app.known_fins.iter().cloned().collect();
                             fins.sort();
-                            let next = match &app.filters.fin_filter {
-                                None if !fins.is_empty() => Some(fins[0].clone()),
-                                Some(cur) => {
-                                    if let Some(pos) = fins.iter().position(|f| f == cur) {
-                                        if pos + 1 < fins.len() {
-                                            Some(fins[pos + 1].clone())
-                                        } else {
-                                            None
-                                        }
-                                    } else {
-                                        None
-                                    }
+                            let current = &app.composer.target_fin;
+                            let next = if fins.is_empty() {
+                                "planner".to_string()
+                            } else if let Some(pos) = fins.iter().position(|f| f == current) {
+                                if pos + 1 < fins.len() {
+                                    fins[pos + 1].clone()
+                                } else {
+                                    fins[0].clone()
                                 }
-                                _ => None,
+                            } else {
+                                fins[0].clone()
                             };
-                            app.set_fin_filter(next);
+                            app.composer.set_target(next);
                         }
                         KeyCode::Char('o') | KeyCode::Char('O') => app.toggle_operator_filter(),
                         KeyCode::Char('/') | KeyCode::Char('t') | KeyCode::Char('T') => {
@@ -134,16 +131,48 @@ fn run_event_loop(
                             }
                         }
 
-                        // Scrolling
-                        KeyCode::Up => app.scroll_up(1),
-                        KeyCode::Down => app.scroll_down(1),
+                        // === Composer input (Phase 4) ===
+                        KeyCode::Char(c) => {
+                            if !key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                                app.composer.insert_char(c);
+                            }
+                        }
+                        KeyCode::Backspace => app.composer.backspace(),
+                        KeyCode::Delete => app.composer.delete(),
+                        KeyCode::Left => app.composer.move_left(),
+                        KeyCode::Right => app.composer.move_right(),
+                        KeyCode::Home => app.composer.move_home(),
+                        KeyCode::End => app.composer.move_end(),
+
+                        KeyCode::Up => {
+                            // If input is empty, scroll timeline; otherwise history
+                            if app.composer.input.is_empty() {
+                                app.scroll_up(1);
+                            } else {
+                                app.composer.history_prev();
+                            }
+                        }
+                        KeyCode::Down => {
+                            if app.composer.input.is_empty() {
+                                app.scroll_down(1);
+                            } else {
+                                app.composer.history_next();
+                            }
+                        }
+
+                        KeyCode::Enter => {
+                            if let Some(msg) = app.composer.submit() {
+                                // TODO in this phase: actually send the mail + wake
+                                // For now just create a local OperatorAction so the user sees something
+                                let action_text = format!("mailed {}: \"{}\"", app.composer.target_fin, msg);
+                                app.events.push(crate::tui::events::Event::OperatorAction { text: action_text });
+                                app.auto_follow_if_needed();
+                            }
+                        }
+
+                        // Scrolling (Ctrl+arrows as fallback)
                         KeyCode::PageUp => app.scroll_up(12),
                         KeyCode::PageDown => app.scroll_down(12),
-                        KeyCode::Home => {
-                            app.follow = false;
-                            app.list_state.select(Some(0));
-                        }
-                        KeyCode::End => app.scroll_to_bottom(),
 
                         _ => {}
                     }
