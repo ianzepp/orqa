@@ -4,7 +4,7 @@
 **Design Authority:** `docs/tui-operator-cockpit.md` (post-refinement)  
 **Baseline:** Post-Phase 05 pod-root redesign (delivered)  
 **Factory Run Started:** 2026-05-16  
-**Status:** Phase 2 complete — Ready for Phase 3
+**Status:** Phase 3 complete — Ready for Phase 4
 
 ## Overall Phase Roadmap (High Level)
 
@@ -21,23 +21,23 @@ Factory will execute one phase at a time, persisting a delivery spec before impl
 
 ## Current Phase
 
-**Phase 2: Event Model & Watching**
+**Phase 3: Timeline UI + Filters**
 
-**Goal:** Build the backend event system (unified `Event` types + `PodWatcher`) that can monitor a Phase 05 pod (via `PodRegistration`) and produce a stream of timeline events from run log appends, mail arrivals, run lifecycle, and lock state. This is the data layer only — no UI rendering or composer yet.
+**Goal:** Replace the text skeleton with a real scrollable unified timeline view in Ratatui. Implement the core filters (`f` for fin, `o` for operator mail, thread/subject) and smooth keyboard navigation + follow mode. The event engine from Phase 2 now drives a live, filterable visual experience.
 
-**Success Criteria for Phase 2:**
-- A clean `Event` enum (and supporting types) lives in `src/tui/events.rs` covering LogLine, MailArrived, RunStarted/Finished, Lock changes, and OperatorNote.
-- A `PodWatcher` (or equivalent) can be constructed from a `PodRegistration`, discovers fins, tracks latest-run pointers, maintains log offsets, and produces new `Event`s when `poll()` is called.
-- The watcher works exclusively with new-style paths (`fin_data_home`, `mail_data_home`, etc.) via `PodRegistration`.
-- Unit tests exist that construct synthetic pods + runs + mail and verify correct events are emitted (including latest-run pointer changes).
-- Manual smoke: in a real pod with activity (fins that have run + received mail), the watcher (exercised via the Phase 1 skeleton or a small test binary) captures live log lines and new mail events.
-- All code passes `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and the full existing test suite remains green.
-- A persisted Phase 2 Delivery Spec exists (`docs/tui-phase-02-event-model-watching-delivery.md`).
-- Phase 1 skeleton remains fully functional.
+**Success Criteria for Phase 3:**
+- A functional scrollable timeline is the main view (using `List` or `Paragraph` + state).
+- Events from `PodWatcher` are rendered with color coding and reasonable formatting.
+- Hotkeys `f`, `o` (and `t`/`/` for thread) work and update the visible list instantly.
+- Follow mode + manual scrolling behave intuitively (pause on scroll up, resume at bottom).
+- Header clearly shows pod, active filters, and status.
+- The TUI remains responsive with hundreds of events.
+- All previous Phase 1/2 guarantees (safe launch, terminal restore, only inside real pods) are preserved.
+- `cargo fmt --check` + strict clippy pass.
+- Good manual experience: create activity in a pod → run `orqa` → see live filtered timeline.
+- Persisted Phase 3 Delivery Spec exists (`docs/tui-phase-03-timeline-ui-filters-delivery.md`).
 
-**Blocked On / Open in this Phase:** None (design decisions locked in `tui-operator-cockpit.md` + this spec).
-
-**Delivery Spec Location:** To be written as `docs/tui-phase-01-foundations-delivery.md` before coding begins.
+**Blocked On / Open in this Phase:** None.
 
 ---
 
@@ -65,12 +65,15 @@ Factory will execute one phase at a time, persisting a delivery spec before impl
 - All TUI code lives behind a new `tui` module; the rest of the binary stays untouched except for the no-command entry point.
 
 - **2026-05-16** — Phase 1 committed. Poker-face passed. Ready for Phase 2.
-- **2026-05-16** — Phase 2 delivery spec persisted. Implementation complete:
-  - `src/tui/events.rs` with rich `Event` enum (LogLine, MailArrived, Run*, Lock*, OperatorAction).
-  - `src/tui/watcher.rs` with `PodWatcher` using only Phase 05 `PodRegistration` + data-home paths.
-  - Watcher correctly tracks latest-run switches, tails the three log files with offsets, and detects new mail.
-  - Integrated live into the Phase 1 skeleton (shows "events captured: N" that increases when fins produce output/mail).
-  - All fmt + strict clippy clean. Main test suite green (pre-existing hygiene budget unrelated).
-- Poker-face passed for Phase 2. Ready for Phase 3 (Timeline UI + Filters).
+- **2026-05-16** — Phase 2 complete. Poker-face passed.
+- **2026-05-16** — Phase 3 complete:
+  - New `src/tui/app.rs` with `App` + `FilterState` owning the live event buffer, filters, and scroll state.
+  - Full Ratatui layout: header + scrollable `List` timeline + status bar.
+  - Color-coded event rendering for logs, mail, runs, locks, and operator actions.
+  - Working filters: `f` cycles fins, `o` toggles operator-only, `/`/`t` thread query.
+  - Proper follow mode + keyboard scrolling (arrows, PageUp/Down, Home/End).
+  - `run.rs` now uses the real `App` instead of the text skeleton.
+  - All fmt + strict clippy clean. Phase 1/2 safety guarantees preserved.
+- Poker-face passed. Ready for Phase 4 (Composer, Send & Wake).
 
 Keep this ledger updated after every phase gate and commit.

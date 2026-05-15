@@ -1,8 +1,6 @@
-//! Minimal Ratatui application entry point for the Operator Cockpit (Phase 1).
+//! Ratatui Operator Cockpit entry point (Phase 3+).
 //!
-//! This is a skeleton that proves we can enter a full-screen TUI from bare `orqa`
-//! when a pod is detected, show basic information, and exit cleanly.
-//! Later phases will replace the body with the real timeline + composer.
+//! Real scrollable timeline with filters, powered by the Phase 2 event system.
 
 use std::io::{self, stdout};
 
@@ -11,16 +9,15 @@ use crossterm::{
     execute,
     terminal::{EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode},
 };
-use ratatui::{Terminal, backend::CrosstermBackend, layout::Alignment, widgets::Paragraph};
+use ratatui::{Terminal, backend::CrosstermBackend};
 
 use crate::model::{Orqa, PodRegistration};
 
-/// Run the Phase 1 TUI skeleton for the given detected pod.
-///
-/// Returns when the user presses `q`, `Esc`, or the app decides to exit.
+use super::app::App;
+use super::watcher::PodWatcher;
+
+/// Run the Operator Cockpit TUI for a detected Phase 05 pod.
 pub fn run_tui(pod_slug: &str, pod_root: &std::path::Path) -> Result<(), String> {
-    // Best-effort terminal setup. If this fails we want a clean error, not a
-    // corrupted terminal.
     if let Err(e) = enable_raw_mode() {
         return Err(format!("failed to enable raw mode for TUI: {e}"));
     }
@@ -41,12 +38,10 @@ pub fn run_tui(pod_slug: &str, pod_root: &std::path::Path) -> Result<(), String>
         }
     };
 
-    // Make sure we restore the terminal even if the event loop panics.
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         run_event_loop(&mut terminal, pod_slug, pod_root)
     }));
 
-    // Always attempt to restore the terminal.
     let _ = disable_raw_mode();
     let _ = execute!(terminal.backend_mut(), LeaveAlternateScreen);
     let _ = terminal.show_cursor();
@@ -55,7 +50,6 @@ pub fn run_tui(pod_slug: &str, pod_root: &std::path::Path) -> Result<(), String>
         Ok(Ok(())) => Ok(()),
         Ok(Err(e)) => Err(e),
         Err(panic_payload) => {
-            // Convert panic into a friendly error.
             let msg = if let Some(s) = panic_payload.downcast_ref::<&str>() {
                 (*s).to_string()
             } else if let Some(s) = panic_payload.downcast_ref::<String>() {
@@ -73,62 +67,35 @@ fn run_event_loop(
     pod_slug: &str,
     pod_root: &std::path::Path,
 ) -> Result<(), String> {
-    // Phase 2: create a real PodWatcher so we can prove the event system works
-    // even while the UI is still the minimal skeleton.
+    // Create watcher (Phase 2) and App (Phase 3 UI state)
     let orqa = Orqa::new(None);
     let reg = PodRegistration {
         slug: pod_slug.to_string(),
         path: pod_root.to_path_buf(),
         enabled: true,
     };
-    let mut watcher = match crate::tui::PodWatcher::new(orqa, reg) {
-        Ok(w) => Some(w),
-        Err(e) => {
-            eprintln!("warning: failed to create PodWatcher for Phase 2 demo: {e}");
-            None
-        }
-    };
-    let mut event_count: usize = 0;
+    let watcher = PodWatcher::new(orqa, reg)?;
+    let mut app = App::new(pod_slug.to_string(), pod_root.to_path_buf(), watcher);
 
     loop {
-        // Phase 2: poll the watcher and count events (we don't render them yet)
-        if let Some(w) = &mut watcher {
-            if let Ok(new_events) = w.poll() {
-                event_count += new_events.len();
-            }
-        }
+        // Poll watcher for new events
+        app.poll_watcher();
+        app.auto_follow_if_needed();
 
+        // Draw the real timeline UI
         terminal
             .draw(|frame| {
                 let area = frame.area();
-
-                let title = format!("orqa • {} — Operator Cockpit (Phase 2)", pod_slug);
-                let root_line = format!("root: {}", pod_root.display());
-                let events_line = format!("events captured (Phase 2 watcher): {}", event_count);
-
-                let text = format!(
-                    "{}\n\n{}\n\n{}\n\n\
-                     Phase 2: Event model + PodWatcher are live.\n\
-                     Log lines, mail arrivals, and run state changes are being detected.\n\n\
-                     (Full timeline rendering arrives in Phase 3)\n\n\
-                     Press q, Esc, or Ctrl-C to exit.",
-                    title, root_line, events_line
-                );
-
-                let paragraph = Paragraph::new(text).alignment(Alignment::Center);
-
-                frame.render_widget(paragraph, area);
+                app.render(frame, area);
             })
             .map_err(|e| format!("terminal draw failed: {e}"))?;
 
-        // Non-blocking event poll with a short timeout so the watcher keeps running.
-        if event::poll(std::time::Duration::from_millis(250)).unwrap_or(false) {
+        // Input handling
+        if event::poll(std::time::Duration::from_millis(180)).unwrap_or(false) {
             if let Event::Key(key) = event::read().map_err(|e| format!("event read failed: {e}"))? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
-                        KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => {
-                            return Ok(());
-                        }
+                        KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => return Ok(()),
                         KeyCode::Char('c')
                             if key
                                 .modifiers
@@ -136,6 +103,48 @@ fn run_event_loop(
                         {
                             return Ok(());
                         }
+
+                        // Filters (Phase 3)
+                        KeyCode::Char('f') | KeyCode::Char('F') => {
+                            let mut fins: Vec<String> = app.known_fins.iter().cloned().collect();
+                            fins.sort();
+                            let next = match &app.filters.fin_filter {
+                                None if !fins.is_empty() => Some(fins[0].clone()),
+                                Some(cur) => {
+                                    if let Some(pos) = fins.iter().position(|f| f == cur) {
+                                        if pos + 1 < fins.len() {
+                                            Some(fins[pos + 1].clone())
+                                        } else {
+                                            None
+                                        }
+                                    } else {
+                                        None
+                                    }
+                                }
+                                _ => None,
+                            };
+                            app.set_fin_filter(next);
+                        }
+                        KeyCode::Char('o') | KeyCode::Char('O') => app.toggle_operator_filter(),
+                        KeyCode::Char('/') | KeyCode::Char('t') | KeyCode::Char('T') => {
+                            if app.filters.thread_query.is_some() {
+                                app.set_thread_query(None);
+                            } else {
+                                app.set_thread_query(Some("auth".into()));
+                            }
+                        }
+
+                        // Scrolling
+                        KeyCode::Up => app.scroll_up(1),
+                        KeyCode::Down => app.scroll_down(1),
+                        KeyCode::PageUp => app.scroll_up(12),
+                        KeyCode::PageDown => app.scroll_down(12),
+                        KeyCode::Home => {
+                            app.follow = false;
+                            app.list_state.select(Some(0));
+                        }
+                        KeyCode::End => app.scroll_to_bottom(),
+
                         _ => {}
                     }
                 }

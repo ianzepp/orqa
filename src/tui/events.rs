@@ -84,4 +84,40 @@ impl Event {
             Event::OperatorAction { .. } => "operator",
         }
     }
+
+    /// Returns the fin this event is associated with, if any.
+    pub fn fin(&self) -> Option<&str> {
+        match self {
+            Event::LogLine { fin, .. } => Some(fin),
+            Event::MailArrived { fin, .. } => Some(fin),
+            Event::RunStarted { fin, .. } => Some(fin),
+            Event::RunFinished { fin, .. } => Some(fin),
+            Event::LockAcquired { fin } => Some(fin),
+            Event::LockReleased { fin } => Some(fin),
+            Event::OperatorAction { .. } => None,
+        }
+    }
+
+    /// Whether this event is related to the operator (mail to/from operator or explicit OperatorAction).
+    pub fn is_operator_related(&self) -> bool {
+        match self {
+            Event::MailArrived { from, .. } => {
+                from.as_deref().is_some_and(|f| f.contains("operator@"))
+            }
+            Event::OperatorAction { .. } => true,
+            _ => false,
+        }
+    }
+
+    /// Rough match for thread/subject filtering.
+    pub fn matches_thread(&self, query: &str) -> bool {
+        let q = query.to_lowercase();
+        match self {
+            Event::MailArrived { subject, .. } => subject
+                .as_deref()
+                .is_some_and(|s| s.to_lowercase().contains(&q)),
+            Event::LogLine { line, .. } => line.to_lowercase().contains(&q),
+            _ => false,
+        }
+    }
 }
