@@ -122,3 +122,9 @@ model = "gpt-5.3-codex"
 # command = "custom-fin-runner"
 # exec_args = ["{prompt}"]
 # chat_args = []
+
+[backends.gitlog]
+enabled = true
+command = "git"
+exec_args = ["--no-pager", "log", "--oneline", "-5"]
+chat_args = ["--no-pager", "log", "--oneline", "-5"]

@@ -61,12 +61,12 @@ impl Orqa {
 
     /// Returns true if the pod home contains a `pod.toml` file.
     pub(crate) fn pod_exists(&self, pod: &PodRef) -> bool {
-        self.pod_home(pod).join("pod.toml").exists()
+        self.effective_pod_home(pod).join("pod.toml").exists()
     }
 
     /// Returns true if the fin home contains a `fin.toml` file.
     pub(crate) fn fin_exists(&self, fin: &FinRef) -> bool {
-        self.fin_home(fin).join("fin.toml").exists()
+        self.effective_fin_home(fin).join("fin.toml").exists()
     }
 
     /// Returns Ok if the pod exists (has `pod.toml`), otherwise a friendly error
