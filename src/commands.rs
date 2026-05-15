@@ -37,21 +37,62 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
     match command.command {
         PodSubcommand::List => list_pods(orqa),
         PodSubcommand::Create(args) => {
-            let pod = PodRef::new(&args.slug)?;
-            let home = orqa.pod_home(&pod);
-            fs::create_dir_all(home.join("fins")).map_err(|error| {
-                format!("failed to create pod directory {}: {error}", home.display())
-            })?;
-            let charter = read_optional_markdown_source(args.charter.as_deref(), DEFAULT_CHARTER)?;
-            write_if_missing(&home.join("pod.txt"), &format!("slug={}\n", pod.slug))?;
-            write_if_missing(&home.join("pod.toml"), &pod_config_template(&pod))?;
-            write_if_missing(&home.join("CHARTER.md"), &charter)?;
-            write_if_missing(
-                &home.join("AGENTS.md"),
-                &pod_agents_template(&pod, &charter),
-            )?;
-            println!("{}", home.display());
-            Ok(())
+            if let Some(target_root) = args.path {
+                // New-style: create pod inside a real user directory
+                let orqa_dir = target_root.join(".orqa");
+                if orqa_dir.join("pod.toml").exists() {
+                    return Err(format!(
+                        "orqa is already initialized in {} (found {})",
+                        target_root.display(),
+                        orqa_dir.display()
+                    ));
+                }
+
+                fs::create_dir_all(orqa_dir.join("fins"))
+                    .map_err(|error| format!("failed to create .orqa directory: {error}"))?;
+
+                let charter =
+                    read_optional_markdown_source(args.charter.as_deref(), DEFAULT_CHARTER)?;
+                let pod_ref = PodRef::new(&args.slug)?;
+
+                let pod_data = orqa_dir; // .orqa is the data dir
+                write_if_missing(&pod_data.join("pod.txt"), &format!("slug={}\n", args.slug))?;
+                write_if_missing(&pod_data.join("pod.toml"), &pod_config_template(&pod_ref))?;
+                write_if_missing(&pod_data.join("CHARTER.md"), &charter)?;
+                write_if_missing(
+                    &pod_data.join("AGENTS.md"),
+                    &pod_agents_template(&pod_ref, &charter),
+                )?;
+
+                // Register in global config
+                register_pod(orqa, &args.slug, &target_root)?;
+
+                // Auto-append to .gitignore if present (same behavior as `orqa init`)
+                if ensure_orqa_gitignored(&target_root)? {
+                    println!("Updated .gitignore to ignore /.orqa");
+                }
+
+                println!("{}", target_root.display());
+                Ok(())
+            } else {
+                // Legacy behavior (old ~/.orqa/pods/<slug> layout)
+                let pod = PodRef::new(&args.slug)?;
+                let home = orqa.pod_home(&pod);
+                fs::create_dir_all(home.join("fins")).map_err(|error| {
+                    format!("failed to create pod directory {}: {error}", home.display())
+                })?;
+                let charter =
+                    read_optional_markdown_source(args.charter.as_deref(), DEFAULT_CHARTER)?;
+                write_if_missing(&home.join("pod.txt"), &format!("slug={}\n", pod.slug))?;
+                write_if_missing(&home.join("pod.toml"), &pod_config_template(&pod))?;
+                write_if_missing(&home.join("CHARTER.md"), &charter)?;
+                write_if_missing(
+                    &home.join("AGENTS.md"),
+                    &pod_agents_template(&pod, &charter),
+                )?;
+                println!("{}", home.display());
+                Ok(())
+            }
         }
         PodSubcommand::Charter(command) => match command.command {
             PodCharterSubcommand::Get(args) => {

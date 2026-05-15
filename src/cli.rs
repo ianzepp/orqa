@@ -298,6 +298,10 @@ pub(crate) struct SlugArgs {
 pub(crate) struct PodCreateArgs {
     /// Pod slug.
     pub(crate) slug: String,
+    /// Create the pod in this directory instead of the default Orqa home
+    /// (new-style pod rooted in a real project folder).
+    #[arg(long, value_name = "DIR")]
+    pub(crate) path: Option<PathBuf>,
     /// Pod charter text, @file path, or - for stdin.
     #[arg(long, value_name = "PROMPT|@FILE|-")]
     pub(crate) charter: Option<String>,
