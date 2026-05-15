@@ -152,12 +152,7 @@ fn is_operator_alias(fin: &str) -> bool {
 }
 
 fn ensure_target_fin(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
-    let config = orqa.fin_home(fin).join("fin.toml");
-    if config.exists() {
-        Ok(())
-    } else {
-        Err(format!("target fin {} does not exist", fin.label()))
-    }
+    orqa.ensure_fin_exists(fin)
 }
 
 pub(crate) fn list_tasks(orqa: &Orqa, args: TaskListArgs) -> Result<(), String> {

@@ -11,7 +11,8 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::model::{FinRef, Orqa};
+use crate::commands::list_dirs;
+use crate::model::{FinRef, Orqa, PodRef};
 
 static RUN_COUNTER: AtomicUsize = AtomicUsize::new(0);
 
@@ -306,23 +307,16 @@ pub(crate) fn tail_pod(
     lines: usize,
     follow: bool,
 ) -> Result<(), String> {
-    let fins_dir = orqa.home.join("pods").join(pod).join("fins");
+    let pod_ref = PodRef::new(pod)?;
+    orqa.ensure_pod_exists(&pod_ref)?;
+    let fins_dir = orqa.pod_home(&pod_ref).join("fins");
+    let fin_slugs = list_dirs(&fins_dir)?;
     let mut paths = Vec::new();
-    for entry in fs::read_dir(&fins_dir).map_err(|error| {
-        format!(
-            "failed to read fins directory {}: {error}",
-            fins_dir.display()
-        )
-    })? {
-        let entry = entry.map_err(|error| format!("failed to read fin directory: {error}"))?;
-        if !entry.path().is_dir() {
-            continue;
-        }
-        let fin_slug = entry.file_name().to_string_lossy().to_string();
+    for fin_slug in fin_slugs {
         if fin_filter.is_some_and(|filter| filter != fin_slug) {
             continue;
         }
-        let fin = FinRef::new(pod, &fin_slug)?;
+        let fin = FinRef::new(&pod_ref.slug, &fin_slug)?;
         let Ok(run) = resolve_run_id(orqa, &fin, None) else {
             continue;
         };

@@ -68,6 +68,43 @@ impl Orqa {
     pub(crate) fn pod_hook_state_home(&self, pod: &PodRef, hook: &str) -> PathBuf {
         self.pod_hooks_home(pod).join("state").join(hook)
     }
+
+    /// Returns true if the pod home contains a `pod.toml` file.
+    pub(crate) fn pod_exists(&self, pod: &PodRef) -> bool {
+        self.pod_home(pod).join("pod.toml").exists()
+    }
+
+    /// Returns true if the fin home contains a `fin.toml` file.
+    pub(crate) fn fin_exists(&self, fin: &FinRef) -> bool {
+        self.fin_home(fin).join("fin.toml").exists()
+    }
+
+    /// Returns Ok if the pod exists (has `pod.toml`), otherwise a friendly error
+    /// suggesting the exact `orqa pod create` command.
+    pub(crate) fn ensure_pod_exists(&self, pod: &PodRef) -> Result<(), String> {
+        if self.pod_exists(pod) {
+            Ok(())
+        } else {
+            Err(format!(
+                "pod '{}' does not exist (run 'orqa pod create {}' to create it)",
+                pod.slug, pod.slug
+            ))
+        }
+    }
+
+    /// Returns Ok if the fin exists (has `fin.toml`), otherwise a friendly error
+    /// suggesting the exact `orqa fin create` command.
+    pub(crate) fn ensure_fin_exists(&self, fin: &FinRef) -> Result<(), String> {
+        if self.fin_exists(fin) {
+            Ok(())
+        } else {
+            Err(format!(
+                "fin '{}' does not exist (run 'orqa fin create {}' to create it)",
+                fin.label(),
+                fin.label()
+            ))
+        }
+    }
 }
 
 pub(crate) struct PodRef {

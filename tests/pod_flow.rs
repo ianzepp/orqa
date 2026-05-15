@@ -836,7 +836,7 @@ fn mail_and_tasks_reject_unknown_target_fins() {
             "This should fail.",
         ],
     );
-    assert!(mail.contains("target fin target-pod/dispatcher does not exist"));
+    assert!(mail.contains("fin 'target-pod/dispatcher' does not exist"));
     assert!(!root.join("pods/target-pod/fins/dispatcher").exists());
 
     let task = orqa_output_failing(
@@ -853,7 +853,7 @@ fn mail_and_tasks_reject_unknown_target_fins() {
             "This should fail.",
         ],
     );
-    assert!(task.contains("target fin target-pod/dispatcher does not exist"));
+    assert!(task.contains("fin 'target-pod/dispatcher' does not exist"));
     assert!(!root.join("pods/target-pod/fins/dispatcher").exists());
 
     fs::remove_dir_all(root).unwrap();

@@ -148,24 +148,12 @@ pub(crate) fn plan_pod(
     args: &[OsString],
 ) -> Result<WakePlan, String> {
     let pod = PodRef::new(pod)?;
+    orqa.ensure_pod_exists(&pod)?;
     let pod_sleeping = orqa.pod_sleep_path(&pod).exists();
-    let mut fins = Vec::new();
     let fins_dir = orqa.pod_home(&pod).join("fins");
-
-    let entries = fs::read_dir(&fins_dir).map_err(|error| {
-        format!(
-            "failed to read fins directory {}: {error}",
-            fins_dir.display()
-        )
-    })?;
-
-    for entry in entries {
-        let entry = entry.map_err(|error| format!("failed to read fin directory: {error}"))?;
-        if !entry.path().is_dir() {
-            continue;
-        }
-
-        let fin_slug = entry.file_name().to_string_lossy().to_string();
+    let fin_slugs = list_dirs(&fins_dir)?;
+    let mut fins = Vec::new();
+    for fin_slug in fin_slugs {
         let fin = FinRef::new(&pod.slug, &fin_slug)?;
         fins.push(plan_fin(orqa, &fin, pod_sleeping, force, args)?);
     }
@@ -358,18 +346,21 @@ fn print_plan(plan: &WakePlan, json: bool) -> Result<(), String> {
 
 pub(crate) fn exec_fin(orqa: &Orqa, args: ExecArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
+    orqa.ensure_fin_exists(&fin)?;
     let command = resolve_exec_command(orqa, &fin, &args.args)?;
     exec_fin_foreground(orqa, &fin, &command)
 }
 
 pub(crate) fn chat_fin(orqa: &Orqa, args: ChatArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
+    orqa.ensure_fin_exists(&fin)?;
     let command = resolve_chat_command(orqa, &fin, &args.args)?;
     fin_chat_interactive(orqa, &fin, &command)
 }
 
 pub(crate) fn supervise_fin(orqa: &Orqa, args: SuperviseArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
+    orqa.ensure_fin_exists(&fin)?;
     let command = BackendCommand {
         backend: args.backend,
         command: args.backend_command,
