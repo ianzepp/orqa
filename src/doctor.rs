@@ -193,7 +193,9 @@ fn fin_process(orqa: &Orqa, fin: &FinRef, command: &OsString, args: &[OsString])
     let mut process = ProcessCommand::new(command);
 
     // Phase 05-4: real pod root for cwd + HOME
-    let pod_root = orqa.effective_pod_root(&PodRef::new(&fin.pod).expect("valid pod slug"));
+    let pod_root = orqa.effective_pod_root(&PodRef {
+        slug: fin.pod.clone(),
+    });
     let fin_home = orqa.effective_fin_home(fin);
 
     process

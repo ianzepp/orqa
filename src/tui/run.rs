@@ -95,6 +95,9 @@ fn run_event_loop(
             if let Event::Key(key) = event::read().map_err(|e| format!("event read failed: {e}"))? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
+                        KeyCode::Esc if app.mode == super::app::InputMode::Input => {
+                            app.mode = super::app::InputMode::Normal;
+                        }
                         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => return Ok(()),
                         KeyCode::Char('c')
                             if key
@@ -104,8 +107,50 @@ fn run_event_loop(
                             return Ok(());
                         }
 
-                        // `f` now changes the *composer target fin* (Phase 4)
-                        KeyCode::Char('f') | KeyCode::Char('F') => {
+                        KeyCode::Char('i') | KeyCode::Char('I')
+                            if app.mode == super::app::InputMode::Normal =>
+                        {
+                            app.mode = super::app::InputMode::Input;
+                        }
+
+                        KeyCode::Char('H') if app.mode == super::app::InputMode::Normal => {
+                            app.cycle_theme();
+                        }
+
+                        KeyCode::Char('w')
+                            if app.mode == super::app::InputMode::Input
+                                && key
+                                    .modifiers
+                                    .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                        {
+                            app.composer.delete_previous_word();
+                        }
+
+                        KeyCode::Char('F') if app.mode == super::app::InputMode::Normal => {
+                            let mut fins: Vec<String> = app.known_fins.iter().cloned().collect();
+                            fins.sort();
+                            let next = if fins.is_empty() {
+                                None
+                            } else if let Some(current) = &app.filters.fin_filter {
+                                if let Some(pos) = fins.iter().position(|f| f == current) {
+                                    if pos + 1 < fins.len() {
+                                        Some(fins[pos + 1].clone())
+                                    } else {
+                                        None
+                                    }
+                                } else {
+                                    Some(fins[0].clone())
+                                }
+                            } else {
+                                Some(fins[0].clone())
+                            };
+                            app.set_fin_filter(next);
+                        }
+
+                        KeyCode::Tab | KeyCode::Char('f') | KeyCode::Char('F')
+                            if app.mode == super::app::InputMode::Input
+                                || matches!(key.code, KeyCode::Char('f')) =>
+                        {
                             let mut fins: Vec<String> = app.known_fins.iter().cloned().collect();
                             fins.sort();
                             let current = &app.composer.target_fin;
@@ -122,8 +167,15 @@ fn run_event_loop(
                             };
                             app.composer.set_target(next);
                         }
-                        KeyCode::Char('o') | KeyCode::Char('O') => app.toggle_operator_filter(),
-                        KeyCode::Char('/') | KeyCode::Char('t') | KeyCode::Char('T') => {
+
+                        KeyCode::Char('o') | KeyCode::Char('O')
+                            if app.mode == super::app::InputMode::Normal =>
+                        {
+                            app.toggle_operator_filter()
+                        }
+                        KeyCode::Char('/') | KeyCode::Char('t') | KeyCode::Char('T')
+                            if app.mode == super::app::InputMode::Normal =>
+                        {
                             if app.filters.thread_query.is_some() {
                                 app.set_thread_query(None);
                             } else {
@@ -133,7 +185,7 @@ fn run_event_loop(
 
                         // === Composer input (Phase 4) ===
                         #[allow(clippy::collapsible_match)]
-                        KeyCode::Char(c) => {
+                        KeyCode::Char(c) if app.mode == super::app::InputMode::Input => {
                             if !key
                                 .modifiers
                                 .contains(crossterm::event::KeyModifiers::CONTROL)
@@ -141,30 +193,46 @@ fn run_event_loop(
                                 app.composer.insert_char(c);
                             }
                         }
-                        KeyCode::Backspace => app.composer.backspace(),
-                        KeyCode::Delete => app.composer.delete(),
-                        KeyCode::Left => app.composer.move_left(),
-                        KeyCode::Right => app.composer.move_right(),
-                        KeyCode::Home => app.composer.move_home(),
-                        KeyCode::End => app.composer.move_end(),
+                        KeyCode::Backspace if app.mode == super::app::InputMode::Input => {
+                            app.composer.backspace()
+                        }
+                        KeyCode::Delete if app.mode == super::app::InputMode::Input => {
+                            app.composer.delete()
+                        }
+                        KeyCode::Left if app.mode == super::app::InputMode::Input => {
+                            app.composer.move_left()
+                        }
+                        KeyCode::Right if app.mode == super::app::InputMode::Input => {
+                            app.composer.move_right()
+                        }
+                        KeyCode::Home if app.mode == super::app::InputMode::Input => {
+                            app.composer.move_home()
+                        }
+                        KeyCode::End if app.mode == super::app::InputMode::Input => {
+                            app.composer.move_end()
+                        }
 
                         KeyCode::Up => {
                             // If input is empty, scroll timeline; otherwise history
-                            if app.composer.input.is_empty() {
+                            if app.mode == super::app::InputMode::Normal
+                                || app.composer.input.is_empty()
+                            {
                                 app.scroll_up(1);
                             } else {
                                 app.composer.history_prev();
                             }
                         }
                         KeyCode::Down => {
-                            if app.composer.input.is_empty() {
+                            if app.mode == super::app::InputMode::Normal
+                                || app.composer.input.is_empty()
+                            {
                                 app.scroll_down(1);
                             } else {
                                 app.composer.history_next();
                             }
                         }
 
-                        KeyCode::Enter => {
+                        KeyCode::Enter if app.mode == super::app::InputMode::Input => {
                             if let Some(msg) = app.composer.submit() {
                                 // TODO in this phase: actually send the mail + wake
                                 // For now just create a local OperatorAction so the user sees something

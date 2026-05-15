@@ -8,10 +8,12 @@ use std::collections::VecDeque;
 use ratatui::layout::Rect;
 use ratatui::{
     Frame,
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::Paragraph,
 };
+
+use super::theme::Theme;
 
 // use super::events::Event; // not needed yet in composer
 
@@ -196,16 +198,14 @@ impl Composer {
 
     /// Render the composer line. Spans include background so the row is solid when used
     /// over a pre-filled bg or standalone.
-    pub fn render(&self, frame: &mut Frame, area: Rect, pod_slug: &str) {
-        // Match the input row background used by the TUI for solid full-width coverage
-        let bar_bg = Color::Rgb(0x1F, 0x23, 0x2A);
-        let prompt_style = Style::default().fg(Color::Cyan).bg(bar_bg);
-        let input_style = Style::default().fg(Color::Rgb(0xE6, 0xE6, 0xE6)).bg(bar_bg);
+    pub fn render(&self, frame: &mut Frame, area: Rect, pod_slug: &str, theme: &Theme) {
+        let prompt_style = Style::default().fg(theme.accent).bg(theme.bar_bg);
+        let input_style = Style::default().fg(theme.text).bg(theme.bar_bg);
         let cursor_style = Style::default()
-            .fg(Color::Yellow)
-            .bg(bar_bg)
+            .fg(theme.cursor)
+            .bg(theme.bar_bg)
             .add_modifier(Modifier::SLOW_BLINK);
-        let status_style = Style::default().fg(Color::Green).bg(bar_bg);
+        let status_style = Style::default().fg(theme.ok).bg(theme.bar_bg);
 
         let prompt = format!("operator@{} → {} > ", pod_slug, self.target_fin);
 

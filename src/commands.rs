@@ -330,7 +330,8 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             print_dirs(&fins_dir)
         }
         FinSubcommand::Create(args) => {
-            let (pod_slug, pod_root) = resolve_pod_context(args.pod.clone(), orqa)?;
+            let (pod_arg, fin_slug) = args.resolve_refs()?;
+            let (pod_slug, pod_root) = resolve_pod_context(pod_arg, orqa)?;
 
             // If we have a real root (from detection or explicit new-style), use new paths
             let (fin_home, _use_new_paths) = if pod_root.join(".orqa").exists() {
@@ -339,9 +340,9 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
                     path: pod_root.clone(),
                     enabled: true,
                 };
-                (orqa.fin_data_home(&reg, &args.fin), true)
+                (orqa.fin_data_home(&reg, &fin_slug), true)
             } else {
-                let fin_ref = FinRef::new(&pod_slug, &args.fin)?;
+                let fin_ref = FinRef::new(&pod_slug, &fin_slug)?;
                 (orqa.fin_home(&fin_ref), false)
             };
 
@@ -349,7 +350,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             let pod_ref = PodRef::new(&pod_slug)?;
             orqa.ensure_pod_exists(&pod_ref)?;
 
-            let fin = FinRef::new(&pod_slug, &args.fin)?;
+            let fin = FinRef::new(&pod_slug, &fin_slug)?;
             ensure_fin_runtime_homes(orqa, &fin)?;
 
             let role = read_optional_markdown_source(args.role.as_deref(), DEFAULT_ROLE)?;

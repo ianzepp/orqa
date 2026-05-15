@@ -9,6 +9,7 @@ pub mod composer;
 pub mod events;
 pub mod operator;
 pub mod run;
+pub mod theme;
 pub mod watcher;
 
 pub use operator::ensure_operator_fin;

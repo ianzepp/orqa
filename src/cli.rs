@@ -343,13 +343,22 @@ pub(crate) struct FinListArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct FinCreateArgs {
-    /// Pod slug (inferred from current directory if omitted and inside a pod).
-    pub(crate) pod: Option<String>,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
+    /// Fin slug, or explicit pod slug followed by fin slug.
+    #[arg(value_name = "POD_OR_FIN", num_args = 1..=2)]
+    pub(crate) refs: Vec<String>,
     /// Fin role text, @file path, or - for stdin.
     #[arg(long, value_name = "PROMPT|@FILE|-")]
     pub(crate) role: Option<String>,
+}
+
+impl FinCreateArgs {
+    pub(crate) fn resolve_refs(&self) -> Result<(Option<String>, String), String> {
+        match self.refs.as_slice() {
+            [fin] => Ok((None, fin.clone())),
+            [pod, fin] => Ok((Some(pod.clone()), fin.clone())),
+            _ => Err("usage: orqa fin create [pod] <fin>".to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Args)]

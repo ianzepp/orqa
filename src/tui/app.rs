@@ -18,22 +18,14 @@ use crate::model::PodRegistration;
 
 use super::composer::Composer;
 use super::events::{Event, LogStream};
+use super::theme::{OPERATOR_DARK, THEMES, Theme, ThemeMode};
+use super::watcher::PodWatcher;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InputMode {
     Normal,
     Input,
 }
-
-// Tasteful dense terminal colors (inspired by trading / operator terminals)
-const BAR_BG: Color = Color::Rgb(0x1F, 0x23, 0x2A); // Dark slate
-const HEADER_BG: Color = Color::Rgb(0x2A, 0x3F, 0x4A); // Muted teal-slate
-const ACCENT: Color = Color::Rgb(0x7D, 0xD3, 0xFC); // Soft cyan
-const MUTED: Color = Color::Rgb(0x8B, 0x94, 0x9E);
-#[allow(dead_code)]
-const HIGHLIGHT: Color = Color::Rgb(0xF4, 0xA2, 0x61); // Warm amber for important items
-const WHITE: Color = Color::Rgb(0xE6, 0xE6, 0xE6);
-use super::watcher::PodWatcher;
 
 /// Filter state for the timeline.
 #[derive(Default, Clone)]
@@ -54,6 +46,8 @@ pub struct App {
     pub list_state: ListState,
     pub follow: bool,
     pub known_fins: HashSet<String>,
+    pub locked_fins: HashSet<String>,
+    pub active_fins: HashSet<String>,
     pub max_events: usize,
 
     /// The bottom composer (Phase 4)
@@ -61,6 +55,8 @@ pub struct App {
 
     /// Current input mode (Normal = monitoring hotkeys, Input = composer owns keys)
     pub mode: InputMode,
+
+    pub theme: Theme,
 }
 
 impl App {
@@ -74,9 +70,12 @@ impl App {
             list_state: ListState::default(),
             follow: true,
             known_fins: HashSet::new(),
+            locked_fins: HashSet::new(),
+            active_fins: HashSet::new(),
             max_events: 2000,
             composer: Composer::new("planner".to_string()), // temporary default; will be improved
             mode: InputMode::Normal,
+            theme: OPERATOR_DARK,
         };
         app.list_state.select(Some(0));
         app
@@ -91,6 +90,7 @@ impl App {
                     if let Some(f) = ev.fin() {
                         self.known_fins.insert(f.to_string());
                     }
+                    self.apply_event_state(&ev);
                     self.events.push(ev);
 
                     // Bound the buffer
@@ -99,6 +99,24 @@ impl App {
                     }
                 }
             }
+        }
+    }
+
+    fn apply_event_state(&mut self, ev: &Event) {
+        match ev {
+            Event::RunStarted { fin, .. } => {
+                self.active_fins.insert(fin.clone());
+            }
+            Event::RunFinished { fin, .. } => {
+                self.active_fins.remove(fin);
+            }
+            Event::LockAcquired { fin } => {
+                self.locked_fins.insert(fin.clone());
+            }
+            Event::LockReleased { fin } => {
+                self.locked_fins.remove(fin);
+            }
+            Event::LogLine { .. } | Event::MailArrived { .. } | Event::OperatorAction { .. } => {}
         }
     }
 
@@ -187,194 +205,181 @@ impl App {
         }
     }
 
+    pub fn cycle_theme(&mut self) {
+        let current = THEMES
+            .iter()
+            .position(|theme| theme.name == self.theme.name)
+            .unwrap_or(0);
+        self.theme = THEMES[(current + 1) % THEMES.len()];
+    }
+
     /// Render the full UI with a dense, polished cockpit layout.
     /// Consistent full-width backgrounds on all bars, minimal spacers for density.
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // 0: statusbar A (pod info + metrics, HEADER_BG)
-                Constraint::Min(6),    // 1: main timeline content
-                Constraint::Length(1), // 2: subtle separator band (BAR_BG)
-                Constraint::Length(1), // 3: input/composer area (BAR_BG full width)
-                Constraint::Length(1), // 4: statusbar B (fin activity, BAR_BG)
+                Constraint::Length(1), // pod/session header
+                Constraint::Length(1), // filters/help strip
+                Constraint::Min(6),    // timeline
+                Constraint::Length(1), // composer
+                Constraint::Length(1), // fin activity footer
             ])
             .split(area);
 
-        // Top status bar (pod + live metrics)
-        self.render_statusbar_a(frame, chunks[0]);
-
-        // Main scrollable timeline
-        self.render_timeline(frame, chunks[1]);
-
-        // Thin separator above the input cluster
-        self.render_colored_band(frame, chunks[2]);
-
-        // Composer input row (guaranteed full-width background)
+        self.render_header(frame, chunks[0]);
+        self.render_filter_strip(frame, chunks[1]);
+        self.render_timeline(frame, chunks[2]);
         self.render_input_area(frame, chunks[3]);
-
-        // Bottom fin status bar (now with matching background for polish)
-        self.render_statusbar_b(frame, chunks[4]);
+        self.render_fin_footer(frame, chunks[4]);
     }
 
-    #[allow(dead_code)]
-    /// Top shortcut bar — compact keyboard legend.
-    fn render_shortcut_bar(&self, frame: &mut Frame, area: Rect) {
-        let key = Style::default().fg(ACCENT).add_modifier(Modifier::BOLD);
-        let label = Style::default().fg(MUTED);
-
-        let spans = vec![
-            Span::styled(" ", label),
-            Span::styled("[i]", key),
-            Span::styled(" Input   ", label),
-            Span::styled("[f]", key),
-            Span::styled(" Target   ", label),
-            Span::styled("[o]", key),
-            Span::styled(" Op.Mail   ", label),
-            Span::styled("[w]", key),
-            Span::styled(" Wake   ", label),
-            Span::styled("[q]", key),
-            Span::styled(" Quit", label),
-        ];
-
-        frame.render_widget(Paragraph::new(Line::from(spans)), area);
-    }
-
-    #[allow(dead_code)]
-    /// Colored header bar with pod name and mode indicator.
-    fn render_header_bar(&self, frame: &mut Frame, area: Rect) {
-        let mode = match self.mode {
-            InputMode::Normal => "[NORMAL]",
-            InputMode::Input => "[INPUT]",
-        };
-        let _mode_style = if self.mode == InputMode::Input {
-            Style::default().fg(HIGHLIGHT).add_modifier(Modifier::BOLD)
-        } else {
-            Style::default().fg(MUTED)
-        };
-
-        let left = format!(" {} ", self.pod_slug);
-        let right = format!(" {}  {} ", mode, self.pod_root.display());
-
-        let width = area.width as usize;
-        let display = if left.len() + right.len() <= width {
-            format!(
-                "{}{}{}",
-                left,
-                " ".repeat(width - left.len() - right.len()),
-                right
-            )
-        } else {
-            left
-        };
-
-        let line = Line::from(Span::styled(
-            display,
-            Style::default()
-                .fg(WHITE)
-                .bg(HEADER_BG)
-                .add_modifier(Modifier::BOLD),
-        ));
-
-        frame.render_widget(Paragraph::new(line), area);
-    }
-
-    /// Dense pod status bar with live operational metrics.
-    /// Statusbar A (Line 2) - Pod level information, **full width** background.
-    fn render_statusbar_a(&self, frame: &mut Frame, area: Rect) {
-        let base = Style::default().fg(WHITE).bg(HEADER_BG);
-        let accent = Style::default().fg(ACCENT).bg(HEADER_BG);
-        let dim = Style::default().fg(MUTED).bg(HEADER_BG);
+    fn render_header(&self, frame: &mut Frame, area: Rect) {
+        let base = Style::default()
+            .fg(self.theme.text)
+            .bg(self.theme.header_bg);
+        let accent = Style::default()
+            .fg(self.theme.accent)
+            .bg(self.theme.header_bg);
+        let dim = Style::default()
+            .fg(self.theme.muted)
+            .bg(self.theme.header_bg);
+        let warn = Style::default()
+            .fg(self.theme.warn)
+            .bg(self.theme.header_bg);
+        let ok = Style::default().fg(self.theme.ok).bg(self.theme.header_bg);
 
         let fin_count = self.known_fins.len();
+        let visible_count = self.visible_events().len();
+        let operator_count = self
+            .events
+            .iter()
+            .filter(|ev| ev.is_operator_related())
+            .count();
+        let mode = match self.mode {
+            InputMode::Normal => ("monitor", dim),
+            InputMode::Input => ("compose", warn),
+        };
+        let theme_mode = match self.theme.mode {
+            ThemeMode::Light => "light",
+            ThemeMode::Dark => "dark",
+        };
 
-        // Build mixed-style spans for visual polish (pod name accented)
         let spans = vec![
             Span::styled(" ", base),
             Span::styled(&self.pod_slug, accent),
-            Span::styled(format!("  ·  {} fins  ·  ", fin_count), base),
-            Span::styled("2 wakeable", dim),
-            Span::styled("  ·  ", base),
-            Span::styled("1 locked", dim),
-            Span::styled("  ·  ", base),
-            Span::styled("4 op.mail", dim),
-            Span::styled("  ·  loop: running ", base),
+            Span::styled("  ", base),
+            Span::styled(mode.0, mode.1),
+            Span::styled(format!("  |  {} fins", fin_count), base),
+            Span::styled(format!("  {} active", self.active_fins.len()), ok),
+            Span::styled(format!("  {} locked", self.locked_fins.len()), warn),
+            Span::styled(format!("  |  {} visible", visible_count), base),
+            Span::styled(format!(" / {} events", self.events.len()), dim),
+            Span::styled(format!("  |  {} operator", operator_count), dim),
+            Span::styled(format!("  |  {} {}", theme_mode, self.theme.name), dim),
         ];
 
-        // Full bg fill first (guarantees edge-to-edge), then overlay the styled text
-        let bg_fill = " ".repeat(area.width as usize);
-        frame.render_widget(
-            Paragraph::new(bg_fill).style(Style::default().bg(HEADER_BG)),
-            area,
-        );
+        self.fill(frame, area, self.theme.header_bg);
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
-    /// Colored separator band (full-width background, no text).
-    fn render_colored_band(&self, frame: &mut Frame, area: Rect) {
-        let bg = " ".repeat(area.width as usize);
-        let band = Paragraph::new(bg).style(Style::default().bg(BAR_BG));
-        frame.render_widget(band, area);
+    fn render_filter_strip(&self, frame: &mut Frame, area: Rect) {
+        let base = Style::default().fg(self.theme.text).bg(self.theme.bar_bg);
+        let accent = Style::default().fg(self.theme.accent).bg(self.theme.bar_bg);
+        let dim = Style::default().fg(self.theme.muted).bg(self.theme.bar_bg);
+        let filter = if self.filters.fin_filter.is_some()
+            || self.filters.only_operator
+            || self.filters.thread_query.is_some()
+        {
+            Style::default().fg(self.theme.warn).bg(self.theme.bar_bg)
+        } else {
+            dim
+        };
+
+        let help = match self.mode {
+            InputMode::Normal => {
+                "i compose  f target  F filter  o operator  / thread  H theme  arrows scroll  q quit"
+            }
+            InputMode::Input => "Enter send  Esc monitor  Tab target  Ctrl-W delete word",
+        };
+
+        let spans = vec![
+            Span::styled(" target ", dim),
+            Span::styled(&self.composer.target_fin, accent),
+            Span::styled("  |  filter ", dim),
+            Span::styled(self.filter_summary(), filter),
+            Span::styled("  |  ", base),
+            Span::styled(help, dim),
+        ];
+
+        self.fill(frame, area, self.theme.bar_bg);
+        frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
     /// Input area (Line M+2) — with background color. Always ensures full-width background.
     fn render_input_area(&self, frame: &mut Frame, area: Rect) {
-        // Fill the entire input row with the background first for consistent full-width color
-        let bg_fill = " ".repeat(area.width as usize);
-        let bg_line = Line::from(Span::styled(bg_fill, Style::default().bg(BAR_BG)));
-        frame.render_widget(Paragraph::new(bg_line), area);
+        self.fill(frame, area, self.theme.bar_bg);
 
         if self.mode == InputMode::Normal {
-            let placeholder = "> Type \"i\" to enter input mode · [f] target fin · [q] quit";
-            let text = Line::from(Span::styled(placeholder, Style::default().fg(MUTED)));
+            let text = Line::from(vec![
+                Span::styled(
+                    " > ",
+                    Style::default().fg(self.theme.accent).bg(self.theme.bar_bg),
+                ),
+                Span::styled(
+                    "monitoring; press i to write to the target fin",
+                    Style::default().fg(self.theme.muted).bg(self.theme.bar_bg),
+                ),
+            ]);
             frame.render_widget(Paragraph::new(text), area);
         } else {
-            self.composer.render(frame, area, &self.pod_slug);
+            self.composer
+                .render(frame, area, &self.pod_slug, &self.theme);
         }
     }
 
-    /// Statusbar B (Line M+5) - Fin level, compact, with background for visual consistency.
-    /// Format: @ target • fin (time) • fin (running) • ... • X idle
-    fn render_statusbar_b(&self, frame: &mut Frame, area: Rect) {
+    fn render_fin_footer(&self, frame: &mut Frame, area: Rect) {
         let target = &self.composer.target_fin;
-        let style = Style::default().fg(WHITE).bg(BAR_BG);
-        let accent = Style::default().fg(ACCENT).bg(BAR_BG);
-        let dim = Style::default().fg(MUTED).bg(BAR_BG);
+        let style = Style::default().fg(self.theme.text).bg(self.theme.bar_bg);
+        let accent = Style::default().fg(self.theme.accent).bg(self.theme.bar_bg);
+        let dim = Style::default().fg(self.theme.muted).bg(self.theme.bar_bg);
+        let warn = Style::default().fg(self.theme.warn).bg(self.theme.bar_bg);
+        let ok = Style::default().fg(self.theme.ok).bg(self.theme.bar_bg);
 
-        // Build a compact fin list.
-        // For now we use known_fins + simple logic.
-        // In a real implementation we would track per-fin last activity and running state.
-        let mut fin_spans = vec![Span::styled(format!("@ {}", target), accent)];
+        let mut fins: Vec<_> = self.known_fins.iter().cloned().collect();
+        fins.sort();
+        let mut fin_spans = vec![
+            Span::styled(" @ ", dim),
+            Span::styled(target.clone(), accent),
+        ];
 
-        // Example other fins (in real code this would come from state)
-        let other_fins = vec![("builder", "3m"), ("researcher", "running")];
-
-        for (name, status) in other_fins {
+        for name in fins.into_iter().filter(|name| name != target).take(8) {
             fin_spans.push(Span::styled(" • ", dim));
-            if status == "running" {
-                fin_spans.push(Span::styled(format!("{} (running)", name), accent));
+            if self.locked_fins.contains(&name) {
+                fin_spans.push(Span::styled(format!("{} locked", name), warn));
+            } else if self.active_fins.contains(&name) {
+                fin_spans.push(Span::styled(format!("{} active", name), ok));
             } else {
-                fin_spans.push(Span::styled(format!("{} ({})", name, status), style));
+                fin_spans.push(Span::styled(name, style));
             }
         }
 
-        // Summary of idle fins
-        fin_spans.push(Span::styled(" • ", dim));
-        fin_spans.push(Span::styled("2 idle", dim));
+        if self.known_fins.is_empty() {
+            fin_spans.push(Span::styled(" • no fin activity observed yet", dim));
+        }
 
-        // Pad to full width for consistent background
-        let line = Line::from(fin_spans);
-        let width = area.width as usize;
-        // Render bg fill + the line (spans already carry bg)
-        let bg_fill = " ".repeat(width);
-        frame.render_widget(
-            Paragraph::new(bg_fill).style(Style::default().bg(BAR_BG)),
-            area,
-        );
-        frame.render_widget(Paragraph::new(line), area);
+        self.fill(frame, area, self.theme.bar_bg);
+        frame.render_widget(Paragraph::new(Line::from(fin_spans)), area);
     }
 
-    #[allow(dead_code)]
+    fn fill(&self, frame: &mut Frame, area: Rect, color: Color) {
+        let bg_fill = " ".repeat(area.width as usize);
+        frame.render_widget(
+            Paragraph::new(bg_fill).style(Style::default().bg(color)),
+            area,
+        );
+    }
+
     fn filter_summary(&self) -> String {
         let mut parts = vec![];
 
@@ -396,38 +401,64 @@ impl App {
     }
 
     fn render_timeline(&mut self, frame: &mut Frame, area: Rect) {
-        let visible = self.visible_events();
-        let items: Vec<ListItem> = visible
-            .iter()
+        let visible_events = self.visible_events();
+        let visible_count = visible_events.len();
+        let items: Vec<ListItem> = visible_events
+            .into_iter()
             .map(|ev| {
-                let line = self.event_to_line(ev);
-                ListItem::new(line)
+                ListItem::new(self.event_to_line(ev))
+                    .style(Style::default().bg(self.theme.panel_bg))
             })
             .collect();
 
-        let list =
-            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        let list = List::new(items)
+            .style(Style::default().bg(self.theme.panel_bg))
+            .highlight_style(
+                Style::default()
+                    .fg(self.theme.text)
+                    .bg(self.theme.header_bg)
+                    .add_modifier(Modifier::BOLD),
+            );
 
         // Keep selection in bounds
         if let Some(selected) = self.list_state.selected() {
-            if selected >= visible.len() && !visible.is_empty() {
-                self.list_state.select(Some(visible.len() - 1));
+            if selected >= visible_count && visible_count > 0 {
+                self.list_state.select(Some(visible_count - 1));
             }
         }
 
-        frame.render_stateful_widget(list, area, &mut self.list_state);
+        self.fill(frame, area, self.theme.panel_bg);
+        if visible_count == 0 {
+            let empty = Line::from(vec![
+                Span::styled(
+                    " waiting for pod activity",
+                    Style::default().fg(self.theme.muted),
+                ),
+                Span::styled("  |  ", Style::default().fg(self.theme.muted)),
+                Span::styled(
+                    "new mail, locks, runs, and logs will appear here",
+                    Style::default().fg(self.theme.muted),
+                ),
+            ]);
+            frame.render_widget(
+                Paragraph::new(empty).style(Style::default().bg(self.theme.panel_bg)),
+                area,
+            );
+        } else {
+            frame.render_stateful_widget(list, area, &mut self.list_state);
+        }
     }
 
     fn event_to_line(&self, ev: &Event) -> Line<'static> {
         match ev {
             Event::LogLine { fin, stream, line } => {
                 let color = match stream {
-                    LogStream::Stdout => Color::Gray,
-                    LogStream::Stderr => Color::Red,
-                    LogStream::Event => Color::Blue,
+                    LogStream::Stdout => self.theme.stdout,
+                    LogStream::Stderr => self.theme.error,
+                    LogStream::Event => self.theme.event,
                 };
                 Line::from(vec![
-                    Span::styled(format!("[{}]", fin), Style::default().fg(Color::Cyan)),
+                    Span::styled(format!("[{}]", fin), Style::default().fg(self.theme.accent)),
                     Span::raw(" "),
                     Span::styled(line.clone(), Style::default().fg(color)),
                 ])
@@ -438,15 +469,15 @@ impl App {
                 let subj = subject.clone().unwrap_or_else(|| "(no subject)".into());
                 let from_str = from.clone().unwrap_or_else(|| "?".into());
                 Line::from(vec![
-                    Span::styled(format!("[{}]", fin), Style::default().fg(Color::Magenta)),
+                    Span::styled(format!("[{}]", fin), Style::default().fg(self.theme.mail)),
                     Span::raw(" mail "),
-                    Span::styled(from_str, Style::default().fg(Color::Yellow)),
+                    Span::styled(from_str, Style::default().fg(self.theme.warn)),
                     Span::raw(" → "),
                     Span::styled(subj, Style::default().add_modifier(Modifier::BOLD)),
                 ])
             }
             Event::RunStarted { fin, run_id } => Line::from(vec![
-                Span::styled(format!("[{}]", fin), Style::default().fg(Color::Green)),
+                Span::styled(format!("[{}]", fin), Style::default().fg(self.theme.ok)),
                 Span::raw(format!(" run started {}", run_id)),
             ]),
             Event::RunFinished {
@@ -456,23 +487,23 @@ impl App {
             } => {
                 let status = exit_code.map_or("?".to_string(), |c| c.to_string());
                 Line::from(vec![
-                    Span::styled(format!("[{}]", fin), Style::default().fg(Color::Green)),
+                    Span::styled(format!("[{}]", fin), Style::default().fg(self.theme.ok)),
                     Span::raw(format!(" run finished {} (exit {})", run_id, status)),
                 ])
             }
             Event::LockAcquired { fin } => Line::from(vec![
-                Span::styled(format!("[{}]", fin), Style::default().fg(Color::Yellow)),
+                Span::styled(format!("[{}]", fin), Style::default().fg(self.theme.warn)),
                 Span::raw(" acquired lock"),
             ]),
             Event::LockReleased { fin } => Line::from(vec![
-                Span::styled(format!("[{}]", fin), Style::default().fg(Color::Yellow)),
+                Span::styled(format!("[{}]", fin), Style::default().fg(self.theme.warn)),
                 Span::raw(" released lock"),
             ]),
             Event::OperatorAction { text } => Line::from(vec![
                 Span::styled(
                     "[operator]",
                     Style::default()
-                        .fg(Color::LightMagenta)
+                        .fg(self.theme.mail)
                         .add_modifier(Modifier::BOLD),
                 ),
                 Span::raw(format!(" {}", text)),
