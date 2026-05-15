@@ -1,4 +1,4 @@
-use clap::Args;
+use clap::{Args, Subcommand};
 use std::{ffi::OsString, path::PathBuf};
 
 #[derive(Debug, Args)]
@@ -103,4 +103,80 @@ pub(crate) struct PodCreateArgs {
     /// Pod charter text, @file path, or - for stdin.
     #[arg(long, value_name = "PROMPT|@FILE|-")]
     pub(crate) charter: Option<String>,
+}
+#[derive(Debug, Args)]
+pub(crate) struct PodCharterSetArgs {
+    /// Pod slug.
+    pub(crate) slug: String,
+    /// Pod charter text, @file path, or - for stdin.
+    #[arg(value_name = "PROMPT|@FILE|-")]
+    pub(crate) charter: String,
+}
+#[derive(Debug, Args)]
+pub(crate) struct PodCharterCommand {
+    #[command(subcommand)]
+    pub(crate) command: PodCharterSubcommand,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct PodHookCommand {
+    #[command(subcommand)]
+    pub(crate) command: PodHookSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PodHookSubcommand {
+    /// List hooks for a pod.
+    List(PodHookListArgs),
+    /// Add a hook definition and adjacent script stub.
+    Add(PodHookAddArgs),
+    /// Enable a hook.
+    Enable(PodHookRefArgs),
+    /// Disable a hook.
+    Disable(PodHookRefArgs),
+    /// Remove a hook definition and adjacent script.
+    Remove(PodHookRefArgs),
+    /// Run enabled hooks for one phase.
+    Run(PodHookRunArgs),
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PodCharterSubcommand {
+    /// Print the pod charter.
+    Get(SlugArgs),
+    /// Replace the pod charter.
+    Set(PodCharterSetArgs),
+}
+#[derive(Debug, Args)]
+pub(crate) struct PodCommand {
+    #[command(subcommand)]
+    pub(crate) command: PodSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum PodSubcommand {
+    /// List pods.
+    List,
+    /// Create a pod.
+    ///
+    /// Without --path, creates a legacy pod under ORQA_HOME/pods/.
+    /// With --path, creates a new-style pod rooted in the given directory
+    /// (equivalent to `orqa init`, but requires an explicit slug).
+    Create(PodCreateArgs),
+    /// Get or set a pod charter.
+    Charter(PodCharterCommand),
+    /// Print the home directory for a pod.
+    Home(SlugArgs),
+    /// Print pod runtime status.
+    Status(PodStatusArgs),
+    /// Check pod filesystem, config, backend command, and LLM connectivity.
+    Doctor(PodDoctorArgs),
+    /// Manage pod lifecycle hooks.
+    Hook(PodHookCommand),
+    /// Print recent run output for fins in a pod.
+    Tail(PodTailArgs),
+    /// Pause all wake-loop runs for a pod.
+    Sleep(SlugArgs),
+    /// Clear a pod sleep marker.
+    Wake(PodWakeArgs),
 }
