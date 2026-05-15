@@ -437,18 +437,11 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
 }
 
 fn list_pods(orqa: &Orqa) -> Result<(), String> {
-    // Phase 05-3+: Prefer registry (new pod roots)
+    // Phase 05-3+: Prefer registry (new pod roots) — basic listing for now
     let regs = crate::model::load_registry(orqa).unwrap_or_default();
     if !regs.is_empty() {
-        for reg in regs.values() {
-            if reg.enabled {
-                // Construct a minimal PodRef for status (legacy path may not exist)
-                if let Ok(pod_ref) = PodRef::new(&reg.slug) {
-                    // Note: pod_status currently uses old paths; for new pods this may be partial
-                    // Full support in later phase
-                    let _ = print_pod_list_status(&pod_status(orqa, &pod_ref)?);
-                }
-            }
+        for reg in regs.values().filter(|r| r.enabled) {
+            println!("- {} @ {}", reg.slug, reg.path.display());
         }
     } else {
         // Legacy fallback

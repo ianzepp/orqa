@@ -191,13 +191,17 @@ fn run_probe(
 
 fn fin_process(orqa: &Orqa, fin: &FinRef, command: &OsString, args: &[OsString]) -> ProcessCommand {
     let mut process = ProcessCommand::new(command);
-    let fin_home = orqa.fin_home(fin);
+
+    // Phase 05-4: real pod root for cwd + HOME
+    let pod_root = orqa.effective_pod_root(&PodRef::new(&fin.pod).expect("valid pod slug"));
+    let fin_home = orqa.effective_fin_home(fin);
+
     process
-        .current_dir(&fin_home)
+        .current_dir(&pod_root)
         .env("ORQA_HOME", &orqa.home)
         .env("ORQA_POD", &fin.pod)
         .env("ORQA_FIN", &fin.fin)
-        .env("HOME", &fin_home)
+        .env("HOME", &pod_root)
         .env("CODEX_HOME", fin_home.join(".codex"))
         .env("HERMES_HOME", fin_home.join(".hermes"))
         .env("PI_CODING_AGENT_DIR", fin_home.join(".pi/agent"))

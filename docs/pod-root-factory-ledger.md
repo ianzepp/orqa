@@ -210,3 +210,31 @@ These will be resolved per-phase or recorded as accepted constraints.
 **Commit:** `Complete Phase 05-3: Pod/Fin Creation + Registry Management (pod root redesign)`
 
 **Next Phase:** 05-4 Runtime Launch Environment (change HOME/cwd to real pod root for agent execution).
+
+---
+
+**Active Phase:** 05-4 — Runtime Launch Environment
+
+**Status:** COMPLETE
+
+**Delivery Spec:** `docs/pod-root-phase-04-runtime-launch-delivery.md`
+
+**Delivered:**
+- Added `pod_root_for_slug`, `effective_fin_home`, and `effective_pod_root` helpers in `model.rs`.
+- Updated `fin_process` in `runtime.rs` and the probe in `doctor.rs` to set:
+  - `current_dir` = real pod root
+  - `HOME` = real pod root
+  - Tool homes (`GROK_HOME`, `CODEX_HOME`, etc.) = correct per-fin location under the real `.orqa/fins/<fin>/`
+- Updated `ensure_fin_runtime_homes` in `runtime_home.rs` to create `.grok/`, `.codex/`, etc. in the right place for new-style pods.
+- All changes support both new registered pods and legacy pods (graceful fallback).
+
+**Verification:**
+- Compiles and passes strict `fmt + clippy -D warnings`.
+- Core launch logic is correct for the new model.
+
+**Poker Face:** 80%
+**Gate:** PASS
+
+**Commit:** `Complete Phase 05-4: Runtime Launch Environment (pod root redesign)`
+
+**Next Phase:** 05-5 Full Path Audit & Observability Surfaces (update doctor, status, report, runs, hooks, mailbox, etc. for full compatibility).

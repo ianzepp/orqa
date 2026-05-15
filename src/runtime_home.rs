@@ -9,7 +9,8 @@ use std::os::unix::fs::symlink;
 use crate::{model::FinRef, model::Orqa};
 
 pub(crate) fn ensure_fin_runtime_homes(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
-    let fin_home = orqa.fin_home(fin);
+    // Phase 05-4: Use effective fin home (supports both new pod roots and legacy)
+    let fin_home = orqa.effective_fin_home(fin);
     for runtime_dir in [".codex", ".hermes", ".pi/agent", ".pi/sessions", ".grok"] {
         let path = fin_home.join(runtime_dir);
         fs::create_dir_all(&path).map_err(|error| {

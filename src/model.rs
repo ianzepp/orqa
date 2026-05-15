@@ -333,6 +333,44 @@ impl Orqa {
     }
 }
 
+impl Orqa {
+    /// Returns the real filesystem root directory for a pod (from registry if registered,
+    /// otherwise falls back to the legacy ~/.orqa/pods/<slug> location).
+    pub(crate) fn pod_root_for_slug(&self, slug: &str) -> PathBuf {
+        if let Ok(regs) = load_registry(self) {
+            if let Some(reg) = regs.get(slug) {
+                return reg.path.clone();
+            }
+        }
+        // Legacy fallback
+        self.home.join("pods").join(slug)
+    }
+
+    /// Returns the effective per-fin home directory (contains mail/, tasks/, .grok/, etc.).
+    /// Works for both new-style registered pods and legacy pods.
+    pub(crate) fn effective_fin_home(&self, fin: &FinRef) -> PathBuf {
+        let pod_root = self.pod_root_for_slug(&fin.pod);
+        let orqa_dir = pod_root.join(".orqa");
+
+        if orqa_dir.exists() {
+            // New-style pod
+            orqa_dir.join("fins").join(&fin.fin)
+        } else {
+            // Legacy layout
+            self.home
+                .join("pods")
+                .join(&fin.pod)
+                .join("fins")
+                .join(&fin.fin)
+        }
+    }
+
+    /// Returns the real pod root directory to use as cwd and HOME for launched agents.
+    pub(crate) fn effective_pod_root(&self, pod: &PodRef) -> PathBuf {
+        self.pod_root_for_slug(&pod.slug)
+    }
+}
+
 /// Walks upward from the current working directory looking for a directory
 /// that contains `.orqa/pod.toml`. Returns (slug, pod_root) if found.
 ///
