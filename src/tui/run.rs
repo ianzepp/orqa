@@ -14,7 +14,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 use crate::model::{Orqa, PodRegistration};
 
 use super::app::App;
-use super::loopctl::start_pod_loop_daemon;
+use super::loopctl::start_tui_loop_worker;
 use super::watcher::PodWatcher;
 
 /// Run the Operator Cockpit TUI for a detected Phase 05 pod.
@@ -75,9 +75,13 @@ fn run_event_loop(
         path: pod_root.to_path_buf(),
         enabled: true,
     };
-    if let Err(error) = start_pod_loop_daemon(&orqa, &reg) {
-        eprintln!("warning: failed to start pod loop daemon for TUI: {error}");
-    }
+    let _loop_worker = match start_tui_loop_worker(&orqa, &reg) {
+        Ok(worker) => Some(worker),
+        Err(error) => {
+            eprintln!("warning: failed to start TUI loop worker: {error}");
+            None
+        }
+    };
     let app_orqa = Orqa::new(Some(orqa.home.clone()));
     let app_reg = reg.clone();
     let watcher = PodWatcher::new(orqa, reg)?;

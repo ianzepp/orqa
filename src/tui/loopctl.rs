@@ -2,7 +2,8 @@
 
 use std::{
     fs,
-    process::{Command as ProcessCommand, Stdio},
+    path::PathBuf,
+    process::{Child, Command as ProcessCommand, Stdio},
 };
 
 use crate::{
@@ -11,11 +12,33 @@ use crate::{
     model::{Orqa, PodRegistration},
 };
 
-pub(crate) fn start_pod_loop_daemon(orqa: &Orqa, reg: &PodRegistration) -> Result<(), String> {
+pub(crate) struct PodLoopWorker {
+    child: Option<Child>,
+    pid_path: PathBuf,
+}
+
+impl Drop for PodLoopWorker {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.child.take() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+        let _ = fs::remove_file(&self.pid_path);
+    }
+}
+
+pub(crate) fn start_tui_loop_worker(
+    orqa: &Orqa,
+    reg: &PodRegistration,
+) -> Result<PodLoopWorker, String> {
     let pid_path = pod_loop_pid_path(orqa, reg);
     if pid_path.exists() {
         if is_process_running(&pid_path) {
-            return Ok(());
+            return Err(format!(
+                "pod loop already running for {} (pidfile {})",
+                reg.slug,
+                pid_path.display()
+            ));
         }
         let _ = fs::remove_file(&pid_path);
     }
@@ -35,7 +58,7 @@ pub(crate) fn start_pod_loop_daemon(orqa: &Orqa, reg: &PodRegistration) -> Resul
         .stdout(Stdio::null())
         .stderr(Stdio::null())
         .spawn()
-        .map_err(|error| format!("failed to start pod loop daemon: {error}"))?;
+        .map_err(|error| format!("failed to start TUI loop worker: {error}"))?;
 
     let parent = pid_path
         .parent()
@@ -53,7 +76,10 @@ pub(crate) fn start_pod_loop_daemon(orqa: &Orqa, reg: &PodRegistration) -> Resul
         )
     })?;
 
-    Ok(())
+    Ok(PodLoopWorker {
+        child: Some(child),
+        pid_path,
+    })
 }
 
 pub(crate) fn pod_paused(orqa: &Orqa, reg: &PodRegistration) -> bool {
@@ -72,5 +98,5 @@ pub(crate) fn toggle_pod_pause(orqa: &Orqa, reg: &PodRegistration) -> Result<boo
 }
 
 fn pod_loop_pid_path(orqa: &Orqa, reg: &PodRegistration) -> std::path::PathBuf {
-    orqa.pod_data_home(reg).join("loop.pid")
+    orqa.pod_data_home(reg).join("tui-loop.pid")
 }
