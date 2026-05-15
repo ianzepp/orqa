@@ -79,6 +79,7 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
         }
         PodSubcommand::Status(args) => {
             let pod = PodRef::new(&args.pod)?;
+            orqa.ensure_pod_exists(&pod)?;
             let status = pod_status(orqa, &pod)?;
             if args.json {
                 print_json(&status)
@@ -139,6 +140,8 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             print_dirs(&orqa.pod_home(&pod).join("fins"))
         }
         FinSubcommand::Create(args) => {
+            let pod = PodRef::new(&args.pod)?;
+            orqa.ensure_pod_exists(&pod)?;
             let fin = FinRef::new(&args.pod, &args.fin)?;
             let home = orqa.fin_home(&fin);
             ensure_fin_runtime_homes(orqa, &fin)?;

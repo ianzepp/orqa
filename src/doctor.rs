@@ -20,6 +20,7 @@ pub(crate) fn pod_doctor(orqa: &Orqa, args: PodDoctorArgs) -> Result<(), String>
     }
 
     let pod = PodRef::new(&args.pod)?;
+    orqa.ensure_pod_exists(&pod)?;
     let mut ok = true;
     check_path("pod home", &orqa.pod_home(&pod), &mut ok);
     check_path("pod config", &orqa.pod_home(&pod).join("pod.toml"), &mut ok);
@@ -59,7 +60,8 @@ pub(crate) fn pod_doctor(orqa: &Orqa, args: PodDoctorArgs) -> Result<(), String>
 fn doctor_fins(orqa: &Orqa, pod: &PodRef, fin: Option<&str>) -> Result<Vec<String>, String> {
     match fin {
         Some(fin) => {
-            FinRef::new(&pod.slug, fin)?;
+            let f = FinRef::new(&pod.slug, fin)?;
+            orqa.ensure_fin_exists(&f)?;
             Ok(vec![fin.to_string()])
         }
         None => list_dirs(&orqa.pod_home(pod).join("fins")),

@@ -39,28 +39,30 @@ pub(crate) fn ops_report(orqa: &Orqa, args: OpsReportArgs) -> Result<(), String>
 }
 
 fn print_pod(orqa: &Orqa, pod: &str, since: Option<&SinceFilter>) -> Result<(), String> {
-    let pod = PodRef::new(pod)?;
-    let pod_home = orqa.pod_home(&pod);
+    let pod_ref = PodRef::new(pod)?;
+    orqa.ensure_pod_exists(&pod_ref)?;
+    let pod_home = orqa.pod_home(&pod_ref);
     let fins = list_dirs(&pod_home.join("fins"))?;
-    println!("## Pod `{}`", pod.slug);
+    println!("## Pod `{}`", pod_ref.slug);
     println!();
     println!("- path: `{}`", pod_home.display());
     println!("- fins: `{}`", fins.len());
     println!();
 
     for fin in fins {
-        print_fin(orqa, &pod.slug, &fin, since)?;
+        print_fin(orqa, &pod_ref.slug, &fin, since)?;
     }
 
     Ok(())
 }
 
 fn print_fin(orqa: &Orqa, pod: &str, fin: &str, since: Option<&SinceFilter>) -> Result<(), String> {
-    let fin = FinRef::new(pod, fin)?;
-    let fin_home = orqa.fin_home(&fin);
-    let status = fin_status(orqa, &fin)?;
+    let fin_ref = FinRef::new(pod, fin)?;
+    orqa.ensure_fin_exists(&fin_ref)?;
+    let fin_home = orqa.fin_home(&fin_ref);
+    let status = fin_status(orqa, &fin_ref)?;
 
-    println!("### Fin `{}`", fin.fin);
+    println!("### Fin `{}`", fin_ref.fin);
     println!();
     println!("- path: `{}`", fin_home.display());
     println!("- sleeping: `{}`", status.sleeping);
@@ -72,13 +74,13 @@ fn print_fin(orqa: &Orqa, pod: &str, fin: &str, since: Option<&SinceFilter>) -> 
             "- latest_run: `{}` status=`{}` path=`{}`",
             run.id,
             run.status,
-            orqa.run_home(&fin, &run.id).display()
+            orqa.run_home(&fin_ref, &run.id).display()
         );
     }
     println!();
 
-    print_tasks(orqa, &fin, since)?;
-    print_mail(orqa, &fin, since)?;
+    print_tasks(orqa, &fin_ref, since)?;
+    print_mail(orqa, &fin_ref, since)?;
     Ok(())
 }
 

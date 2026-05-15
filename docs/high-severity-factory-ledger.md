@@ -74,5 +74,19 @@ Autocommit after each phase clears correctness + verification + poker-face + che
 
 **Next Phase Selected:** 3 — FinLock Atomicity + Run State Tolerance (HS #3)
 
+## Phase 3 Result (Completed 2026-05-15)
+
+**Phase Name:** FinLock Atomicity + Run State Tolerance (HS #3)  
+**Commit:** c52e8ad "Complete Phase 03: FinLock Atomicity + Run State Tolerance"  
+**Poker Face:** 83% (independent) → brought to gate by adding explicit post-write verification  
+**Checkpoint:** PASS
+
+**What Was Delivered:**
+- `FinLock::write` now uses `create_new(true)` + write + sync + explicit post-write owner verification (re-read and confirm our pid). TOCTOU race closed.
+- `latest_run_started_at`, `resolve_run_id("latest")`, `read_run_record`, and `list_runs` now tolerate corruption: warnings + actionable "consider removing" guidance instead of hard failures that brick `fin runs`, `run-status latest`, `tail`, planning, and daemon wakes.
+- One bad `status.json` or corrupt `latest-run` no longer aborts whole operations.
+
+**Next Phase Selected:** 4 — Existence Audit + Integration Test (final normalization + test coverage)
+
 ---
-*Ledger updated after Phase 2 commit. Factory continues.*
+*Ledger updated after Phase 3 commit. Factory continues.*

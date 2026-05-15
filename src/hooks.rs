@@ -18,6 +18,7 @@ const PRE_PLAN: &str = "pre-plan";
 
 pub(crate) fn list_hooks(orqa: &Orqa, args: PodHookListArgs) -> Result<(), String> {
     let pod = PodRef::new(&args.pod)?;
+    orqa.ensure_pod_exists(&pod)?;
     let hooks = read_phase_hooks(orqa, &pod, PRE_PLAN)?;
     for hook in hooks {
         println!(
@@ -35,6 +36,7 @@ pub(crate) fn list_hooks(orqa: &Orqa, args: PodHookListArgs) -> Result<(), Strin
 
 pub(crate) fn add_hook(orqa: &Orqa, args: PodHookAddArgs) -> Result<(), String> {
     let pod = PodRef::new(&args.pod)?;
+    orqa.ensure_pod_exists(&pod)?;
     validate_phase(&args.phase)?;
     validate_slug(&args.hook)?;
     let timeout = parse_duration(&args.timeout)
@@ -82,6 +84,7 @@ pub(crate) fn disable_hook(orqa: &Orqa, args: PodHookRefArgs) -> Result<(), Stri
 
 pub(crate) fn remove_hook(orqa: &Orqa, args: PodHookRefArgs) -> Result<(), String> {
     let pod = PodRef::new(&args.pod)?;
+    orqa.ensure_pod_exists(&pod)?;
     validate_phase(&args.phase)?;
     validate_slug(&args.hook)?;
     let phase_home = orqa.pod_hook_phase_home(&pod, &args.phase);
@@ -95,6 +98,7 @@ pub(crate) fn remove_hook(orqa: &Orqa, args: PodHookRefArgs) -> Result<(), Strin
 
 pub(crate) fn run_hooks(orqa: &Orqa, args: PodHookRunArgs) -> Result<(), String> {
     let pod = PodRef::new(&args.pod)?;
+    orqa.ensure_pod_exists(&pod)?;
     run_hook_phase(orqa, &pod, &args.phase)
 }
 
