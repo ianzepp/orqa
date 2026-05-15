@@ -32,12 +32,8 @@ pub(crate) enum Command {
     Task(TaskCommand),
     /// Human operator surface for cross-pod monitoring.
     Ops(OpsCommand),
-    /// Run the wake loop for a pod.
-    Loop(LoopArgs),
-    /// Show the wake plan for a pod without running fins.
-    Plan(PlanArgs),
-    /// Manage the background wake-loop service.
-    Service(ServiceCommand),
+    /// Manage the wake loop (run, plan, start, stop, status).
+    Loop(LoopCommand),
 }
 
 #[derive(Debug, Args)]
@@ -124,15 +120,10 @@ pub(crate) struct TaskCommand {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct ServiceCommand {
-    #[command(subcommand)]
-    pub(crate) command: ServiceSubcommand,
-}
-
-#[derive(Debug, Args)]
+#[command(subcommand_required = true, arg_required_else_help = true)]
 pub(crate) struct OpsCommand {
     #[command(subcommand)]
-    pub(crate) command: Option<OpsSubcommand>,
+    pub(crate) command: OpsSubcommand,
 }
 
 #[derive(Debug, Subcommand)]
@@ -225,26 +216,37 @@ pub(crate) enum TaskSubcommand {
     Delete(MailMessageArgs),
 }
 
+
+
+#[derive(Debug, Args)]
+#[command(subcommand_required = true, arg_required_else_help = true)]
+pub(crate) struct LoopCommand {
+    #[command(subcommand)]
+    pub(crate) command: LoopSubcommand,
+}
+
 #[derive(Debug, Subcommand)]
-pub(crate) enum ServiceSubcommand {
-    /// Install a platform service for ORQA_HOME.
-    Install(ServiceInstallArgs),
-    /// Uninstall the platform service for ORQA_HOME.
-    Uninstall,
-    /// Start the service for ORQA_HOME.
-    Start,
-    /// Stop the service for ORQA_HOME.
+pub(crate) enum LoopSubcommand {
+    /// Run the wake loop for one or all pods.
+    Run(LoopRunArgs),
+
+    /// Show the wake plan for a pod without running fins.
+    Plan(LoopPlanArgs),
+
+    /// Start the wake loop as a background daemon.
+    Start(LoopStartArgs),
+
+    /// Stop the running wake loop daemon.
     Stop,
-    /// Print platform service status for ORQA_HOME.
+
+    /// Show status of the wake loop daemon.
     Status,
-    /// Run the foreground service loop for debugging.
-    Run(ServiceRunArgs),
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct LoopArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
+pub(crate) struct LoopRunArgs {
+    /// Pod slug. If omitted, loops all pods.
+    pub(crate) pod: Option<String>,
     /// Ignore pod and fin sleep markers for this scan.
     #[arg(long)]
     pub(crate) force: bool,
@@ -260,7 +262,7 @@ pub(crate) struct LoopArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct PlanArgs {
+pub(crate) struct LoopPlanArgs {
     /// Pod slug.
     pub(crate) pod: String,
     /// Ignore pod and fin sleep markers while planning.
@@ -272,26 +274,15 @@ pub(crate) struct PlanArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct ServiceInstallArgs {
+pub(crate) struct LoopStartArgs {
     /// Seconds between wake scans.
     #[arg(long, default_value_t = 60)]
     pub(crate) interval: u64,
-    /// Ignore pod and fin sleep markers for each scan.
-    #[arg(long)]
-    pub(crate) force: bool,
-    /// Arguments passed to each wake-loop scan.
-    #[arg(last = true)]
-    pub(crate) args: Vec<OsString>,
-}
 
-#[derive(Debug, Args)]
-pub(crate) struct ServiceRunArgs {
-    /// Seconds between wake scans.
-    #[arg(long, default_value_t = 60)]
-    pub(crate) interval: u64,
     /// Ignore pod and fin sleep markers for each scan.
     #[arg(long)]
     pub(crate) force: bool,
+
     /// Arguments passed to each wake-loop scan.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,

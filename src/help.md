@@ -109,21 +109,18 @@ orqa --home /tmp/orqa-demo pod create sample-pod
 orqa fin exec sample-pod planner -- "handle your open mail and tasks"
 ```
 
-`orqa loop` scans a pod for fins with wake signals. Unread mail and open tasks
-are wake signals. Each wakeable fin is launched through its configured backend.
-The run policy in `pod.toml` and `fin.toml` can debounce repeated runs or wake
-idle fins periodically with `exec_always`.
+`orqa loop run` scans one or all pods for fins with wake signals (unread mail or open tasks). Wakeable fins are launched through their configured backend. The run policy in `pod.toml` and `fin.toml` can debounce repeated runs or wake idle fins periodically with `exec_always`.
 
 ```sh
-orqa loop sample-pod
-orqa loop sample-pod -- "handle your open Orqa mail and tasks"
+orqa loop run sample-pod
+orqa loop run -- "handle your open Orqa mail and tasks"
+orqa loop run                    # run all pods
 ```
 
-Preview the same wake decisions without launching anything:
+Preview what would happen without actually launching fins:
 
 ```sh
-orqa plan sample-pod
-orqa loop --dry-run sample-pod
+orqa loop plan sample-pod
 ```
 
 Start an interactive backend chat as a fin with the backend's `chat_args`:
@@ -144,19 +141,22 @@ When Orqa launches a fin, it sets:
 ORQA_HOME=<home>
 ORQA_POD=<pod-slug>
 ORQA_FIN=<fin-slug>
+HOME=<home>/pods/<pod-slug>/fins/<fin-slug>
 CODEX_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.codex
+GROK_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.grok
 HERMES_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.hermes
 PI_CODING_AGENT_DIR=<home>/pods/<pod-slug>/fins/<fin-slug>/.pi/agent
 ```
 
 An agent can use `ORQA_POD` and `ORQA_FIN` to call mail and task commands with
-short addresses. Runtime-specific home variables keep supported backend state
-under the fin home. Backends can also reference `{fin_home}` from `exec_args`
-or `chat_args`.
+short addresses. Orqa sets the standard `HOME` variable (plus classic
+tool-specific variables for compatibility) so every backend keeps its state
+isolated under the fin home. Backends can also reference `{fin_home}` from
+`exec_args` or `chat_args`.
 
-For Codex, Orqa links the user's existing `~/.codex/auth.json` into the
-fin-local `.codex/auth.json` when the source exists and the fin does not already
-have an auth file.
+For Codex and Grok, Orqa links the user's existing `~/.codex/auth.json` or
+`~/.grok/auth.json` into the fin-local copy when the source exists and the fin
+does not already have an auth file.
 
 ## Status And Runs
 
@@ -440,26 +440,25 @@ Run one scan while ignoring sleep markers without removing them:
 orqa loop --force sample-pod
 ```
 
-## Background Service
+## Running the Wake Loop Persistently
 
-Use `orqa service` to install and control one background wake-loop service for
-the active `ORQA_HOME`:
+To run the wake loop continuously in the background, use:
 
 ```sh
-orqa service install --interval 60 -- "handle your open Orqa mail and tasks"
-orqa service start
-orqa service status
-orqa service stop
-orqa service uninstall
-orqa service run --interval 60 -- "handle your open Orqa mail and tasks"
+orqa loop start --interval 60 -- "handle your open Orqa mail and tasks"
+orqa loop status
+orqa loop stop
 ```
 
-On macOS, Orqa writes a user LaunchAgent and controls it with `launchctl`. On
-Linux, Orqa writes a user systemd unit and controls it with `systemctl --user`.
-The service repeatedly discovers all pods under `ORQA_HOME/pods/` and runs the
-equivalent of `orqa loop <pod>` for each pod at the interval chosen during
-install. New pods are picked up on the next scan. Use `orqa service run` to run
-that same foreground loop directly while debugging.
+`orqa loop start` launches a background daemon that repeatedly scans all pods. It writes a pidfile at `ORQA_HOME/loop.pid` and logs can be found nearby. Use `stop` and `status` to control it.
+
+For foreground continuous running (useful in tmux or for debugging), run:
+
+```sh
+orqa loop run --forever -- "handle your open Orqa mail and tasks"
+```
+
+The old `orqa service` commands have been removed. Use the `loop` subcommands above instead.
 
 ## Runtime Locks
 

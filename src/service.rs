@@ -234,7 +234,7 @@ fn loop_all_pods(orqa: &Orqa, args: &ServiceRunArgs) -> Result<(), String> {
         loop_pod(
             orqa,
             LoopArgs {
-                pod: pod.slug,
+                pod: Some(pod.slug),
                 force: args.force,
                 dry_run: false,
                 json: false,

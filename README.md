@@ -14,7 +14,7 @@ with each other around a common goal. The pod owns the shared local namespace,
 backend definitions, and pod-local mail/task channels.
 
 A **fin** is one agent runtime identity inside a pod. In practice, a fin can be
-backed by runtimes such as Claude, Codex, OpenClaw, Hermes, Pi, an Ollama-backed
+backed by runtimes such as Claude, Codex, Grok, OpenClaw, Hermes, Pi, an Ollama-backed
 agent integration, or any custom command you configure. Each fin has its own
 home directory inside the pod, including isolated runtime state, a Maildir inbox
 for pod-local messages, and a Maildir-style task queue.
@@ -217,25 +217,32 @@ The generated examples follow the installed CLI shapes on this machine:
 ```text
 Backend   exec_args shape                    chat_args shape
 Codex     codex exec --skip-git... <prompt> codex --sandbox ...
+Grok      grok -p <prompt> --always-approve  grok
 OpenCode  opencode run ... <prompt>          opencode ...
 Hermes    hermes --oneshot <prompt>          hermes chat ...
 Pi        pi --print <prompt>                pi ...
 Ollama    ollama launch codex -- exec ...    ollama launch codex -- ...
 ```
 
-Runtime state is fin-local where the backend exposes a simple home variable:
-Codex uses `.codex/` through `CODEX_HOME`, Hermes uses `.hermes/` through
-`HERMES_HOME`, and Pi uses `.pi/agent/` through `PI_CODING_AGENT_DIR` plus
-`.pi/sessions/` through the generated `--session-dir` args. The generated
-Ollama example uses `ollama launch codex` so Codex still owns the tool loop,
-working directory, sandbox, and fin-local `CODEX_HOME` while Ollama supplies the
-model. OpenCode and raw Ollama server state use their normal user-level config,
-data, and server locations unless you customize their backend definitions.
+Runtime state is fin-local. Orqa sets the standard `HOME` environment variable
+to each fin's home directory so that every backend automatically discovers its
+state under the usual dot-directory (`.codex`, `.grok`, `.hermes`, `.pi`, etc.).
+For compatibility, the classic tool-specific variables are also set:
 
-When `~/.codex/auth.json` exists, Orqa symlinks it into a fin's `.codex/`
-directory as `auth.json` if the fin does not already have one. This lets Codex
-reuse the user's existing login while keeping other Codex state under the fin
-home.
+- `CODEX_HOME` → `.codex/`
+- `GROK_HOME` → `.grok/`
+- `HERMES_HOME` → `.hermes/`
+- `PI_CODING_AGENT_DIR` → `.pi/agent/`
+
+The generated Ollama + Codex example keeps Codex owning the tool loop and
+fin-local state while Ollama supplies the model. OpenCode and raw Ollama server
+state use their normal user-level locations unless you customize the backend
+definition.
+
+When `~/.codex/auth.json` (or `~/.grok/auth.json`) exists, Orqa symlinks it
+into the corresponding fin directory (`.codex/auth.json` or `.grok/auth.json`)
+if the fin does not already have one. This lets Codex and Grok reuse your
+existing login while keeping other state isolated under the fin home.
 
 The config files are seeded by `pod create` and `fin create`. `orqa fin exec`
 and `orqa loop` use them to choose and launch each fin's backend.
@@ -364,20 +371,23 @@ When a fin runs, `orqa` sets these environment variables:
 ORQA_HOME=<home>
 ORQA_POD=<pod-slug>
 ORQA_FIN=<fin-slug>
+HOME=<home>/pods/<pod-slug>/fins/<fin-slug>
 CODEX_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.codex
+GROK_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.grok
 HERMES_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.hermes
 PI_CODING_AGENT_DIR=<home>/pods/<pod-slug>/fins/<fin-slug>/.pi/agent
 ```
 
 The `ORQA_*` variables give commands executed by the fin enough context to use
-short mail addresses. Runtime-specific home variables let supported backends
-keep their own state under the fin home instead of sharing a global user
-profile. Backends that do not use one of these variables can still reference
-`{fin_home}` from `exec_args` or `chat_args`.
+short mail addresses. Setting the standard `HOME` variable (plus the classic
+tool-specific variables for compatibility) lets every supported backend keep
+its state isolated under the fin home instead of sharing your global user
+profile. Backends can also reference `{fin_home}` or `{home}` from `exec_args`
+or `chat_args`.
 
-For Codex, Orqa automatically links the user's existing `~/.codex/auth.json`
-into the fin-local `.codex/auth.json` when the source exists and the fin does
-not already have an auth file.
+For Codex and Grok, Orqa automatically links the user's existing
+`~/.codex/auth.json` or `~/.grok/auth.json` into the fin-local copy when the
+source exists and the fin does not already have an auth file.
 
 Direct fin runs and loop-launched runs use a per-fin lock file:
 
@@ -887,26 +897,33 @@ PID. Later scans skip that fin while the PID is alive. Stale locks are removed
 when the PID no longer exists. Sleeping pods and fins are skipped unless
 `--force` is used.
 
-### Service Commands
+### Running the Wake Loop
 
-```text
-orqa service install [--interval <seconds>] [--force] [-- <args>...]
-orqa service uninstall
-orqa service start
-orqa service stop
-orqa service status
-orqa service run [--interval <seconds>] [--force] [-- <args>...]
+`orqa loop run` performs one wake cycle across one or all pods:
+
+```sh
+orqa loop run sample-pod
+orqa loop run -- "handle your open Orqa mail and tasks"
+orqa loop run                    # all pods
 ```
 
-The service command manages one background wake-loop service for the active
-`ORQA_HOME`.
+To run the wake loop continuously as a background daemon:
 
-`service install` writes a platform service definition for the active
-`ORQA_HOME`: a user LaunchAgent on macOS, or a user systemd unit on Linux. The
-installed service repeatedly discovers all pods under `ORQA_HOME/pods/` and
-runs the equivalent of `orqa loop <pod>` for each pod at the configured
-interval. New pods are picked up on the next scan. Arguments after `--` are
-preserved in the service definition for each pod scan.
+```sh
+orqa loop start --interval 60 -- "handle your open Orqa mail and tasks"
+orqa loop status
+orqa loop stop
+```
+
+`orqa loop start` launches a managed background process that repeatedly scans all pods. It writes a pidfile at `ORQA_HOME/loop.pid`. Use `stop` and `status` to control it.
+
+For foreground continuous running (useful in tmux or for debugging):
+
+```sh
+orqa loop run --forever -- "handle your open Orqa mail and tasks"
+```
+
+The old `orqa service` commands (`install`, `uninstall`, `start`, `stop`, `status`, `run`) have been removed. Use the `loop` subcommands above instead.
 
 Use `service start`, `service stop`, and `service status` to control the
 installed service through `launchctl` or `systemctl --user`. Use

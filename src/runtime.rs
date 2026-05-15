@@ -10,7 +10,8 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    cli::{ChatArgs, ExecArgs, LoopArgs, PlanArgs, SuperviseArgs},
+    cli::{ChatArgs, ExecArgs, LoopPlanArgs, LoopRunArgs, SuperviseArgs},
+    commands::list_dirs,
     config::{BackendCommand, BackendMode, backend_chat_command, backend_command, run_policy},
     hooks::run_hook_phase,
     mailbox::unread_count,
@@ -91,12 +92,27 @@ impl std::fmt::Display for WakeReason {
     }
 }
 
-pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
-    let pod = PodRef::new(&args.pod)?;
-    if !args.dry_run {
-        run_hook_phase(orqa, &pod, "pre-plan")?;
+pub(crate) fn loop_pod(orqa: &Orqa, args: LoopRunArgs) -> Result<(), String> {
+    if let Some(pod) = &args.pod {
+        loop_single_pod(orqa, pod, &args)
+    } else {
+        let pods_dir = orqa.home.join("pods");
+        let pods = list_dirs(&pods_dir)?;
+        for pod in pods {
+            if let Err(e) = loop_single_pod(orqa, &pod, &args) {
+                eprintln!("error in pod {}: {}", pod, e);
+            }
+        }
+        Ok(())
     }
-    let plan = plan_pod(orqa, &args.pod, args.force, &args.args)?;
+}
+
+fn loop_single_pod(orqa: &Orqa, pod: &str, args: &LoopRunArgs) -> Result<(), String> {
+    let pod_ref = PodRef::new(pod)?;
+    if !args.dry_run {
+        run_hook_phase(orqa, &pod_ref, "pre-plan")?;
+    }
+    let plan = plan_pod(orqa, pod, args.force, &args.args)?;
     if args.dry_run {
         return print_plan(&plan, args.json);
     }
@@ -120,7 +136,7 @@ pub(crate) fn loop_pod(orqa: &Orqa, args: LoopArgs) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn plan(orqa: &Orqa, args: PlanArgs) -> Result<(), String> {
+pub(crate) fn plan(orqa: &Orqa, args: LoopPlanArgs) -> Result<(), String> {
     let plan = plan_pod(orqa, &args.pod, args.force, &[])?;
     print_plan(&plan, args.json)
 }
@@ -604,6 +620,7 @@ fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCo
         .env("ORQA_HOME", &orqa.home)
         .env("ORQA_POD", &fin.pod)
         .env("ORQA_FIN", &fin.fin)
+        .env("HOME", &fin_home)
         .env("CODEX_HOME", fin_home.join(".codex"))
         .env("HERMES_HOME", fin_home.join(".hermes"))
         .env("PI_CODING_AGENT_DIR", fin_home.join(".pi/agent"))

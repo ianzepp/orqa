@@ -27,8 +27,9 @@ pub(crate) fn pod_config_template(pod: &PodRef) -> String {
 # Backend exec_args and chat_args are argv arrays, not shell strings. Supported
 # template values
 # include:
-#   {{orqa_home}}, {{pod}}, {{pod_home}}, {{fin}}, {{fin_home}},
-#   {{codex_home}}, {{mail_home}}, {{task_home}}, {{model}}, {{prompt}}
+#   {{orqa_home}}, {{pod}}, {{pod_home}}, {{fin}}, {{fin_home}}, {{home}},
+#   {{codex_home}}, {{grok_home}}, {{hermes_home}}, {{mail_home}}, {{task_home}},
+#   {{model}}, {{prompt}}
 
 [pod]
 slug = "{slug}"
@@ -98,6 +99,17 @@ model = "gpt-5.3-codex"
 #
 # [backends.pi.defaults]
 # model = "provider/model"
+
+# Grok (xAI Grok Build) is a powerful coding agent with strong headless support.
+# Use `-p` for single-turn execution and the TUI for interactive chat.
+# [backends.grok]
+# enabled = true
+# command = "grok"
+# exec_args = ["-p", "{{prompt}}", "--always-approve"]
+# chat_args = []
+#
+# [backends.grok.defaults]
+# model = "grok-code-latest"
 
 # Ollama is most useful through a coding-agent integration. This runs Codex
 # against an Ollama model while keeping Codex's tool loop and fin-local
@@ -332,6 +344,18 @@ fn backend_values(
     values.insert(
         "codex_home".to_string(),
         fin_home.join(".codex").display().to_string(),
+    );
+    values.insert(
+        "grok_home".to_string(),
+        fin_home.join(".grok").display().to_string(),
+    );
+    values.insert(
+        "hermes_home".to_string(),
+        fin_home.join(".hermes").display().to_string(),
+    );
+    values.insert(
+        "home".to_string(),
+        fin_home.display().to_string(),
     );
     values.insert(
         "mail_home".to_string(),
