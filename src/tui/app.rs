@@ -10,7 +10,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{List, ListItem, ListState, Paragraph},
+    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
 };
 
 #[allow(unused_imports)]
@@ -18,7 +18,7 @@ use crate::model::PodRegistration;
 
 use super::composer::Composer;
 use super::events::{Event, LogStream};
-use super::theme::{OPERATOR_DARK, THEMES, Theme, ThemeMode};
+use super::theme::{OPERATOR_DARK, THEMES, Theme};
 use super::watcher::PodWatcher;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -57,6 +57,7 @@ pub struct App {
     pub mode: InputMode,
 
     pub theme: Theme,
+    pub expanded: bool,
 }
 
 impl App {
@@ -76,6 +77,7 @@ impl App {
             composer: Composer::new("planner".to_string()), // temporary default; will be improved
             mode: InputMode::Normal,
             theme: OPERATOR_DARK,
+            expanded: true,
         };
         app.list_state.select(Some(0));
         app
@@ -213,25 +215,39 @@ impl App {
         self.theme = THEMES[(current + 1) % THEMES.len()];
     }
 
-    /// Render the full UI with a dense, polished cockpit layout.
-    /// Consistent full-width backgrounds on all bars, minimal spacers for density.
+    /// Render the cockpit as four main sections: header, content, input, footer.
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
+        let gap = u16::from(self.expanded);
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // pod/session header
-                Constraint::Length(1), // filters/help strip
-                Constraint::Min(6),    // timeline
-                Constraint::Length(1), // composer
-                Constraint::Length(1), // fin activity footer
+                Constraint::Length(1),   // header
+                Constraint::Length(gap), // expanded spacing
+                Constraint::Min(0),      // content
+                Constraint::Length(gap), // expanded spacing
+                Constraint::Length(3),   // bordered input
+                Constraint::Length(gap), // expanded spacing
+                Constraint::Length(1),   // footer
+                Constraint::Length(gap), // expanded spacing
             ])
             .split(area);
 
-        self.render_header(frame, chunks[0]);
-        self.render_filter_strip(frame, chunks[1]);
-        self.render_timeline(frame, chunks[2]);
-        self.render_input_area(frame, chunks[3]);
-        self.render_fin_footer(frame, chunks[4]);
+        self.render_header(frame, self.section_area(chunks[0]));
+        self.render_timeline(frame, self.section_area(chunks[2]));
+        self.render_input_area(frame, self.section_area(chunks[4]));
+        self.render_footer(frame, self.section_area(chunks[6]));
+    }
+
+    fn section_area(&self, area: Rect) -> Rect {
+        if !self.expanded || area.width <= 2 {
+            return area;
+        }
+
+        Rect {
+            x: area.x + 1,
+            width: area.width - 2,
+            ..area
+        }
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {
@@ -247,22 +263,9 @@ impl App {
         let warn = Style::default()
             .fg(self.theme.warn)
             .bg(self.theme.header_bg);
-        let ok = Style::default().fg(self.theme.ok).bg(self.theme.header_bg);
-
-        let fin_count = self.known_fins.len();
-        let visible_count = self.visible_events().len();
-        let operator_count = self
-            .events
-            .iter()
-            .filter(|ev| ev.is_operator_related())
-            .count();
         let mode = match self.mode {
             InputMode::Normal => ("monitor", dim),
             InputMode::Input => ("compose", warn),
-        };
-        let theme_mode = match self.theme.mode {
-            ThemeMode::Light => "light",
-            ThemeMode::Dark => "dark",
         };
 
         let spans = vec![
@@ -270,106 +273,56 @@ impl App {
             Span::styled(&self.pod_slug, accent),
             Span::styled("  ", base),
             Span::styled(mode.0, mode.1),
-            Span::styled(format!("  |  {} fins", fin_count), base),
-            Span::styled(format!("  {} active", self.active_fins.len()), ok),
-            Span::styled(format!("  {} locked", self.locked_fins.len()), warn),
-            Span::styled(format!("  |  {} visible", visible_count), base),
-            Span::styled(format!(" / {} events", self.events.len()), dim),
-            Span::styled(format!("  |  {} operator", operator_count), dim),
-            Span::styled(format!("  |  {} {}", theme_mode, self.theme.name), dim),
+            Span::styled("  |  target ", dim),
+            Span::styled(&self.composer.target_fin, accent),
+            Span::styled(format!("  |  {} events", self.events.len()), base),
         ];
 
         self.fill(frame, area, self.theme.header_bg);
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
-    fn render_filter_strip(&self, frame: &mut Frame, area: Rect) {
-        let base = Style::default().fg(self.theme.text).bg(self.theme.bar_bg);
-        let accent = Style::default().fg(self.theme.accent).bg(self.theme.bar_bg);
-        let dim = Style::default().fg(self.theme.muted).bg(self.theme.bar_bg);
-        let filter = if self.filters.fin_filter.is_some()
-            || self.filters.only_operator
-            || self.filters.thread_query.is_some()
-        {
-            Style::default().fg(self.theme.warn).bg(self.theme.bar_bg)
-        } else {
-            dim
-        };
-
-        let help = match self.mode {
-            InputMode::Normal => {
-                "i compose  f target  F filter  o operator  / thread  H theme  arrows scroll  q quit"
-            }
-            InputMode::Input => "Enter send  Esc monitor  Tab target  Ctrl-W delete word",
-        };
-
-        let spans = vec![
-            Span::styled(" target ", dim),
-            Span::styled(&self.composer.target_fin, accent),
-            Span::styled("  |  filter ", dim),
-            Span::styled(self.filter_summary(), filter),
-            Span::styled("  |  ", base),
-            Span::styled(help, dim),
-        ];
-
-        self.fill(frame, area, self.theme.bar_bg);
-        frame.render_widget(Paragraph::new(Line::from(spans)), area);
-    }
-
-    /// Input area (Line M+2) — with background color. Always ensures full-width background.
+    /// Three-row input section: one text row plus a border around all sides.
     fn render_input_area(&self, frame: &mut Frame, area: Rect) {
         self.fill(frame, area, self.theme.bar_bg);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .style(Style::default().fg(self.theme.muted).bg(self.theme.bar_bg));
+        let inner = block.inner(area);
+        frame.render_widget(block, area);
 
         if self.mode == InputMode::Normal {
             let text = Line::from(vec![
                 Span::styled(
-                    " > ",
+                    " >",
                     Style::default().fg(self.theme.accent).bg(self.theme.bar_bg),
                 ),
                 Span::styled(
-                    "monitoring; press i to write to the target fin",
+                    " press i to write to the target fin",
                     Style::default().fg(self.theme.muted).bg(self.theme.bar_bg),
                 ),
             ]);
-            frame.render_widget(Paragraph::new(text), area);
+            frame.render_widget(Paragraph::new(text), inner);
         } else {
             self.composer
-                .render(frame, area, &self.pod_slug, &self.theme);
+                .render(frame, inner, &self.pod_slug, &self.theme);
         }
     }
 
-    fn render_fin_footer(&self, frame: &mut Frame, area: Rect) {
-        let target = &self.composer.target_fin;
-        let style = Style::default().fg(self.theme.text).bg(self.theme.bar_bg);
-        let accent = Style::default().fg(self.theme.accent).bg(self.theme.bar_bg);
+    fn render_footer(&self, frame: &mut Frame, area: Rect) {
         let dim = Style::default().fg(self.theme.muted).bg(self.theme.bar_bg);
-        let warn = Style::default().fg(self.theme.warn).bg(self.theme.bar_bg);
-        let ok = Style::default().fg(self.theme.ok).bg(self.theme.bar_bg);
-
-        let mut fins: Vec<_> = self.known_fins.iter().cloned().collect();
-        fins.sort();
-        let mut fin_spans = vec![
-            Span::styled(" @ ", dim),
-            Span::styled(target.clone(), accent),
-        ];
-
-        for name in fins.into_iter().filter(|name| name != target).take(8) {
-            fin_spans.push(Span::styled(" • ", dim));
-            if self.locked_fins.contains(&name) {
-                fin_spans.push(Span::styled(format!("{} locked", name), warn));
-            } else if self.active_fins.contains(&name) {
-                fin_spans.push(Span::styled(format!("{} active", name), ok));
-            } else {
-                fin_spans.push(Span::styled(name, style));
+        let help = match self.mode {
+            InputMode::Normal => {
+                "i compose  f target  F filter  o operator  / thread  H theme  q quit"
             }
-        }
-
-        if self.known_fins.is_empty() {
-            fin_spans.push(Span::styled(" • no fin activity observed yet", dim));
-        }
+            InputMode::Input => "Enter send  Esc monitor  Tab target",
+        };
 
         self.fill(frame, area, self.theme.bar_bg);
-        frame.render_widget(Paragraph::new(Line::from(fin_spans)), area);
+        frame.render_widget(
+            Paragraph::new(Line::from(Span::styled(format!(" {help}"), dim))),
+            area,
+        );
     }
 
     fn fill(&self, frame: &mut Frame, area: Rect, color: Color) {
@@ -378,26 +331,6 @@ impl App {
             Paragraph::new(bg_fill).style(Style::default().bg(color)),
             area,
         );
-    }
-
-    fn filter_summary(&self) -> String {
-        let mut parts = vec![];
-
-        if let Some(ref fin) = self.filters.fin_filter {
-            parts.push(format!("fin={}", fin));
-        } else {
-            parts.push("all".to_string());
-        }
-
-        if self.filters.only_operator {
-            parts.push("operator".to_string());
-        }
-
-        if let Some(ref q) = self.filters.thread_query {
-            parts.push(format!("thread~\"{}\"", q));
-        }
-
-        parts.join(" | ")
     }
 
     fn render_timeline(&mut self, frame: &mut Frame, area: Rect) {
