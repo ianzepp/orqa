@@ -95,6 +95,20 @@ fn run_event_loop(
             if let Event::Key(key) = event::read().map_err(|e| format!("event read failed: {e}"))? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
+                        KeyCode::Char('.')
+                            if key
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                        {
+                            app.toggle_command_palette();
+                        }
+                        KeyCode::Esc if app.show_command_palette => {
+                            app.show_command_palette = false;
+                        }
+                        _ if app.show_command_palette => {}
+                        KeyCode::BackTab => {
+                            app.toggle_input_mode();
+                        }
                         KeyCode::Esc if app.mode == super::app::InputMode::Input => {
                             app.mode = super::app::InputMode::Normal;
                         }

@@ -25,6 +25,8 @@ pub struct Theme {
     pub event: Color,
     pub stdout: Color,
     pub cursor: Color,
+    pub operator_bg: Color,
+    pub overlay_bg: Color,
 }
 
 pub const OPERATOR_DARK: Theme = Theme {
@@ -43,6 +45,8 @@ pub const OPERATOR_DARK: Theme = Theme {
     event: Color::Rgb(0x7D, 0xD3, 0xFC),
     stdout: Color::Rgb(0xC7, 0xD0, 0xD9),
     cursor: Color::Rgb(0xFD, 0xD6, 0x6A),
+    operator_bg: Color::Rgb(0x22, 0x26, 0x2E),
+    overlay_bg: Color::Rgb(0x1B, 0x20, 0x26),
 };
 
 pub const PAPER_LIGHT: Theme = Theme {
@@ -61,6 +65,8 @@ pub const PAPER_LIGHT: Theme = Theme {
     event: Color::Rgb(0x1C, 0x63, 0x9A),
     stdout: Color::Rgb(0x37, 0x42, 0x4D),
     cursor: Color::Rgb(0xB4, 0x53, 0x09),
+    operator_bg: Color::Rgb(0xE1, 0xE3, 0xE6),
+    overlay_bg: Color::Rgb(0xF2, 0xF4, 0xF6),
 };
 
 pub const THEMES: &[Theme] = &[OPERATOR_DARK, PAPER_LIGHT];
