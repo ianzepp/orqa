@@ -1,7 +1,7 @@
 use std::{
     fs,
     io::{self, Read},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use crate::{
@@ -38,42 +38,8 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
         PodSubcommand::List => list_pods(orqa),
         PodSubcommand::Create(args) => {
             if let Some(target_root) = args.path {
-                // New-style: create pod inside a real user directory
-                let orqa_dir = target_root.join(".orqa");
-                if orqa_dir.join("pod.toml").exists() {
-                    return Err(format!(
-                        "orqa is already initialized in {} (found {})",
-                        target_root.display(),
-                        orqa_dir.display()
-                    ));
-                }
-
-                fs::create_dir_all(orqa_dir.join("fins"))
-                    .map_err(|error| format!("failed to create .orqa directory: {error}"))?;
-
-                let charter =
-                    read_optional_markdown_source(args.charter.as_deref(), DEFAULT_CHARTER)?;
-                let pod_ref = PodRef::new(&args.slug)?;
-
-                let pod_data = orqa_dir; // .orqa is the data dir
-                write_if_missing(&pod_data.join("pod.txt"), &format!("slug={}\n", args.slug))?;
-                write_if_missing(&pod_data.join("pod.toml"), &pod_config_template(&pod_ref))?;
-                write_if_missing(&pod_data.join("CHARTER.md"), &charter)?;
-                write_if_missing(
-                    &pod_data.join("AGENTS.md"),
-                    &pod_agents_template(&pod_ref, &charter),
-                )?;
-
-                // Register in global config
-                register_pod(orqa, &args.slug, &target_root)?;
-
-                // Auto-append to .gitignore if present (same behavior as `orqa init`)
-                if ensure_orqa_gitignored(&target_root)? {
-                    println!("Updated .gitignore to ignore /.orqa");
-                }
-
-                println!("{}", target_root.display());
-                Ok(())
+                // New-style pod via explicit path — delegate to shared implementation
+                create_pod_in_dir(orqa, &args.slug, target_root, args.charter)
             } else {
                 // Legacy behavior (old ~/.orqa/pods/<slug> layout)
                 let pod = PodRef::new(&args.slug)?;
@@ -172,8 +138,12 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
 
 /// Initialize a new pod in the given (or current) directory.
 /// This is the primary friendly onboarding command (`orqa init`).
+///
+/// It is intentionally a thin layer: it generates the slug (from the directory
+/// name if not provided) and delegates to the shared creation logic used by
+/// `orqa pod create --path`.
 pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
-    let target_dir = match args.path {
+    let root = match args.path {
         Some(p) => p,
         None => {
             std::env::current_dir().map_err(|e| format!("failed to get current directory: {e}"))?
@@ -183,9 +153,8 @@ pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
     let slug = match args.slug {
         Some(s) => s,
         None => {
-            // Default to directory name
-            target_dir
-                .file_name()
+            // Default to directory name — this is the main convenience of `orqa init`
+            root.file_name()
                 .and_then(|n| n.to_str())
                 .map(|s| s.to_string())
                 .ok_or(
@@ -194,49 +163,50 @@ pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
         }
     };
 
-    // Validate slug
-    validate_slug_for_init(&slug)?;
+    create_pod_in_dir(orqa, &slug, root, args.charter)
+}
 
-    let root = target_dir; // the user's project folder
+fn validate_slug_for_init(slug: &str) -> Result<(), String> {
+    // Reuse existing validation but with a nicer message
+    crate::model::validate_slug(slug).map_err(|e| format!("invalid pod slug: {e}"))
+}
+
+/// Shared implementation for creating a new-style pod inside a user-provided directory.
+/// Used by both `orqa init` and `orqa pod create --path`.
+fn create_pod_in_dir(
+    orqa: &Orqa,
+    slug: &str,
+    root: PathBuf,
+    charter: Option<String>,
+) -> Result<(), String> {
+    validate_slug_for_init(slug)?;
+
     let orqa_dir = root.join(".orqa");
 
     if orqa_dir.join("pod.toml").exists() {
         return Err(format!(
-            "orqa is already initialized in this directory (found {}). Run 'orqa pod list' or 'orqa init' with a different directory.",
+            "orqa is already initialized in this directory (found {}).",
             orqa_dir.display()
         ));
     }
 
-    // Create structure
     fs::create_dir_all(orqa_dir.join("fins"))
-        .map_err(|e| format!("failed to create .orqa/fins directory: {e}"))?;
+        .map_err(|e| format!("failed to create .orqa directory: {e}"))?;
 
-    let charter = read_optional_markdown_source(args.charter.as_deref(), DEFAULT_CHARTER)?;
+    let charter = read_optional_markdown_source(charter.as_deref(), DEFAULT_CHARTER)?;
+    let pod_ref = PodRef::new(slug)?;
 
-    // Write files using the new data-home style where possible
-    let reg = crate::model::PodRegistration {
-        slug: slug.clone(),
-        path: root.clone(),
-        enabled: true,
-    };
-
-    let pod_data = orqa.pod_data_home(&reg);
-
+    let pod_data = orqa_dir;
     write_if_missing(&pod_data.join("pod.txt"), &format!("slug={}\n", slug))?;
-    write_if_missing(
-        &pod_data.join("pod.toml"),
-        &pod_config_template(&PodRef::new(&slug)?),
-    )?;
+    write_if_missing(&pod_data.join("pod.toml"), &pod_config_template(&pod_ref))?;
     write_if_missing(&pod_data.join("CHARTER.md"), &charter)?;
     write_if_missing(
         &pod_data.join("AGENTS.md"),
-        &pod_agents_template(&PodRef::new(&slug)?, &charter),
+        &pod_agents_template(&pod_ref, &charter),
     )?;
 
-    // Register in global config
-    register_pod(orqa, &slug, &root)?;
+    register_pod(orqa, slug, &root)?;
 
-    // Auto-append to .gitignore if one exists (very common desire)
     if ensure_orqa_gitignored(&root)? {
         println!("Updated .gitignore to ignore /.orqa");
     }
@@ -247,11 +217,6 @@ pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
     println!("  orqa loop");
 
     Ok(())
-}
-
-fn validate_slug_for_init(slug: &str) -> Result<(), String> {
-    // Reuse existing validation but with a nicer message
-    crate::model::validate_slug(slug).map_err(|e| format!("invalid pod slug: {e}"))
 }
 
 /// If a `.gitignore` file exists in `target_dir`, append `/.orqa` to it
