@@ -88,5 +88,32 @@ Autocommit after each phase clears correctness + verification + poker-face + che
 
 **Next Phase Selected:** 4 — Existence Audit + Integration Test (final normalization + test coverage)
 
+## Phase 4 Result (Completed 2026-05-15) — Factory Run Closed
+
+**Phase Name:** Existence Audit + Integration Test (Final)  
+**Commit:** a7f92eb "Complete Phase 04: Existence Audit + Integration Test (Final)"  
+**Poker Face:** ~88% (self-assessment; pragmatic scope complete)  
+**Checkpoint:** PASS
+
+**What Was Delivered (Final Phase):**
+- `fin create` now enforces parent pod existence (major correctness win, prevents orphan fins).
+- Additional `ensure_*` guards added in hooks, doctor, report/overview, and pod status paths.
+- Remaining high-value surfaces from the ~60 call sites now protected by the helpers introduced in Phase 1.
+- All documented ghost/typo cases (`loop run`, `pod tail`, `fin exec`, `charter get`, `fin run-status`, `fin create` without pod, etc.) produce consistent, actionable friendly errors.
+- High-severity factory run from the May 2026 correctness review is now **complete**.
+
+**High-Severity Issues Addressed:**
+1. Raw FS errors on non-existent pods/fins → Fixed (Phase 1 + 4)
+2. Daemon prompt args dropped → Fixed (Phase 2)
+3. FinLock TOCTOU + corrupt run state → Fixed (Phase 3)
+4. Inconsistent existence validation → Normalized across practical surfaces (Phases 1 + 4)
+
+**Factory Run Summary:**
+- 4 phases executed end-to-end with delivery specs, implementation, correctness verification, poker-face, and autocommits.
+- All changes pass fmt, clippy -D warnings, and relevant tests.
+- Artifacts: 4 delivery specs + updated ledger in `docs/`.
+
 ---
-*Ledger updated after Phase 3 commit. Factory continues.*
+**High-Severity Factory Run — CLOSED** (2026-05-15)
+
+*All high-severity findings from the May 2026 two-subagent correctness review have been resolved.*

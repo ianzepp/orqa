@@ -1,4 +1,6 @@
-use std::{env, path::PathBuf};
+use std::{collections::BTreeMap, env, fs, path::PathBuf};
+
+use toml::Table;
 
 impl Orqa {
     pub(crate) fn new(home: Option<PathBuf>) -> Self {
@@ -190,6 +192,143 @@ pub(crate) fn default_home() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
         .join(".orqa")
 }
+
+/// Represents a pod registered in the global `~/.orqa/config.toml`.
+/// The `path` is the user's real pod root directory (e.g. `~/work/my-project`).
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[allow(dead_code)]
+pub(crate) struct PodRegistration {
+    pub(crate) slug: String,
+    pub(crate) path: PathBuf,
+    pub(crate) enabled: bool,
+}
+
+#[allow(dead_code)]
+pub(crate) fn load_registry(orqa: &Orqa) -> Result<BTreeMap<String, PodRegistration>, String> {
+    let config_path = orqa.home.join("config.toml");
+    if !config_path.exists() {
+        return Ok(BTreeMap::new());
+    }
+
+    let contents = fs::read_to_string(&config_path).map_err(|e| {
+        format!(
+            "failed to read global config {}: {e}",
+            config_path.display()
+        )
+    })?;
+
+    let table: Table = contents.parse().map_err(|e| {
+        format!(
+            "failed to parse global config {}: {e}",
+            config_path.display()
+        )
+    })?;
+
+    let _registry_table = table.get("registry").and_then(|v| v.as_table());
+    let pods_table = table.get("pods").and_then(|v| v.as_table());
+
+    let mut regs = BTreeMap::new();
+
+    if let Some(pods) = pods_table {
+        for (slug, value) in pods {
+            let pod_table = match value.as_table() {
+                Some(t) => t,
+                None => continue,
+            };
+            let path_str = match pod_table.get("path").and_then(|v| v.as_str()) {
+                Some(s) => s,
+                None => continue,
+            };
+            let enabled = pod_table
+                .get("enabled")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(true);
+
+            let expanded = if let Some(stripped) = path_str.strip_prefix("~/") {
+                if let Some(home) = env::var_os("HOME") {
+                    PathBuf::from(home).join(stripped)
+                } else {
+                    PathBuf::from(path_str)
+                }
+            } else {
+                PathBuf::from(path_str)
+            };
+
+            // Make absolute if possible
+            let final_path = if expanded.is_absolute() {
+                expanded
+            } else {
+                std::env::current_dir()
+                    .unwrap_or_else(|_| PathBuf::from("."))
+                    .join(expanded)
+            };
+
+            validate_slug(slug)?;
+
+            regs.insert(
+                slug.clone(),
+                PodRegistration {
+                    slug: slug.clone(),
+                    path: final_path,
+                    enabled,
+                },
+            );
+        }
+    }
+
+    Ok(regs)
+}
+
 pub(crate) struct Orqa {
     pub(crate) home: PathBuf,
+}
+
+#[allow(dead_code)]
+impl Orqa {
+    /// Returns the `.orqa` data directory for a registered pod.
+    /// Example: `/real/path/to/project/.orqa`
+    pub(crate) fn pod_data_home(&self, reg: &PodRegistration) -> PathBuf {
+        reg.path.join(".orqa")
+    }
+
+    /// Returns the fin home directory under the pod's `.orqa/fins/<fin>`.
+    pub(crate) fn fin_data_home(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
+        self.pod_data_home(reg).join("fins").join(fin_slug)
+    }
+
+    pub(crate) fn mail_data_home(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
+        self.fin_data_home(reg, fin_slug).join("mail")
+    }
+
+    pub(crate) fn task_data_home(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
+        self.fin_data_home(reg, fin_slug).join("tasks")
+    }
+
+    pub(crate) fn lock_data_path(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
+        self.fin_data_home(reg, fin_slug).join("run.lock")
+    }
+
+    pub(crate) fn runs_data_home(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
+        self.fin_data_home(reg, fin_slug).join("runs")
+    }
+
+    pub(crate) fn latest_run_data_path(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
+        self.fin_data_home(reg, fin_slug).join("latest-run")
+    }
+
+    pub(crate) fn runs_ledger_data_path(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
+        self.fin_data_home(reg, fin_slug).join("runs.jsonl")
+    }
+
+    pub(crate) fn pod_sleep_data_path(&self, reg: &PodRegistration) -> PathBuf {
+        self.pod_data_home(reg).join("sleep.lock")
+    }
+
+    pub(crate) fn fin_sleep_data_path(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
+        self.fin_data_home(reg, fin_slug).join("sleep.lock")
+    }
+
+    pub(crate) fn pod_hooks_data_home(&self, reg: &PodRegistration) -> PathBuf {
+        self.pod_data_home(reg).join("hooks")
+    }
 }
