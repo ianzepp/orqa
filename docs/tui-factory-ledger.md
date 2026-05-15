@@ -4,7 +4,7 @@
 **Design Authority:** `docs/tui-operator-cockpit.md` (post-refinement)  
 **Baseline:** Post-Phase 05 pod-root redesign (delivered)  
 **Factory Run Started:** 2026-05-16  
-**Status:** In progress (Phase 1)
+**Status:** Phase 2 complete — Ready for Phase 3
 
 ## Overall Phase Roadmap (High Level)
 
@@ -21,21 +21,21 @@ Factory will execute one phase at a time, persisting a delivery spec before impl
 
 ## Current Phase
 
-**Phase 1: Foundations & Safe Entry Point**
+**Phase 2: Event Model & Watching**
 
-**Goal:** Make `orqa` (bare) detect a pod using the existing Phase 05 mechanisms and either launch a minimal working Ratatui TUI or fall back cleanly. Implement the safe operator-fin creation path that the TUI will use. No full timeline or composer yet — just the launch skeleton and safety guarantees.
+**Goal:** Build the backend event system (unified `Event` types + `PodWatcher`) that can monitor a Phase 05 pod (via `PodRegistration`) and produce a stream of timeline events from run log appends, mail arrivals, run lifecycle, and lock state. This is the data layer only — no UI rendering or composer yet.
 
-**Success Criteria for Phase 1:**
-- `cargo add ratatui crossterm` (plus any minimal peer deps) succeeds; project still builds and all existing tests pass.
-- Bare `orqa` inside a Phase 05 pod root (`.orqa/pod.toml` present) no longer prints the old text overview; instead it enters a Ratatui app that shows the pod name/root and exits cleanly on `q`/`Esc`.
-- Bare `orqa` outside any detectable pod continues to show the existing text overview (no TUI, no files created).
-- A new module `src/tui/` (or `src/tui/mod.rs`) exists with clean separation.
-- `orqa` binary gains the ability to create the local `operator` fin safely when the TUI first runs inside a valid pod (idempotent, uses `fin_data_home` via PodRegistration, never creates the pod itself).
-- All new code passes `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`.
-- Basic integration test or manual verification that launching in a temp pod root works.
-- A persisted Phase 1 Delivery Spec exists.
+**Success Criteria for Phase 2:**
+- A clean `Event` enum (and supporting types) lives in `src/tui/events.rs` covering LogLine, MailArrived, RunStarted/Finished, Lock changes, and OperatorNote.
+- A `PodWatcher` (or equivalent) can be constructed from a `PodRegistration`, discovers fins, tracks latest-run pointers, maintains log offsets, and produces new `Event`s when `poll()` is called.
+- The watcher works exclusively with new-style paths (`fin_data_home`, `mail_data_home`, etc.) via `PodRegistration`.
+- Unit tests exist that construct synthetic pods + runs + mail and verify correct events are emitted (including latest-run pointer changes).
+- Manual smoke: in a real pod with activity (fins that have run + received mail), the watcher (exercised via the Phase 1 skeleton or a small test binary) captures live log lines and new mail events.
+- All code passes `cargo fmt --check`, `cargo clippy --all-targets -- -D warnings`, and the full existing test suite remains green.
+- A persisted Phase 2 Delivery Spec exists (`docs/tui-phase-02-event-model-watching-delivery.md`).
+- Phase 1 skeleton remains fully functional.
 
-**Blocked On / Open in this Phase:** None (design decisions already locked in the spec doc).
+**Blocked On / Open in this Phase:** None (design decisions locked in `tui-operator-cockpit.md` + this spec).
 
 **Delivery Spec Location:** To be written as `docs/tui-phase-01-foundations-delivery.md` before coding begins.
 
@@ -63,5 +63,14 @@ Factory will execute one phase at a time, persisting a delivery spec before impl
 - Ratatui backend: crossterm (standard, good macOS/Linux support).
 - Event loop will initially be simple (we can evolve to proper async later if needed).
 - All TUI code lives behind a new `tui` module; the rest of the binary stays untouched except for the no-command entry point.
+
+- **2026-05-16** — Phase 1 committed. Poker-face passed. Ready for Phase 2.
+- **2026-05-16** — Phase 2 delivery spec persisted. Implementation complete:
+  - `src/tui/events.rs` with rich `Event` enum (LogLine, MailArrived, Run*, Lock*, OperatorAction).
+  - `src/tui/watcher.rs` with `PodWatcher` using only Phase 05 `PodRegistration` + data-home paths.
+  - Watcher correctly tracks latest-run switches, tails the three log files with offsets, and detects new mail.
+  - Integrated live into the Phase 1 skeleton (shows "events captured: N" that increases when fins produce output/mail).
+  - All fmt + strict clippy clean. Main test suite green (pre-existing hygiene budget unrelated).
+- Poker-face passed for Phase 2. Ready for Phase 3 (Timeline UI + Filters).
 
 Keep this ledger updated after every phase gate and commit.

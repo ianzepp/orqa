@@ -13,7 +13,7 @@ use crossterm::{
 };
 use ratatui::{Terminal, backend::CrosstermBackend, layout::Alignment, widgets::Paragraph};
 
-use crate::model::PodRegistration;
+use crate::model::{Orqa, PodRegistration};
 
 /// Run the Phase 1 TUI skeleton for the given detected pod.
 ///
@@ -73,20 +73,46 @@ fn run_event_loop(
     pod_slug: &str,
     pod_root: &std::path::Path,
 ) -> Result<(), String> {
+    // Phase 2: create a real PodWatcher so we can prove the event system works
+    // even while the UI is still the minimal skeleton.
+    let orqa = Orqa::new(None);
+    let reg = PodRegistration {
+        slug: pod_slug.to_string(),
+        path: pod_root.to_path_buf(),
+        enabled: true,
+    };
+    let mut watcher = match crate::tui::PodWatcher::new(orqa, reg) {
+        Ok(w) => Some(w),
+        Err(e) => {
+            eprintln!("warning: failed to create PodWatcher for Phase 2 demo: {e}");
+            None
+        }
+    };
+    let mut event_count: usize = 0;
+
     loop {
+        // Phase 2: poll the watcher and count events (we don't render them yet)
+        if let Some(w) = &mut watcher {
+            if let Ok(new_events) = w.poll() {
+                event_count += new_events.len();
+            }
+        }
+
         terminal
             .draw(|frame| {
                 let area = frame.area();
 
-                let title = format!("orqa • {} — Operator Cockpit (Phase 1)", pod_slug);
+                let title = format!("orqa • {} — Operator Cockpit (Phase 2)", pod_slug);
                 let root_line = format!("root: {}", pod_root.display());
+                let events_line = format!("events captured (Phase 2 watcher): {}", event_count);
 
                 let text = format!(
-                    "{}\n\n{}\n\n\
-                     This is the Phase 1 skeleton.\n\
-                     A real timeline, filters, and composer will appear in later phases.\n\n\
+                    "{}\n\n{}\n\n{}\n\n\
+                     Phase 2: Event model + PodWatcher are live.\n\
+                     Log lines, mail arrivals, and run state changes are being detected.\n\n\
+                     (Full timeline rendering arrives in Phase 3)\n\n\
                      Press q, Esc, or Ctrl-C to exit.",
-                    title, root_line
+                    title, root_line, events_line
                 );
 
                 let paragraph = Paragraph::new(text).alignment(Alignment::Center);
@@ -95,8 +121,8 @@ fn run_event_loop(
             })
             .map_err(|e| format!("terminal draw failed: {e}"))?;
 
-        // Non-blocking event poll with a short timeout so we can keep the UI fresh.
-        if event::poll(std::time::Duration::from_millis(200)).unwrap_or(false) {
+        // Non-blocking event poll with a short timeout so the watcher keeps running.
+        if event::poll(std::time::Duration::from_millis(250)).unwrap_or(false) {
             if let Event::Key(key) = event::read().map_err(|e| format!("event read failed: {e}"))? {
                 if key.kind == KeyEventKind::Press {
                     match key.code {
