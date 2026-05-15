@@ -133,7 +133,10 @@ fn run_event_loop(
 
                         // === Composer input (Phase 4) ===
                         KeyCode::Char(c) => {
-                            if !key.modifiers.contains(crossterm::event::KeyModifiers::CONTROL) {
+                            if !key
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL)
+                            {
                                 app.composer.insert_char(c);
                             }
                         }
@@ -164,8 +167,11 @@ fn run_event_loop(
                             if let Some(msg) = app.composer.submit() {
                                 // TODO in this phase: actually send the mail + wake
                                 // For now just create a local OperatorAction so the user sees something
-                                let action_text = format!("mailed {}: \"{}\"", app.composer.target_fin, msg);
-                                app.events.push(crate::tui::events::Event::OperatorAction { text: action_text });
+                                let action_text =
+                                    format!("mailed {}: \"{}\"", app.composer.target_fin, msg);
+                                app.events.push(crate::tui::events::Event::OperatorAction {
+                                    text: action_text,
+                                });
                                 app.auto_follow_if_needed();
                             }
                         }

@@ -1,0 +1,2 @@
+slug=operator
+pod=orqa

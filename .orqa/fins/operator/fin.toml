@@ -1,0 +1,6 @@
+# Operator fin for the human TUI cockpit in pod 'orqa'.
+# This fin exists only so the human has a stable identity (`operator@orqa.orqa`)
+# when using the `orqa` TUI inside this project.
+
+[fin]
+slug = "operator"

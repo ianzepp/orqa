@@ -30,6 +30,7 @@ const BAR_BG: Color = Color::Rgb(0x1F, 0x23, 0x2A); // Dark slate
 const HEADER_BG: Color = Color::Rgb(0x2A, 0x3F, 0x4A); // Muted teal-slate
 const ACCENT: Color = Color::Rgb(0x7D, 0xD3, 0xFC); // Soft cyan
 const MUTED: Color = Color::Rgb(0x8B, 0x94, 0x9E);
+#[allow(dead_code)]
 const HIGHLIGHT: Color = Color::Rgb(0xF4, 0xA2, 0x61); // Warm amber for important items
 const WHITE: Color = Color::Rgb(0xE6, 0xE6, 0xE6);
 use super::watcher::PodWatcher;
@@ -45,6 +46,7 @@ pub struct FilterState {
 /// The main TUI application state for Phase 3.
 pub struct App {
     pub pod_slug: String,
+    #[allow(dead_code)]
     pub pod_root: std::path::PathBuf,
     pub watcher: Option<PodWatcher>,
     pub events: Vec<Event>,
@@ -125,6 +127,7 @@ impl App {
         true
     }
 
+    #[allow(dead_code)]
     /// Apply a fin filter (cycle or set).
     pub fn set_fin_filter(&mut self, fin: Option<String>) {
         self.filters.fin_filter = fin;
@@ -184,26 +187,37 @@ impl App {
         }
     }
 
-    /// Render the full UI — denser operator cockpit style.
+    /// Render the full UI with a dense, polished cockpit layout.
+    /// Consistent full-width backgrounds on all bars, minimal spacers for density.
     pub fn render(&mut self, frame: &mut Frame, area: Rect) {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(1), // Shortcut bar
-                Constraint::Length(1), // Header bar (pod identity + mode)
-                Constraint::Length(1), // Pod status bar (live metrics)
-                Constraint::Min(5),    // Main timeline
-                Constraint::Length(1), // Composer input line
+                Constraint::Length(1), // 0: statusbar A (pod info + metrics, HEADER_BG)
+                Constraint::Min(6),    // 1: main timeline content
+                Constraint::Length(1), // 2: subtle separator band (BAR_BG)
+                Constraint::Length(1), // 3: input/composer area (BAR_BG full width)
+                Constraint::Length(1), // 4: statusbar B (fin activity, BAR_BG)
             ])
             .split(area);
 
-        self.render_shortcut_bar(frame, chunks[0]);
-        self.render_header_bar(frame, chunks[1]);
-        self.render_pod_status_bar(frame, chunks[2]);
-        self.render_timeline(frame, chunks[3]);
-        self.composer.render(frame, chunks[4], &self.pod_slug);
+        // Top status bar (pod + live metrics)
+        self.render_statusbar_a(frame, chunks[0]);
+
+        // Main scrollable timeline
+        self.render_timeline(frame, chunks[1]);
+
+        // Thin separator above the input cluster
+        self.render_colored_band(frame, chunks[2]);
+
+        // Composer input row (guaranteed full-width background)
+        self.render_input_area(frame, chunks[3]);
+
+        // Bottom fin status bar (now with matching background for polish)
+        self.render_statusbar_b(frame, chunks[4]);
     }
 
+    #[allow(dead_code)]
     /// Top shortcut bar — compact keyboard legend.
     fn render_shortcut_bar(&self, frame: &mut Frame, area: Rect) {
         let key = Style::default().fg(ACCENT).add_modifier(Modifier::BOLD);
@@ -226,13 +240,14 @@ impl App {
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
+    #[allow(dead_code)]
     /// Colored header bar with pod name and mode indicator.
     fn render_header_bar(&self, frame: &mut Frame, area: Rect) {
         let mode = match self.mode {
             InputMode::Normal => "[NORMAL]",
             InputMode::Input => "[INPUT]",
         };
-        let mode_style = if self.mode == InputMode::Input {
+        let _mode_style = if self.mode == InputMode::Input {
             Style::default().fg(HIGHLIGHT).add_modifier(Modifier::BOLD)
         } else {
             Style::default().fg(MUTED)
@@ -265,41 +280,103 @@ impl App {
     }
 
     /// Dense pod status bar with live operational metrics.
-    fn render_pod_status_bar(&self, frame: &mut Frame, area: Rect) {
-        let style = Style::default().fg(WHITE).bg(BAR_BG);
-        let dim = Style::default().fg(MUTED).bg(BAR_BG);
-        let good = Style::default().fg(ACCENT).bg(BAR_BG);
+    /// Statusbar A (Line 2) - Pod level information, **full width** background.
+    fn render_statusbar_a(&self, frame: &mut Frame, area: Rect) {
+        let base = Style::default().fg(WHITE).bg(HEADER_BG);
+        let accent = Style::default().fg(ACCENT).bg(HEADER_BG);
+        let dim = Style::default().fg(MUTED).bg(HEADER_BG);
 
         let fin_count = self.known_fins.len();
 
-        let left = vec![
-            Span::styled(format!(" {} fins", fin_count), style),
-            Span::styled("  ·  ", dim),
-            Span::styled("2 wakeable", good),
-            Span::styled("  ·  ", dim),
+        // Build mixed-style spans for visual polish (pod name accented)
+        let mut spans = vec![
+            Span::styled(" ", base),
+            Span::styled(&self.pod_slug, accent),
+            Span::styled(format!("  ·  {} fins  ·  ", fin_count), base),
+            Span::styled("2 wakeable", dim), // TODO: real counts from watcher/state
+            Span::styled("  ·  ", base),
             Span::styled("1 locked", dim),
-            Span::styled("  ·  ", dim),
-            Span::styled("3 op.mail", good),
+            Span::styled("  ·  ", base),
+            Span::styled("4 op.mail", dim),
+            Span::styled("  ·  loop: running ", base),
         ];
 
-        let right = vec![
-            Span::styled("Loop: running", style),
-            Span::styled("  ·  ", dim),
-            Span::styled("Target: ", dim),
-            Span::styled(&self.composer.target_fin, good),
-        ];
+        // Ensure full-width background by padding trailing spaces
+        let current_len: usize = spans.iter().map(|s| s.content.len()).sum();
+        let width = area.width as usize;
+        if current_len < width {
+            spans.push(Span::styled(" ".repeat(width - current_len), base));
+        }
 
-        let left_len: usize = left.iter().map(|s| s.width()).sum();
-        let right_len: usize = right.iter().map(|s| s.width()).sum();
-        let gap = area.width.saturating_sub((left_len + right_len) as u16) as usize;
-
-        let mut spans = left;
-        spans.push(Span::styled(" ".repeat(gap), dim));
-        spans.extend(right);
-
-        frame.render_widget(Paragraph::new(Line::from(spans)), area);
+        let line = Line::from(spans);
+        frame.render_widget(Paragraph::new(line), area);
     }
 
+    /// Colored separator band (full-width background, no text).
+    fn render_colored_band(&self, frame: &mut Frame, area: Rect) {
+        let bg = " ".repeat(area.width as usize);
+        let band = Paragraph::new(bg).style(Style::default().bg(BAR_BG));
+        frame.render_widget(band, area);
+    }
+
+    /// Input area (Line M+2) — with background color. Always ensures full-width background.
+    fn render_input_area(&self, frame: &mut Frame, area: Rect) {
+        // Fill the entire input row with the background first for consistent full-width color
+        let bg_fill = " ".repeat(area.width as usize);
+        let bg_line = Line::from(Span::styled(bg_fill, Style::default().bg(BAR_BG)));
+        frame.render_widget(Paragraph::new(bg_line), area);
+
+        if self.mode == InputMode::Normal {
+            let placeholder = "> Type \"i\" to enter input mode · [f] target fin · [q] quit";
+            let text = Line::from(Span::styled(placeholder, Style::default().fg(MUTED)));
+            frame.render_widget(Paragraph::new(text), area);
+        } else {
+            self.composer.render(frame, area, &self.pod_slug);
+        }
+    }
+
+    /// Statusbar B (Line M+5) - Fin level, compact, with background for visual consistency.
+    /// Format: @ target • fin (time) • fin (running) • ... • X idle
+    fn render_statusbar_b(&self, frame: &mut Frame, area: Rect) {
+        let target = &self.composer.target_fin;
+        let style = Style::default().fg(WHITE).bg(BAR_BG);
+        let accent = Style::default().fg(ACCENT).bg(BAR_BG);
+        let dim = Style::default().fg(MUTED).bg(BAR_BG);
+
+        // Build a compact fin list.
+        // For now we use known_fins + simple logic.
+        // In a real implementation we would track per-fin last activity and running state.
+        let mut fin_spans = vec![Span::styled(format!("@ {}", target), accent)];
+
+        // Example other fins (in real code this would come from state)
+        let other_fins = vec![("builder", "3m"), ("researcher", "running")];
+
+        for (name, status) in other_fins {
+            fin_spans.push(Span::styled(" • ", dim));
+            if status == "running" {
+                fin_spans.push(Span::styled(format!("{} (running)", name), accent));
+            } else {
+                fin_spans.push(Span::styled(format!("{} ({})", name, status), style));
+            }
+        }
+
+        // Summary of idle fins
+        fin_spans.push(Span::styled(" • ", dim));
+        fin_spans.push(Span::styled("2 idle", dim));
+
+        // Pad to full width for consistent background
+        let line = Line::from(fin_spans);
+        let width = area.width as usize;
+        // Render bg fill + the line (spans already carry bg)
+        let bg_fill = " ".repeat(width);
+        frame.render_widget(
+            Paragraph::new(bg_fill).style(Style::default().bg(BAR_BG)),
+            area,
+        );
+        frame.render_widget(Paragraph::new(line), area);
+    }
+
+    #[allow(dead_code)]
     fn filter_summary(&self) -> String {
         let mut parts = vec![];
 
@@ -405,6 +482,7 @@ impl App {
         }
     }
 
+    #[allow(dead_code)]
     fn render_status(&self, frame: &mut Frame, area: Rect) {
         let help = match self.mode {
             InputMode::Normal => {

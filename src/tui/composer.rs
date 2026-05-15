@@ -13,8 +13,6 @@ use ratatui::{
     widgets::Paragraph,
 };
 
-use crate::model::Orqa;
-
 // use super::events::Event; // not needed yet in composer
 
 /// State for the bottom composer.
@@ -90,7 +88,7 @@ impl Composer {
                 .input
                 .chars()
                 .nth(pos - 1)
-                .map_or(false, |c| c.is_whitespace())
+                .is_some_and(|c| c.is_whitespace())
         {
             pos -= 1;
         }
@@ -101,7 +99,7 @@ impl Composer {
                 .input
                 .chars()
                 .nth(pos - 1)
-                .map_or(false, |c| !c.is_whitespace())
+                .is_some_and(|c| !c.is_whitespace())
         {
             pos -= 1;
         }
@@ -172,7 +170,7 @@ impl Composer {
         }
 
         // Save to history (avoid consecutive duplicates)
-        if self.history.back().map_or(true, |last| last != &msg) {
+        if self.history.back() != Some(&msg) {
             self.history.push_back(msg.clone());
             if self.history.len() > 25 {
                 self.history.pop_front();
@@ -195,8 +193,19 @@ impl Composer {
         self.status = None;
     }
 
-    /// Render the composer line.
+    /// Render the composer line. Spans include background so the row is solid when used
+    /// over a pre-filled bg or standalone.
     pub fn render(&self, frame: &mut Frame, area: Rect, pod_slug: &str) {
+        // Match the input row background used by the TUI for solid full-width coverage
+        let bar_bg = Color::Rgb(0x1F, 0x23, 0x2A);
+        let prompt_style = Style::default().fg(Color::Cyan).bg(bar_bg);
+        let input_style = Style::default().fg(Color::Rgb(0xE6, 0xE6, 0xE6)).bg(bar_bg);
+        let cursor_style = Style::default()
+            .fg(Color::Yellow)
+            .bg(bar_bg)
+            .add_modifier(Modifier::SLOW_BLINK);
+        let status_style = Style::default().fg(Color::Green).bg(bar_bg);
+
         let prompt = format!("operator@{} → {} > ", pod_slug, self.target_fin);
 
         let status = if let Some((ref s, ts)) = self.status {
@@ -214,16 +223,11 @@ impl Composer {
         let after_cursor = &self.input[self.cursor..];
 
         let line = Line::from(vec![
-            Span::styled(prompt, Style::default().fg(Color::Cyan)),
-            Span::raw(before_cursor),
-            Span::styled(
-                "│",
-                Style::default()
-                    .fg(Color::Yellow)
-                    .add_modifier(Modifier::SLOW_BLINK),
-            ),
-            Span::raw(after_cursor),
-            Span::styled(status, Style::default().fg(Color::Green)),
+            Span::styled(prompt, prompt_style),
+            Span::styled(before_cursor, input_style),
+            Span::styled("│", cursor_style),
+            Span::styled(after_cursor, input_style),
+            Span::styled(status, status_style),
         ]);
 
         let para = Paragraph::new(line);
