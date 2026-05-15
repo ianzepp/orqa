@@ -199,13 +199,12 @@ impl Composer {
     /// Render the composer line. Spans include background so the row is solid when used
     /// over a pre-filled bg or standalone.
     pub fn render(&self, frame: &mut Frame, area: Rect, pod_slug: &str, theme: &Theme) {
-        let prompt_style = Style::default().fg(theme.accent).bg(theme.bar_bg);
-        let input_style = Style::default().fg(theme.text).bg(theme.bar_bg);
+        let prompt_style = Style::default().fg(theme.accent);
+        let input_style = Style::default().fg(theme.text);
         let cursor_style = Style::default()
             .fg(theme.cursor)
-            .bg(theme.bar_bg)
             .add_modifier(Modifier::SLOW_BLINK);
-        let status_style = Style::default().fg(theme.ok).bg(theme.bar_bg);
+        let status_style = Style::default().fg(theme.ok);
 
         let prompt = format!("operator@{} → {} > ", pod_slug, self.target_fin);
 

@@ -11,7 +11,7 @@ use std::{
 use ratatui::{
     Frame,
     layout::{Constraint, Direction, Layout, Rect},
-    style::{Color, Modifier, Style},
+    style::{Modifier, Style},
     text::{Line, Span},
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
@@ -251,6 +251,7 @@ impl App {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
+                Constraint::Length(gap), // expanded top spacing
                 Constraint::Length(1),   // header
                 Constraint::Length(gap), // expanded spacing
                 Constraint::Min(0),      // content
@@ -262,10 +263,10 @@ impl App {
             ])
             .split(area);
 
-        self.render_header(frame, self.section_area(chunks[0]));
-        self.render_timeline(frame, self.section_area(chunks[2]));
-        self.render_input_area(frame, self.section_area(chunks[4]));
-        self.render_footer(frame, self.section_area(chunks[6]));
+        self.render_header(frame, self.section_area(chunks[1]));
+        self.render_timeline(frame, self.section_area(chunks[3]));
+        self.render_input_area(frame, self.section_area(chunks[5]));
+        self.render_footer(frame, self.section_area(chunks[7]));
 
         if self.show_command_palette {
             self.render_command_palette(frame, area);
@@ -285,15 +286,9 @@ impl App {
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {
-        let base = Style::default()
-            .fg(self.theme.text)
-            .bg(self.theme.header_bg);
-        let accent = Style::default()
-            .fg(self.theme.accent)
-            .bg(self.theme.header_bg);
-        let dim = Style::default()
-            .fg(self.theme.muted)
-            .bg(self.theme.header_bg);
+        let base = Style::default().fg(self.theme.text);
+        let accent = Style::default().fg(self.theme.accent);
+        let dim = Style::default().fg(self.theme.muted);
         let icon = if self.any_fin_active() {
             self.spinner_frame()
         } else {
@@ -320,7 +315,6 @@ impl App {
             Span::styled(" ", base),
         ];
 
-        self.fill(frame, area, self.theme.header_bg);
         frame.render_widget(Paragraph::new(Line::from(spans)), area);
     }
 
@@ -353,23 +347,19 @@ impl App {
 
     /// Three-row input section: one text row plus a border around all sides.
     fn render_input_area(&self, frame: &mut Frame, area: Rect) {
-        self.fill(frame, area, self.theme.bar_bg);
         let block = Block::default()
             .borders(Borders::ALL)
-            .style(Style::default().fg(self.theme.muted).bg(self.theme.bar_bg));
+            .style(Style::default().fg(self.theme.muted));
         let inner = block.inner(area);
         frame.render_widget(block, area);
         self.render_input_label(frame, area);
 
         if self.mode == InputMode::Normal {
             let text = Line::from(vec![
-                Span::styled(
-                    " >",
-                    Style::default().fg(self.theme.accent).bg(self.theme.bar_bg),
-                ),
+                Span::styled(" >", Style::default().fg(self.theme.accent)),
                 Span::styled(
                     " press i to write to the target fin",
-                    Style::default().fg(self.theme.muted).bg(self.theme.bar_bg),
+                    Style::default().fg(self.theme.muted),
                 ),
             ]);
             frame.render_widget(Paragraph::new(text), inner);
@@ -400,7 +390,7 @@ impl App {
             width,
             height: 1,
         };
-        let style = Style::default().fg(self.theme.muted).bg(self.theme.bar_bg);
+        let style = Style::default().fg(self.theme.muted);
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(label, style))),
             label_area,
@@ -408,20 +398,11 @@ impl App {
     }
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
-        let dim = Style::default().fg(self.theme.muted).bg(self.theme.bar_bg);
+        let dim = Style::default().fg(self.theme.muted);
         let help = "Shift+Tab:mode  |  Ctrl+.:commands";
 
-        self.fill(frame, area, self.theme.bar_bg);
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(format!(" {help}"), dim))),
-            area,
-        );
-    }
-
-    fn fill(&self, frame: &mut Frame, area: Rect, color: Color) {
-        let bg_fill = " ".repeat(area.width as usize);
-        frame.render_widget(
-            Paragraph::new(bg_fill).style(Style::default().bg(color)),
             area,
         );
     }
@@ -434,14 +415,11 @@ impl App {
             .map(|ev| self.event_to_item(ev))
             .collect();
 
-        let list = List::new(items)
-            .style(Style::default().bg(self.theme.panel_bg))
-            .highlight_style(
-                Style::default()
-                    .fg(self.theme.text)
-                    .bg(self.theme.header_bg)
-                    .add_modifier(Modifier::BOLD),
-            );
+        let list = List::new(items).highlight_style(
+            Style::default()
+                .fg(self.theme.text)
+                .add_modifier(Modifier::BOLD),
+        );
 
         // Keep selection in bounds
         if let Some(selected) = self.list_state.selected() {
@@ -450,7 +428,6 @@ impl App {
             }
         }
 
-        self.fill(frame, area, self.theme.panel_bg);
         if visible_count == 0 {
             let empty = Line::from(vec![
                 Span::styled(
@@ -463,23 +440,14 @@ impl App {
                     Style::default().fg(self.theme.muted),
                 ),
             ]);
-            frame.render_widget(
-                Paragraph::new(empty).style(Style::default().bg(self.theme.panel_bg)),
-                area,
-            );
+            frame.render_widget(Paragraph::new(empty), area);
         } else {
             frame.render_stateful_widget(list, area, &mut self.list_state);
         }
     }
 
     fn event_to_item(&self, ev: &Event) -> ListItem<'static> {
-        let bg = if matches!(ev, Event::OperatorAction { .. }) {
-            self.theme.operator_bg
-        } else {
-            self.theme.panel_bg
-        };
-
-        ListItem::new(self.event_to_lines(ev)).style(Style::default().bg(bg))
+        ListItem::new(self.event_to_lines(ev))
     }
 
     fn event_to_lines(&self, ev: &Event) -> Vec<Line<'static>> {
@@ -551,22 +519,13 @@ impl App {
         let block = Block::default()
             .borders(Borders::ALL)
             .title(" Commands ")
-            .style(
-                Style::default()
-                    .fg(self.theme.text)
-                    .bg(self.theme.overlay_bg),
-            );
+            .style(Style::default().fg(self.theme.text));
         let inner = block.inner(palette);
-        let dim = Style::default()
-            .fg(self.theme.muted)
-            .bg(self.theme.overlay_bg);
+        let dim = Style::default().fg(self.theme.muted);
         let key = Style::default()
             .fg(self.theme.accent)
-            .bg(self.theme.overlay_bg)
             .add_modifier(Modifier::BOLD);
-        let text = Style::default()
-            .fg(self.theme.text)
-            .bg(self.theme.overlay_bg);
+        let text = Style::default().fg(self.theme.text);
         let rows = vec![
             Line::from(vec![
                 Span::styled(" i", key),
@@ -607,27 +566,6 @@ impl App {
         frame.render_widget(Clear, palette);
         frame.render_widget(block, palette);
         frame.render_widget(Paragraph::new(rows), inner);
-    }
-
-    #[allow(dead_code)]
-    fn render_status(&self, frame: &mut Frame, area: Rect) {
-        let help = match self.mode {
-            InputMode::Normal => {
-                "i = input mode   |   q = quit   |   f = target fin   |   o = operator filter"
-            }
-            InputMode::Input => "Esc = monitoring   |   Ctrl+W = delete word   |   Enter = send",
-        };
-
-        let status = Paragraph::new(vec![Line::from(vec![
-            Span::styled(help, Style::default().fg(Color::DarkGray)),
-            Span::raw("   |   events: "),
-            Span::styled(
-                self.events.len().to_string(),
-                Style::default().fg(Color::Cyan),
-            ),
-        ])]);
-
-        frame.render_widget(status, area);
     }
 }
 
