@@ -95,6 +95,7 @@ fn run_event_loop(
 
     loop {
         // Poll watcher for new events
+        app.refresh_loop_countdown();
         app.poll_watcher();
         app.auto_follow_if_needed();
 

@@ -21,7 +21,7 @@ use crate::model::{Orqa, PodRegistration};
 
 use super::composer::Composer;
 use super::events::{Event, LogStream};
-use super::loopctl::{pod_paused, toggle_pod_pause};
+use super::loopctl::{TUI_LOOP_INTERVAL, pod_paused, toggle_pod_pause};
 use super::theme::{THEMES, Theme, default_theme};
 use super::watcher::PodWatcher;
 
@@ -67,6 +67,7 @@ pub struct App {
     pub expanded: bool,
     pub show_command_palette: bool,
     pub pod_paused: bool,
+    pub next_loop_at: Instant,
 }
 
 impl App {
@@ -99,6 +100,7 @@ impl App {
             expanded: true,
             show_command_palette: false,
             pod_paused: paused,
+            next_loop_at: Instant::now() + TUI_LOOP_INTERVAL,
         };
         app.list_state.select(Some(0));
         app
@@ -261,7 +263,21 @@ impl App {
 
     pub fn toggle_pod_pause(&mut self) -> Result<(), String> {
         self.pod_paused = toggle_pod_pause(&self.orqa, &self.pod)?;
+        if !self.pod_paused {
+            self.next_loop_at = Instant::now() + TUI_LOOP_INTERVAL;
+        }
         Ok(())
+    }
+
+    pub fn refresh_loop_countdown(&mut self) {
+        if self.pod_paused {
+            return;
+        }
+
+        let now = Instant::now();
+        while self.next_loop_at <= now {
+            self.next_loop_at += TUI_LOOP_INTERVAL;
+        }
     }
 
     /// Render the cockpit as four main sections: header, content, input, footer.
@@ -322,7 +338,7 @@ impl App {
         let paused_width = if self.pod_paused { " paused".len() } else { 0 };
         let left_text_width =
             3 + self.pod_slug.chars().count() + paused_width + pod_path.chars().count();
-        let right = self.running_summary();
+        let right = self.header_right_text();
         let spacer_width = area
             .width
             .saturating_sub(left_text_width as u16)
@@ -342,7 +358,7 @@ impl App {
             Span::styled("  ", base),
             Span::styled(pod_path, dim),
             Span::styled(" ".repeat(spacer_width), base),
-            Span::styled(right, dim),
+            Span::styled(right, self.header_right_style()),
             Span::styled(" ", base),
         ];
 
@@ -362,18 +378,49 @@ impl App {
         FRAMES[((millis / 160) as usize) % FRAMES.len()]
     }
 
+    fn header_right_text(&self) -> String {
+        if self.pod_paused {
+            return "loop paused".to_string();
+        }
+
+        let countdown = self.next_loop_countdown().as_secs().max(1);
+        let mut text = format!("next wake {countdown}s");
+        let running = self.running_summary();
+        if !running.is_empty() {
+            text.push_str("  ");
+            text.push_str(&running);
+        }
+        text
+    }
+
+    fn header_right_style(&self) -> Style {
+        if self.pod_paused {
+            Style::default().fg(self.theme.warn)
+        } else {
+            Style::default().fg(self.theme.accent)
+        }
+    }
+
+    fn next_loop_countdown(&self) -> Duration {
+        self.next_loop_at
+            .checked_duration_since(Instant::now())
+            .unwrap_or_default()
+    }
+
     fn running_summary(&self) -> String {
         if self.active_since.is_empty() {
-            return "idle".to_string();
+            return String::new();
         }
 
         let mut fins: Vec<_> = self.active_since.iter().collect();
         fins.sort_by_key(|(fin, _)| *fin);
-        fins.into_iter()
+        let summary = fins
+            .into_iter()
             .take(3)
             .map(|(fin, since)| format!("{fin} {}", abbreviated_duration(since.elapsed())))
             .collect::<Vec<_>>()
-            .join("  ")
+            .join("  ");
+        format!("running {summary}")
     }
 
     /// Three-row input section: one text row plus a border around all sides.
