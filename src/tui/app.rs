@@ -643,9 +643,9 @@ impl App {
                 let from_str = from.clone().unwrap_or_else(|| "?".into());
                 vec![Line::from(vec![
                     Span::styled(format!("[{}]", fin), Style::default().fg(self.theme.mail)),
-                    Span::raw(" mail "),
+                    Span::raw(" inbox ← "),
                     Span::styled(from_str, Style::default().fg(self.theme.warn)),
-                    Span::raw(" → "),
+                    Span::raw("  "),
                     Span::styled(subj, Style::default().add_modifier(Modifier::BOLD)),
                 ])]
             }
