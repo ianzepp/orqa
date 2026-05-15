@@ -12,7 +12,11 @@ mod runtime_home;
 // mod service;  // Service CLI tree removed. Background service logic to be rethought.
 mod status;
 
-use std::{env, ffi::OsStr, process::ExitCode};
+use std::{
+    env,
+    ffi::{OsStr, OsString},
+    process::ExitCode,
+};
 
 use clap::{CommandFactory, FromArgMatches};
 
@@ -47,12 +51,29 @@ fn main() -> ExitCode {
         let my_pid = std::process::id();
 
         loop {
+            // Reconstruct prompt args from the env var set by `orqa loop start -- "..."`.
+            // On any deserialization problem, fall back to empty args and log a warning
+            // so the daemon continues running (best-effort).
+            let prompt_args: Vec<OsString> = env::var("ORQA_LOOP_ARGS")
+                .ok()
+                .and_then(|json| {
+                    serde_json::from_str::<Vec<String>>(&json)
+                        .map(|v| v.into_iter().map(OsString::from).collect())
+                        .ok()
+                })
+                .unwrap_or_else(|| {
+                    if env::var("ORQA_LOOP_ARGS").is_ok() {
+                        eprintln!("warning: failed to parse ORQA_LOOP_ARGS; using empty prompt");
+                    }
+                    vec![]
+                });
+
             let run_args = cli::LoopRunArgs {
                 pod: None,
                 force,
                 dry_run: false,
                 json: false,
-                args: vec![],
+                args: prompt_args,
             };
             if let Err(e) = loop_pod(&orqa, run_args) {
                 eprintln!("daemon loop error: {}", e);

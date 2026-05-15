@@ -424,9 +424,17 @@ fn loop_start(orqa: &Orqa, args: LoopStartArgs) -> Result<(), String> {
         .arg("--home")
         .arg(&orqa.home);
 
-    for arg in &args.args {
-        cmd.arg(arg);
-    }
+    // Forward user prompt args via env var so the child daemon never sees them
+    // as top-level CLI arguments (which would cause clap parse failure before
+    // the ORQA_DAEMON branch is reached).
+    let loop_args: Vec<String> = args
+        .args
+        .iter()
+        .map(|a| a.to_string_lossy().into_owned())
+        .collect();
+    let args_json = serde_json::to_string(&loop_args)
+        .map_err(|e| format!("failed to serialize loop prompt args: {}", e))?;
+    cmd.env("ORQA_LOOP_ARGS", args_json);
 
     let child = cmd
         .spawn()

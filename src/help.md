@@ -452,13 +452,9 @@ orqa loop stop
 
 `orqa loop start` launches a background daemon that repeatedly scans all pods. It writes a pidfile at `ORQA_HOME/loop.pid` and logs can be found nearby. Use `stop` and `status` to control it.
 
-For foreground continuous running (useful in tmux or for debugging), run:
+For foreground continuous running (useful in tmux or for debugging), run `orqa loop run` (optionally with a pod and prompt after `--`). It will keep scanning until interrupted.
 
-```sh
-orqa loop run --forever -- "handle your open Orqa mail and tasks"
-```
-
-The old `orqa service` commands have been removed. Use the `loop` subcommands above instead.
+The old `orqa service` commands and `--forever` flag have been removed. Use the `loop` subcommands above instead.
 
 ## Runtime Locks
 

@@ -40,11 +40,23 @@ Autocommit after each phase clears correctness + verification + poker-face + che
 - Whether `fin create` should start requiring the parent pod to exist (related but out of scope for Phase 1 per bugs.md focus on errors)
 - Scope of Phase 4 audit (how many call sites must be touched to consider "normalized")
 
-## Current Status
-- **Current Phase:** 1 — Existence Helpers
-- **Completed Phases:** (none yet)
-- **Pending:** 2, 3, 4
-- **Factory State:** Intake complete, ledger written, preparing Phase 1 delivery spec
+## Phase 1 Result (Completed 2026-05-15)
+
+**Phase Name:** Existence Helpers (HS #1 + #4 foundation)  
+**Commit:** 92c7097 "Complete Phase 01: Pod/Fin Existence Helpers"  
+**Poker Face:** 86% (independent evaluator) — cleared ≥85% gate  
+**Checkpoint:** PASS
+
+**What Was Delivered:**
+- Centralized `pod_exists`/`fin_exists` + `ensure_pod_exists`/`ensure_fin_exists` helpers on `Orqa` (model.rs) with the exact friendly, actionable messages specified.
+- `plan_pod` and `tail_pod` hardened (ensure + tolerant `list_dirs` on `fins/`).
+- `ensure_target_fin` now delegates to the new helper.
+- Guards added after Ref::new in all primary fin command paths (exec, chat, tail, runs, run-status, status, home, role) and runtime entrypoints, plus key pod charter/role paths.
+- One test assertion updated; all hygiene + manual ghost-case reproduction passed.
+
+**Residual (deferred to Phase 4):** doctor.rs, RunLog, a few pod/mail home/status paths still lack the early guard (lower-traffic relative to the ones fixed).
+
+**Next Phase Selected:** 2 — Daemon Prompt Argument Forwarding (HS #2)
 
 ---
-*This ledger is updated after each phase commit. The run is designed to be resumable across compaction cycles.*
+*Ledger updated after Phase 1 commit. Factory continues.*
