@@ -12,8 +12,14 @@ pub(crate) fn task(orqa: &Orqa, command: TaskCommand) -> Result<(), String> {
         }
         TaskSubcommand::Send(args) => crate::mailbox::send_task(orqa, args),
         TaskSubcommand::List(args) => crate::mailbox::list_tasks(orqa, args),
-        TaskSubcommand::Read(args) => crate::mailbox::read_item(orqa, args, crate::mailbox::ItemKind::Task),
-        TaskSubcommand::Done(args) => crate::mailbox::done_item(orqa, args, crate::mailbox::ItemKind::Task),
-        TaskSubcommand::Delete(args) => crate::mailbox::delete_item(orqa, args, crate::mailbox::ItemKind::Task),
+        TaskSubcommand::Read(args) => {
+            crate::mailbox::read_item(orqa, args, crate::mailbox::ItemKind::Task)
+        }
+        TaskSubcommand::Done(args) => {
+            crate::mailbox::done_item(orqa, args, crate::mailbox::ItemKind::Task)
+        }
+        TaskSubcommand::Delete(args) => {
+            crate::mailbox::delete_item(orqa, args, crate::mailbox::ItemKind::Task)
+        }
     }
 }

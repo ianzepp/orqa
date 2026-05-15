@@ -14,8 +14,7 @@ pub(crate) use task::task;
 use crate::{
     cli::{
         FinCommand, FinRoleSubcommand, FinSubcommand, InitArgs, LoopCommand, LoopStartArgs,
-        LoopSubcommand, MailCommand, MailSubcommand, OpsCommand, OpsSubcommand,
-        PodCharterSubcommand, PodCommand, PodSubcommand, TaskCommand, TaskSubcommand,
+        LoopSubcommand, OpsCommand, OpsSubcommand, PodCharterSubcommand, PodCommand, PodSubcommand,
     },
     config::{
         DEFAULT_CHARTER, DEFAULT_ROLE, fin_agents_template, fin_config_template_with_backend,
@@ -23,11 +22,7 @@ use crate::{
     },
     doctor::pod_doctor,
     hooks::{add_hook, disable_hook, enable_hook, list_hooks, remove_hook, run_hooks},
-    mailbox::{
-        ItemKind, delete_item, delete_mail, done_item, done_mail, ensure_maildir, list_mail,
-        list_tasks, read_item, read_mail, remove_sleep_marker, send_mail, send_task, unread_mail,
-        write_if_missing, write_sleep_marker,
-    },
+    mailbox::{ensure_maildir, remove_sleep_marker, write_if_missing, write_sleep_marker},
     model::resolve_pod_context,
     model::{FinRef, Orqa, PodRef},
     report::ops_report,
@@ -545,7 +540,6 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
     }
 }
 
-
 pub(crate) fn list_dirs(dir: &Path) -> Result<Vec<String>, String> {
     if !dir.exists() {
         return Ok(Vec::new());
@@ -623,8 +617,6 @@ fn markdown_with_trailing_newline(contents: &str) -> String {
         format!("{contents}\n")
     }
 }
-
-
 
 pub(crate) fn ops(orqa: &Orqa, command: OpsCommand) -> Result<(), String> {
     match command.command {

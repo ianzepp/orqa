@@ -104,6 +104,19 @@ pub(crate) struct PodCreateArgs {
     #[arg(long, value_name = "PROMPT|@FILE|-")]
     pub(crate) charter: Option<String>,
 }
+
+#[derive(Debug, Args)]
+pub(crate) struct InitArgs {
+    /// Pod slug (defaults to the current directory name).
+    pub(crate) slug: Option<String>,
+    /// Directory in which to initialize the pod (defaults to current directory).
+    #[arg(long, value_name = "DIR")]
+    pub(crate) path: Option<PathBuf>,
+    /// Pod charter text, @file path, or - for stdin.
+    #[arg(long, value_name = "PROMPT|@FILE|-")]
+    pub(crate) charter: Option<String>,
+}
+
 #[derive(Debug, Args)]
 pub(crate) struct PodCharterSetArgs {
     /// Pod slug.

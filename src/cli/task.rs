@@ -48,10 +48,11 @@ pub(crate) struct SendTaskArgs {
     pub(crate) body: Option<String>,
 }
 
-
-
-
-
+#[derive(Debug, Args)]
+pub(crate) struct TaskCommand {
+    #[command(subcommand)]
+    pub(crate) command: TaskSubcommand,
+}
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum TaskSubcommand {

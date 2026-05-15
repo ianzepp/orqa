@@ -8,17 +8,18 @@ pub(crate) use fin::{
     ChatArgs, ExecArgs, FinCreateArgs, FinListArgs, FinRefArgs, FinRoleSetArgs, FinRunReadArgs,
     FinRunsArgs, FinStatusArgs, FinTailArgs, FinWakeArgs, SuperviseArgs,
 };
-pub(crate) use mail::{MailCommand, MailListArgs, MailMessageArgs, MailSubcommand, SendMailArgs};
-pub(crate) use task::{SendTaskArgs, TaskCommand, TaskListArgs, TaskSubcommand};
 pub(crate) use loop_command::{
     LoopCommand, LoopPlanArgs, LoopRunArgs, LoopStartArgs, LoopSubcommand,
 };
+pub(crate) use mail::{MailCommand, MailListArgs, MailMessageArgs, MailSubcommand, SendMailArgs};
 #[allow(unused_imports)]
 pub(crate) use pod::{
-    PodCharterCommand, PodCharterSetArgs, PodCharterSubcommand, PodCommand, PodCreateArgs,
-    PodDoctorArgs, PodHookAddArgs, PodHookCommand, PodHookListArgs, PodHookRefArgs, PodHookRunArgs,
-    PodHookSubcommand, PodStatusArgs, PodSubcommand, PodTailArgs, PodWakeArgs, SlugArgs,
+    InitArgs, PodCharterCommand, PodCharterSetArgs, PodCharterSubcommand, PodCommand,
+    PodCreateArgs, PodDoctorArgs, PodHookAddArgs, PodHookCommand, PodHookListArgs, PodHookRefArgs,
+    PodHookRunArgs, PodHookSubcommand, PodStatusArgs, PodSubcommand, PodTailArgs, PodWakeArgs,
+    SlugArgs,
 };
+pub(crate) use task::{SendTaskArgs, TaskCommand, TaskListArgs, TaskSubcommand};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -104,7 +105,6 @@ pub(crate) enum FinSubcommand {
     Supervise(SuperviseArgs),
 }
 
-
 #[derive(Debug, Args)]
 #[command(subcommand_required = true, arg_required_else_help = true)]
 pub(crate) struct OpsCommand {
@@ -132,19 +132,12 @@ pub(crate) enum FinRoleSubcommand {
     Set(FinRoleSetArgs),
 }
 
-
-
-
-
-
-
-
 #[derive(Debug, Args, Default)]
 pub(crate) struct OpsReportArgs {
     /// Include only records at or after this time. Accepts Unix seconds or relative durations like 30m, 2h, 1d.
     #[arg(long)]
     pub(crate) since: Option<String>,
 }
-use std::{ffi::OsString, path::PathBuf};
+use std::path::PathBuf;
 
 use clap::{Args, Parser, Subcommand};
