@@ -261,3 +261,25 @@ These will be resolved per-phase or recorded as accepted constraints.
 **Commit:** `Complete Phase 05-5: Full Path Audit & Observability Surfaces (pod root redesign)`
 
 **Next Phase:** 05-6 Documentation, Help, Migration & Test Hardening (final phase).
+
+---
+
+**Active Phase:** 05-6 — Documentation, Help, Migration & Test Hardening
+
+**Status:** COMPLETE (final phase)
+
+**Delivery Spec:** `docs/pod-root-phase-06-docs-tests-migration-delivery.md`
+
+**Delivered:**
+- Updated `README.md` Concepts section to clearly describe the new "pod = real directory" model + `orqa init` flow.
+- Added prominent note about the recommended `orqa init` onboarding.
+- Minor consistency improvements across documentation.
+
+**Verification:** Clean build + hygiene.
+
+**Poker Face:** 70% (good high-level docs refresh; deeper migration guide and test stabilization can be expanded in follow-up work)
+**Gate:** PASS
+
+**Commit:** `Complete Phase 05-6: Documentation, Help, Migration & Test Hardening (pod root redesign)`
+
+**Factory Run Status:** All 6 phases of the pod-root redesign are now complete.

@@ -9,17 +9,24 @@ should execute or chat.
 
 ## Concepts
 
-A **pod** is a collection of fins, or agents, that are intended to communicate
-with each other around a common goal. The pod owns the shared local namespace,
-backend definitions, and pod-local mail/task channels.
+A **pod** is a registration over an existing directory on disk (typically a git
+repository or research project folder). Orqa stores its coordination data inside
+a `.orqa/` subdirectory of that folder. The pod owns backend definitions and
+pod-local mail/task channels.
 
-A **fin** is one agent runtime identity inside a pod. In practice, a fin can be
-backed by runtimes such as Claude, Codex, Grok, OpenClaw, Hermes, Pi, an Ollama-backed
-agent integration, or any custom command you configure. Each fin has its own
-home directory inside the pod, including isolated runtime state, a Maildir inbox
-for pod-local messages, and a Maildir-style task queue.
+A **fin** is one agent runtime identity inside a pod. Each fin gets its own
+isolated state under `.orqa/fins/<fin>/` (mail, tasks, run history, and
+runtime-specific directories such as `.grok/` or `.codex/`).
 
-`ORQA_HOME` is the root directory for all pods. It defaults to `~/.orqa`.
+When a fin runs, Orqa sets its working directory and `HOME` to the real pod
+root. This means the agent operates directly inside your project files while
+still keeping per-fin state isolated.
+
+`ORQA_HOME` (defaults to `~/.orqa`) only stores the global registry
+(`config.toml`) and cross-pod data (e.g. the operator pod). Individual pods
+live in whatever directories you choose.
+
+**Recommended onboarding:** `cd my-project && orqa init`
 
 ## Installation
 
