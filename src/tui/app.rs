@@ -5,6 +5,7 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    fs,
     time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
@@ -17,7 +18,10 @@ use ratatui::{
 };
 
 #[allow(unused_imports)]
-use crate::model::{Orqa, PodRegistration};
+use crate::{
+    mailbox::{deliver_mail, ensure_maildir},
+    model::{FinRef, Orqa, PodRegistration},
+};
 
 use super::composer::Composer;
 use super::events::{Event, LogStream};
@@ -66,6 +70,8 @@ pub struct App {
     pub theme: Theme,
     pub expanded: bool,
     pub show_command_palette: bool,
+    pub show_target_picker: bool,
+    pub target_picker_index: usize,
     pub pod_paused: bool,
     pub next_loop_at: Instant,
 }
@@ -79,6 +85,8 @@ impl App {
         watcher: PodWatcher,
     ) -> Self {
         let paused = pod_paused(&orqa, &pod);
+        let known_fins = discover_known_fins(&orqa, &pod);
+        let default_target = default_target_fin(&known_fins);
         let mut app = Self {
             pod_slug,
             pod_root,
@@ -89,16 +97,18 @@ impl App {
             filters: FilterState::default(),
             list_state: ListState::default(),
             follow: true,
-            known_fins: HashSet::new(),
+            known_fins,
             locked_fins: HashSet::new(),
             active_fins: HashSet::new(),
             active_since: HashMap::new(),
             max_events: 2000,
-            composer: Composer::new("planner".to_string()), // temporary default; will be improved
+            composer: Composer::new(default_target),
             mode: InputMode::Normal,
             theme: default_theme(),
             expanded: true,
             show_command_palette: false,
+            show_target_picker: false,
+            target_picker_index: 0,
             pod_paused: paused,
             next_loop_at: Instant::now() + TUI_LOOP_INTERVAL,
         };
@@ -259,6 +269,82 @@ impl App {
 
     pub fn toggle_command_palette(&mut self) {
         self.show_command_palette = !self.show_command_palette;
+        if self.show_command_palette {
+            self.show_target_picker = false;
+        }
+    }
+
+    pub fn open_target_picker(&mut self) {
+        let targets = self.target_choices();
+        if targets.is_empty() {
+            self.composer.set_status("no fins available".to_string());
+            return;
+        }
+
+        self.target_picker_index = targets
+            .iter()
+            .position(|fin| fin == &self.composer.target_fin)
+            .unwrap_or(0);
+        self.show_target_picker = true;
+        self.show_command_palette = false;
+    }
+
+    pub fn target_picker_next(&mut self) {
+        let len = self.target_choices().len();
+        if len > 0 {
+            self.target_picker_index = (self.target_picker_index + 1) % len;
+        }
+    }
+
+    pub fn target_picker_prev(&mut self) {
+        let len = self.target_choices().len();
+        if len > 0 {
+            self.target_picker_index = if self.target_picker_index == 0 {
+                len - 1
+            } else {
+                self.target_picker_index - 1
+            };
+        }
+    }
+
+    pub fn select_target_picker(&mut self) {
+        if let Some(target) = self.target_choices().get(self.target_picker_index).cloned() {
+            self.composer.set_target(target);
+        }
+        self.show_target_picker = false;
+    }
+
+    pub fn send_operator_message(&mut self, body: &str) -> Result<(), String> {
+        let to_fin = FinRef::new(&self.pod_slug, &self.composer.target_fin)?;
+        self.orqa.ensure_fin_exists(&to_fin)?;
+        let mail_home = self.orqa.effective_mail_home(&to_fin);
+        ensure_maildir(&mail_home)?;
+
+        let from = format!("operator@{}.orqa", self.pod_slug);
+        let to = format!("{}@{}.orqa", self.composer.target_fin, self.pod_slug);
+        let message = format!("From: {from}\nTo: {to}\nSubject: Operator message\n\n{body}\n");
+        deliver_mail(&mail_home, &message)?;
+
+        self.events.push(Event::OperatorAction {
+            text: format!("mailed {}: \"{}\"", self.composer.target_fin, body),
+        });
+        self.known_fins.insert(self.composer.target_fin.clone());
+        self.follow = true;
+        Ok(())
+    }
+
+    pub fn target_choices(&self) -> Vec<String> {
+        let mut fins: Vec<String> = self
+            .known_fins
+            .iter()
+            .filter(|fin| fin.as_str() != "operator")
+            .cloned()
+            .collect();
+        if fins.is_empty() {
+            fins = self.known_fins.iter().cloned().collect();
+        }
+        fins.sort();
+        fins
     }
 
     pub fn toggle_pod_pause(&mut self) -> Result<(), String> {
@@ -305,6 +391,9 @@ impl App {
 
         if self.show_command_palette {
             self.render_command_palette(frame, area);
+        }
+        if self.show_target_picker {
+            self.render_target_picker(frame, area);
         }
     }
 
@@ -482,7 +571,7 @@ impl App {
 
     fn render_footer(&self, frame: &mut Frame, area: Rect) {
         let dim = Style::default().fg(self.theme.muted);
-        let help = "Shift+Tab:mode  |  Ctrl+.:commands";
+        let help = "Shift+Tab:mode  |  Ctrl+T:target  |  Ctrl+.:commands";
 
         frame.render_widget(
             Paragraph::new(Line::from(Span::styled(format!(" {help}"), dim))),
@@ -615,8 +704,8 @@ impl App {
                 Span::styled(" compose message", text),
             ]),
             Line::from(vec![
-                Span::styled(" f", key),
-                Span::styled(" cycle target fin", text),
+                Span::styled(" Ctrl+T", key),
+                Span::styled(" choose message target", text),
             ]),
             Line::from(vec![
                 Span::styled(" F", key),
@@ -652,6 +741,49 @@ impl App {
 
         frame.render_widget(Clear, palette);
         frame.render_widget(block, palette);
+        frame.render_widget(Paragraph::new(rows), inner);
+    }
+
+    fn render_target_picker(&self, frame: &mut Frame, area: Rect) {
+        let targets = self.target_choices();
+        let height = (targets.len() as u16 + 2).clamp(5, 14);
+        let picker = centered_rect(area, 42, height);
+        let block = Block::default()
+            .borders(Borders::ALL)
+            .title(" Target Fin ")
+            .style(Style::default().fg(self.theme.text));
+        let inner = block.inner(picker);
+        let selected = self
+            .target_picker_index
+            .min(targets.len().saturating_sub(1));
+        let rows = if targets.is_empty() {
+            vec![Line::from(Span::styled(
+                " no fins available",
+                Style::default().fg(self.theme.muted),
+            ))]
+        } else {
+            targets
+                .iter()
+                .enumerate()
+                .map(|(index, fin)| {
+                    let style = if index == selected {
+                        Style::default()
+                            .fg(self.theme.accent)
+                            .add_modifier(Modifier::BOLD)
+                    } else {
+                        Style::default().fg(self.theme.text)
+                    };
+                    let marker = if index == selected { ">" } else { " " };
+                    Line::from(vec![
+                        Span::styled(format!(" {marker} "), style),
+                        Span::styled(format!("@{fin}"), style),
+                    ])
+                })
+                .collect()
+        };
+
+        frame.render_widget(Clear, picker);
+        frame.render_widget(block, picker);
         frame.render_widget(Paragraph::new(rows), inner);
     }
 }
@@ -696,4 +828,34 @@ fn display_path(path: &std::path::Path) -> String {
         Ok(rest) => format!("~/{}", rest.display()),
         Err(_) => path.display().to_string(),
     }
+}
+
+fn discover_known_fins(orqa: &Orqa, pod: &PodRegistration) -> HashSet<String> {
+    let fins_dir = orqa
+        .effective_pod_home(&crate::model::PodRef {
+            slug: pod.slug.clone(),
+        })
+        .join("fins");
+    let Ok(entries) = fs::read_dir(fins_dir) else {
+        return HashSet::new();
+    };
+
+    entries
+        .filter_map(Result::ok)
+        .filter(|entry| entry.path().is_dir())
+        .filter_map(|entry| entry.file_name().into_string().ok())
+        .collect()
+}
+
+fn default_target_fin(fins: &HashSet<String>) -> String {
+    if fins.contains("grok") {
+        return "grok".to_string();
+    }
+
+    fins.iter()
+        .filter(|fin| fin.as_str() != "operator")
+        .min()
+        .cloned()
+        .or_else(|| fins.iter().min().cloned())
+        .unwrap_or_else(|| "operator".to_string())
 }

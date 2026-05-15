@@ -90,6 +90,19 @@ model = "gpt-5.3-codex"
 # [backends.grok.defaults]
 # model = "grok-code-latest"
 
+[backends.grok]
+enabled = true
+command = "grok"
+exec_args = [
+    "-p",
+    "You are the {fin} fin in the {pod} pod. Check your Orqa mail in {mail_home} and tasks in {task_home}, respond to operator requests through the local orqa CLI when useful, then summarize what you did. Extra operator prompt: {prompt}",
+    "--always-approve",
+]
+chat_args = []
+
+[backends.grok.defaults]
+model = "grok-code-latest"
+
 # Ollama is most useful through a coding-agent integration. This runs Codex
 # against an Ollama model while keeping Codex's tool loop and fin-local
 # CODEX_HOME.

@@ -29,7 +29,8 @@ const OPERATOR_FIN: &str = "operator";
 pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
     let from = resolve_sender(args.from.as_deref())?;
     let requested_to = resolve_address(&args.to, Some(&from.pod))?;
-    let to = if is_operator_alias(&requested_to.fin) {
+    let legacy_operator_bridge = is_legacy_operator_bridge(orqa, &requested_to)?;
+    let to = if legacy_operator_bridge {
         resolve_address("operator@ops.orqa", None)?
     } else {
         requested_to.clone()
@@ -51,10 +52,10 @@ pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
     let from_fin = FinRef::new(&from.pod, &from.fin)?;
     let to_fin = FinRef::new(&to.pod, &to.fin)?;
     ensure_target_fin(orqa, &to_fin)?;
-    let mail_home = orqa.mail_home(&to_fin);
+    let mail_home = orqa.effective_mail_home(&to_fin);
     ensure_maildir(&mail_home)?;
 
-    let message = if is_operator_alias(&requested_to.fin) {
+    let message = if legacy_operator_bridge {
         format!(
             "From: {}\nTo: {}\nOriginal-To: {}\nSource-Pod: {}\nSource-Fin: {}\nSubject: {}\n\n{}\n",
             from.label(),
@@ -85,7 +86,7 @@ pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
 
 pub(crate) fn unread_mail(orqa: &Orqa, args: FinRefArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
-    let new_dir = orqa.mail_home(&fin).join("new");
+    let new_dir = orqa.effective_mail_home(&fin).join("new");
 
     for path in sorted_files(&new_dir)? {
         println!("{}", path.display());
@@ -124,7 +125,7 @@ pub(crate) fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
 
     let to_fin = FinRef::new(&to.pod, &to.fin)?;
     ensure_target_fin(orqa, &to_fin)?;
-    let task_home = orqa.task_home(&to_fin);
+    let task_home = orqa.effective_task_home(&to_fin);
     ensure_maildir(&task_home)?;
 
     let body = match args.body {
@@ -149,6 +150,18 @@ fn is_operator_mail_bridge(from_pod: &str, to_pod: &str) -> bool {
 
 fn is_operator_alias(fin: &str) -> bool {
     fin == OPERATOR_FIN
+}
+
+fn is_legacy_operator_bridge(
+    orqa: &Orqa,
+    address: &crate::model::MailAddress,
+) -> Result<bool, String> {
+    if !is_operator_alias(&address.fin) {
+        return Ok(false);
+    }
+
+    let local_operator = FinRef::new(&address.pod, &address.fin)?;
+    Ok(!orqa.fin_exists(&local_operator))
 }
 
 fn ensure_target_fin(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
@@ -180,8 +193,8 @@ pub(crate) enum ItemKind {
 impl ItemKind {
     fn home(self, orqa: &Orqa, fin: &FinRef) -> PathBuf {
         match self {
-            Self::Mail => orqa.mail_home(fin),
-            Self::Task => orqa.task_home(fin),
+            Self::Mail => orqa.effective_mail_home(fin),
+            Self::Task => orqa.effective_task_home(fin),
         }
     }
 

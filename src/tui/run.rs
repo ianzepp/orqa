@@ -119,6 +119,26 @@ fn run_event_loop(
                         {
                             app.toggle_command_palette();
                         }
+                        KeyCode::Char('t')
+                            if key
+                                .modifiers
+                                .contains(crossterm::event::KeyModifiers::CONTROL) =>
+                        {
+                            app.open_target_picker();
+                        }
+                        KeyCode::Esc if app.show_target_picker => {
+                            app.show_target_picker = false;
+                        }
+                        KeyCode::Up if app.show_target_picker => {
+                            app.target_picker_prev();
+                        }
+                        KeyCode::Down if app.show_target_picker => {
+                            app.target_picker_next();
+                        }
+                        KeyCode::Enter if app.show_target_picker => {
+                            app.select_target_picker();
+                        }
+                        _ if app.show_target_picker => {}
                         KeyCode::Esc if app.show_command_palette => {
                             app.show_command_palette = false;
                         }
@@ -188,24 +208,13 @@ fn run_event_loop(
                         }
 
                         KeyCode::Tab | KeyCode::Char('f') | KeyCode::Char('F')
-                            if app.mode == super::app::InputMode::Input
-                                || matches!(key.code, KeyCode::Char('f')) =>
+                            if app.mode == super::app::InputMode::Input =>
                         {
-                            let mut fins: Vec<String> = app.known_fins.iter().cloned().collect();
-                            fins.sort();
-                            let current = &app.composer.target_fin;
-                            let next = if fins.is_empty() {
-                                "planner".to_string()
-                            } else if let Some(pos) = fins.iter().position(|f| f == current) {
-                                if pos + 1 < fins.len() {
-                                    fins[pos + 1].clone()
-                                } else {
-                                    fins[0].clone()
-                                }
-                            } else {
-                                fins[0].clone()
-                            };
-                            app.composer.set_target(next);
+                            app.open_target_picker();
+                        }
+
+                        KeyCode::Char('f') if app.mode == super::app::InputMode::Normal => {
+                            app.open_target_picker();
                         }
 
                         KeyCode::Char('o') | KeyCode::Char('O')
@@ -274,13 +283,12 @@ fn run_event_loop(
 
                         KeyCode::Enter if app.mode == super::app::InputMode::Input => {
                             if let Some(msg) = app.composer.submit() {
-                                // TODO in this phase: actually send the mail + wake
-                                // For now just create a local OperatorAction so the user sees something
-                                let action_text =
-                                    format!("mailed {}: \"{}\"", app.composer.target_fin, msg);
-                                app.events.push(crate::tui::events::Event::OperatorAction {
-                                    text: action_text,
-                                });
+                                if let Err(error) = app.send_operator_message(&msg) {
+                                    app.composer.set_status(format!("send failed: {error}"));
+                                    app.events.push(crate::tui::events::Event::OperatorAction {
+                                        text: format!("failed to mail target fin: {error}"),
+                                    });
+                                }
                                 app.auto_follow_if_needed();
                             }
                         }

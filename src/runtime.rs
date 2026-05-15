@@ -626,6 +626,7 @@ fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCo
         .env("ORQA_FIN", &fin.fin)
         .env("HOME", &pod_root)
         .env("CODEX_HOME", fin_home.join(".codex"))
+        .env("GROK_HOME", fin_home.join(".grok"))
         .env("HERMES_HOME", fin_home.join(".hermes"))
         .env("PI_CODING_AGENT_DIR", fin_home.join(".pi/agent"))
         .args(&command.args);
