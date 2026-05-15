@@ -73,3 +73,79 @@ jobs:
             --title "orqa $RELEASE_TAG" \
             --generate-notes \
             --verify-tag
+
+  homebrew:
+    name: Publish Homebrew formula
+    runs-on: ubuntu-latest
+    needs: release
+    steps:
+      - name: Update tap formula
+        env:
+          RELEASE_TAG: ${{ inputs.tag || github.ref_name }}
+          TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+        run: |
+          if [ -z "$TAP_TOKEN" ]; then
+            echo "::error::Missing HOMEBREW_TAP_TOKEN secret"
+            exit 1
+          fi
+
+          version="${RELEASE_TAG#v}"
+          base_url="https://github.com/ianzepp/orqa/releases/download/${RELEASE_TAG}"
+
+          checksum() {
+            curl -fsSL "${base_url}/$1.sha256" | awk '{print $1}'
+          }
+
+          arm_sha="$(checksum orqa-aarch64-apple-darwin.tar.gz)"
+          intel_sha="$(checksum orqa-x86_64-apple-darwin.tar.gz)"
+          linux_sha="$(checksum orqa-x86_64-unknown-linux-gnu.tar.gz)"
+
+          git clone "https://x-access-token:${TAP_TOKEN}@github.com/ianzepp/homebrew-tap.git" tap
+          cd tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          cat > Formula/orqa.rb <<EOF
+          class Orqa < Formula
+            desc "Local coordinator for background agents organized as pods and fins"
+            homepage "https://github.com/ianzepp/orqa"
+            license "MIT"
+
+            on_macos do
+              on_arm do
+                url "${base_url}/orqa-aarch64-apple-darwin.tar.gz"
+                sha256 "${arm_sha}"
+              end
+
+              on_intel do
+                url "${base_url}/orqa-x86_64-apple-darwin.tar.gz"
+                sha256 "${intel_sha}"
+              end
+            end
+
+            on_linux do
+              on_intel do
+                url "${base_url}/orqa-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "${linux_sha}"
+              end
+            end
+
+            def install
+              bin.install "orqa"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/orqa --version")
+              assert_match "pod", shell_output("#{bin}/orqa --help")
+            end
+          end
+          EOF
+
+          if git diff --quiet -- Formula/orqa.rb; then
+            echo "Formula/orqa.rb is already at ${version}"
+            exit 0
+          fi
+
+          git add Formula/orqa.rb
+          git commit -m "orqa ${version}"
+          git push origin HEAD:main
