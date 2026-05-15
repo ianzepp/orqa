@@ -256,10 +256,20 @@ and `orqa loop` use them to choose and launch each fin's backend.
 
 ## Quick Start
 
+The recommended way to start a pod inside a project:
+
 ```sh
-orqa pod create sample-pod
-orqa fin create sample-pod planner
-orqa fin create sample-pod builder
+cd my-project
+orqa init
+orqa fin create planner
+orqa fin create builder
+```
+
+For explicit control (or when scripting), use:
+
+```sh
+orqa pod create my-project --path .
+orqa pod create my-project --path /path/to/project --charter "..."
 ```
 
 Send a fully qualified pod-local message:
@@ -684,8 +694,8 @@ who need the runtime overview without install or development notes.
 ### Pod Commands
 
 ```text
-orqa pod create <slug>
-orqa pod create <slug> --charter <prompt|@file|->
+orqa init [slug] [--path <dir>] [--charter <...>]
+orqa pod create <slug> [--path <dir>] [--charter <prompt|@file|->]
 orqa pod list
 orqa pod home <slug>
 orqa pod charter get <slug>
@@ -703,19 +713,28 @@ orqa pod sleep <slug>
 orqa pod wake <slug> --force
 ```
 
-`pod create` creates `ORQA_HOME/pods/<slug>/`, its `fins/` directory,
-`CHARTER.md`, `AGENTS.md`, `pod.txt`, and `pod.toml`. The charter is the shared
-goal and operating context for the pod; pass it inline, from `@file.md`, or from
-stdin with `-`. The pod-level `AGENTS.md` injects that charter and tells backend
-runtimes how to use Orqa mail, tasks, status, and fin discovery from inside the
-pod. `pod charter set` replaces both `CHARTER.md` and the generated pod
-`AGENTS.md`. `pod list` prints one status line per pod with fin count, sleep
-state, wakeable/running counts, unread mail, and open tasks. `pod doctor`
-checks required pod and fin files, resolves each fin's backend command, and
-runs a short backend probe to verify connectivity. `pod hook` manages shell
-hooks under `hooks/<phase>/` for lifecycle work around the wake loop. `pod
-sleep` writes a pod-level sleep marker, and `pod wake` requires `--force`
-before it removes that marker.
+**Recommended:** Use `orqa init` when working inside a project directory.
+`orqa pod create --path` is the explicit form for new-style pods.
+
+`pod create` creates a pod. Without `--path`, it creates a legacy pod under
+`ORQA_HOME/pods/<slug>/`. With `--path`, it creates a new-style pod inside the
+given directory (creating `.orqa/`, `pod.toml`, `AGENTS.md`, etc. and registering
+it globally). The charter is the shared goal and operating context for the pod;
+pass it inline, from `@file.md`, or from stdin with `-`. The pod-level
+`AGENTS.md` injects that charter and tells backend runtimes how to use Orqa mail,
+tasks, status, and fin discovery. `pod charter set` replaces both `CHARTER.md`
+and the generated pod `AGENTS.md`.
+
+**Recommended:** Use `orqa init` when working inside a project directory.
+`orqa pod create --path` is the explicit form for new-style pods.
+
+`pod list` prints one status line per pod with fin count, sleep state,
+wakeable/running counts, unread mail, and open tasks. `pod doctor` checks
+required pod and fin files, resolves each fin's backend command, and runs a
+short backend probe to verify connectivity. `pod hook` manages shell hooks under
+`hooks/<phase>/` for lifecycle work around the wake loop. `pod sleep` writes a
+pod-level sleep marker, and `pod wake` requires `--force` before it removes that
+marker.
 
 ### Fin Commands
 
