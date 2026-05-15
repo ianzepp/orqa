@@ -10,7 +10,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, List, ListItem, ListState, Paragraph},
+    widgets::{List, ListItem, ListState, Paragraph},
 };
 
 #[allow(unused_imports)]
@@ -166,15 +166,29 @@ impl App {
         let chunks = Layout::default()
             .direction(Direction::Vertical)
             .constraints([
-                Constraint::Length(3), // Header
-                Constraint::Min(5),    // Timeline
-                Constraint::Length(2), // Status
+                Constraint::Length(1), // separator above header
+                Constraint::Length(2), // header content
+                Constraint::Length(1), // separator below header
+                Constraint::Min(5),    // timeline
+                Constraint::Length(1), // separator above footer
+                Constraint::Length(1), // footer
+                Constraint::Length(1), // separator below footer
             ])
             .split(area);
 
-        self.render_header(frame, chunks[0]);
-        self.render_timeline(frame, chunks[1]);
-        self.render_status(frame, chunks[2]);
+        self.render_separator(frame, chunks[0]);
+        self.render_header(frame, chunks[1]);
+        self.render_separator(frame, chunks[2]);
+        self.render_timeline(frame, chunks[3]);
+        self.render_separator(frame, chunks[4]);
+        self.render_status(frame, chunks[5]);
+        self.render_separator(frame, chunks[6]);
+    }
+
+    fn render_separator(&self, frame: &mut Frame, area: Rect) {
+        let line = "─".repeat(area.width as usize);
+        let sep = Paragraph::new(line).style(Style::default().fg(Color::DarkGray));
+        frame.render_widget(sep, area);
     }
 
     fn render_header(&self, frame: &mut Frame, area: Rect) {
@@ -206,12 +220,7 @@ impl App {
                     },
                 ),
             ]),
-        ])
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .title("Operator Cockpit (Phase 3)"),
-        );
+        ]);
 
         frame.render_widget(header, area);
     }
@@ -246,9 +255,8 @@ impl App {
             })
             .collect();
 
-        let list = List::new(items)
-            .block(Block::default().borders(Borders::ALL).title("Timeline"))
-            .highlight_style(Style::default().add_modifier(Modifier::REVERSED));
+        let list =
+            List::new(items).highlight_style(Style::default().add_modifier(Modifier::REVERSED));
 
         // Keep selection in bounds
         if let Some(selected) = self.list_state.selected() {
@@ -331,8 +339,7 @@ impl App {
                 self.events.len().to_string(),
                 Style::default().fg(Color::Cyan),
             ),
-        ])])
-        .block(Block::default().borders(Borders::TOP));
+        ])]);
 
         frame.render_widget(status, area);
     }
