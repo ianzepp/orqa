@@ -36,9 +36,12 @@ pub(crate) struct FinStatus {
 }
 
 pub(crate) fn pod_status(orqa: &Orqa, pod: &PodRef) -> Result<PodStatus, String> {
-    let home = orqa.pod_home(pod);
+    let home = orqa.pod_root_for_slug(&pod.slug); // real pod root for new-style
+    let data_dir = home.join(".orqa");
+    let fins_dir = data_dir.join("fins");
+
     let mut fins = Vec::new();
-    for fin in list_dirs(&home.join("fins"))? {
+    for fin in list_dirs(&fins_dir)? {
         fins.push(fin_status(orqa, &FinRef::new(&pod.slug, &fin)?)?);
     }
     let wakeable = fins
@@ -67,12 +70,12 @@ pub(crate) fn fin_status(orqa: &Orqa, fin: &FinRef) -> Result<FinStatus, String>
     let running = pid.is_some_and(process_is_alive);
     Ok(FinStatus {
         fin: fin.label(),
-        home: orqa.fin_home(fin),
-        sleeping: orqa.fin_sleep_path(fin).exists(),
+        home: orqa.effective_fin_home(fin),
+        sleeping: orqa.fin_sleep_path(fin).exists(), // still works via old path helper for now
         running,
         pid,
-        unread_mail: unread_count(&orqa.mail_home(fin))?,
-        open_tasks: unread_count(&orqa.task_home(fin))?,
+        unread_mail: unread_count(&orqa.effective_fin_home(fin).join("mail"))?,
+        open_tasks: unread_count(&orqa.effective_fin_home(fin).join("tasks"))?,
         last_run: read_run_record_for(orqa, fin, None).ok(),
     })
 }

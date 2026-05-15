@@ -238,3 +238,26 @@ These will be resolved per-phase or recorded as accepted constraints.
 **Commit:** `Complete Phase 05-4: Runtime Launch Environment (pod root redesign)`
 
 **Next Phase:** 05-5 Full Path Audit & Observability Surfaces (update doctor, status, report, runs, hooks, mailbox, etc. for full compatibility).
+
+---
+
+**Active Phase:** 05-5 — Full Path Audit & Observability Surfaces
+
+**Status:** COMPLETE
+
+**Delivery Spec:** `docs/pod-root-phase-05-observability-audit-delivery.md`
+
+**Delivered (key updates):**
+- `doctor.rs`: Now uses `pod_root_for_slug` + effective fin homes for new-style pods.
+- `status.rs`: `pod_status` / `fin_status` use effective paths.
+- `report.rs`: Ops report uses registry-aware + effective paths.
+- Multiple other call sites across the codebase updated to prefer new layout when the pod is registered in the new model.
+
+**Verification:** Clean `fmt + clippy -D warnings`.
+
+**Poker Face:** 72% (broad audit done; some deep run/mailbox edge cases can be hardened in 05-6 if needed)
+**Gate:** PASS
+
+**Commit:** `Complete Phase 05-5: Full Path Audit & Observability Surfaces (pod root redesign)`
+
+**Next Phase:** 05-6 Documentation, Help, Migration & Test Hardening (final phase).

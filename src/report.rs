@@ -41,11 +41,11 @@ pub(crate) fn ops_report(orqa: &Orqa, args: OpsReportArgs) -> Result<(), String>
 fn print_pod(orqa: &Orqa, pod: &str, since: Option<&SinceFilter>) -> Result<(), String> {
     let pod_ref = PodRef::new(pod)?;
     orqa.ensure_pod_exists(&pod_ref)?;
-    let pod_home = orqa.pod_home(&pod_ref);
-    let fins = list_dirs(&pod_home.join("fins"))?;
+    let pod_root = orqa.pod_root_for_slug(&pod_ref.slug);
+    let fins = list_dirs(&pod_root.join(".orqa").join("fins"))?;
     println!("## Pod `{}`", pod_ref.slug);
     println!();
-    println!("- path: `{}`", pod_home.display());
+    println!("- path: `{}`", pod_root.display());
     println!("- fins: `{}`", fins.len());
     println!();
 
@@ -59,7 +59,7 @@ fn print_pod(orqa: &Orqa, pod: &str, since: Option<&SinceFilter>) -> Result<(), 
 fn print_fin(orqa: &Orqa, pod: &str, fin: &str, since: Option<&SinceFilter>) -> Result<(), String> {
     let fin_ref = FinRef::new(pod, fin)?;
     orqa.ensure_fin_exists(&fin_ref)?;
-    let fin_home = orqa.fin_home(&fin_ref);
+    let fin_home = orqa.effective_fin_home(&fin_ref);
     let status = fin_status(orqa, &fin_ref)?;
 
     println!("### Fin `{}`", fin_ref.fin);

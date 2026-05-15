@@ -22,19 +22,15 @@ pub(crate) fn pod_doctor(orqa: &Orqa, args: PodDoctorArgs) -> Result<(), String>
     let pod = PodRef::new(&args.pod)?;
     orqa.ensure_pod_exists(&pod)?;
     let mut ok = true;
-    check_path("pod home", &orqa.pod_home(&pod), &mut ok);
-    check_path("pod config", &orqa.pod_home(&pod).join("pod.toml"), &mut ok);
-    check_path(
-        "pod charter",
-        &orqa.pod_home(&pod).join("CHARTER.md"),
-        &mut ok,
-    );
-    check_path(
-        "pod agents",
-        &orqa.pod_home(&pod).join("AGENTS.md"),
-        &mut ok,
-    );
-    check_path("fins dir", &orqa.pod_home(&pod).join("fins"), &mut ok);
+
+    let pod_root = orqa.pod_root_for_slug(&pod.slug);
+    let pod_data = pod_root.join(".orqa");
+
+    check_path("pod root", &pod_root, &mut ok);
+    check_path("pod config", &pod_data.join("pod.toml"), &mut ok);
+    check_path("pod charter", &pod_data.join("CHARTER.md"), &mut ok);
+    check_path("pod agents", &pod_data.join("AGENTS.md"), &mut ok);
+    check_path("fins dir", &pod_data.join("fins"), &mut ok);
 
     let fins = doctor_fins(orqa, &pod, args.fin.as_deref())?;
     if fins.is_empty() {
@@ -71,21 +67,25 @@ fn doctor_fins(orqa: &Orqa, pod: &PodRef, fin: Option<&str>) -> Result<Vec<Strin
 fn doctor_fin(orqa: &Orqa, fin: &FinRef, prompt: &str, timeout: u64) -> Result<bool, String> {
     let mut ok = true;
     println!("fin {}", fin.label());
-    check_path("fin home", &orqa.fin_home(fin), &mut ok);
-    check_path("fin config", &orqa.fin_home(fin).join("fin.toml"), &mut ok);
-    check_path("fin role", &orqa.fin_home(fin).join("ROLE.md"), &mut ok);
-    check_path("fin agents", &orqa.fin_home(fin).join("AGENTS.md"), &mut ok);
+
+    let fin_home = orqa.effective_fin_home(fin);
+
+    check_path("fin home", &fin_home, &mut ok);
+    check_path("fin config", &fin_home.join("fin.toml"), &mut ok);
+    check_path("fin role", &fin_home.join("ROLE.md"), &mut ok);
+    check_path("fin agents", &fin_home.join("AGENTS.md"), &mut ok);
+
     for path in [
-        orqa.mail_home(fin).join("cur"),
-        orqa.mail_home(fin).join("new"),
-        orqa.mail_home(fin).join("tmp"),
-        orqa.task_home(fin).join("cur"),
-        orqa.task_home(fin).join("new"),
-        orqa.task_home(fin).join("tmp"),
-        orqa.fin_home(fin).join(".codex"),
-        orqa.fin_home(fin).join(".hermes"),
-        orqa.fin_home(fin).join(".pi/agent"),
-        orqa.fin_home(fin).join(".pi/sessions"),
+        fin_home.join("mail").join("cur"),
+        fin_home.join("mail").join("new"),
+        fin_home.join("mail").join("tmp"),
+        fin_home.join("tasks").join("cur"),
+        fin_home.join("tasks").join("new"),
+        fin_home.join("tasks").join("tmp"),
+        fin_home.join(".codex"),
+        fin_home.join(".hermes"),
+        fin_home.join(".pi/agent"),
+        fin_home.join(".pi/sessions"),
     ] {
         check_path("fin runtime path", &path, &mut ok);
     }
