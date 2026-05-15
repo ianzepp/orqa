@@ -11,6 +11,7 @@ mod runtime;
 mod runtime_home;
 // mod service;  // Service CLI tree removed. Background service logic to be rethought.
 mod status;
+mod tui;
 
 use std::{
     env,
@@ -98,11 +99,34 @@ fn main() -> ExitCode {
     }
 
     let Some(command) = cli.command else {
-        if let Err(error) = overview(&orqa) {
-            eprintln!("orqa: {error}");
-            return ExitCode::FAILURE;
+        // Phase 1 TUI integration: if we are inside a detectable Phase 05 pod root,
+        // launch the Operator Cockpit TUI instead of the legacy text overview.
+        match crate::model::resolve_pod_context(None, &orqa) {
+            Ok((pod_slug, pod_root)) => {
+                // We have a real pod context. Ensure the operator fin exists (safe & idempotent),
+                // then launch the TUI.
+                if let Err(e) = crate::tui::ensure_operator_fin(&orqa, &pod_slug, &pod_root) {
+                    eprintln!("warning: failed to ensure operator fin for TUI: {e}");
+                    // Continue to TUI anyway — it can still be useful even without the fin.
+                }
+
+                if let Err(error) = crate::tui::run_tui(&pod_slug, &pod_root) {
+                    eprintln!("orqa tui: {error}");
+                    return ExitCode::FAILURE;
+                }
+                return ExitCode::SUCCESS;
+            }
+            Err(_) => {
+                // No pod detected — fall back to the classic text overview
+                // (still useful for global status, legacy pods, and when the user
+                // is not inside any project).
+                if let Err(error) = overview(&orqa) {
+                    eprintln!("orqa: {error}");
+                    return ExitCode::FAILURE;
+                }
+                return ExitCode::SUCCESS;
+            }
         }
-        return ExitCode::SUCCESS;
     };
 
     match run(&orqa, command) {
