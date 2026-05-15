@@ -338,7 +338,7 @@ impl App {
         let paused_width = if self.pod_paused { " paused".len() } else { 0 };
         let left_text_width =
             3 + self.pod_slug.chars().count() + paused_width + pod_path.chars().count();
-        let right = self.header_right_text();
+        let right = self.header_right_text(area.width.saturating_sub(left_text_width as u16 + 1));
         let spacer_width = area
             .width
             .saturating_sub(left_text_width as u16)
@@ -378,17 +378,24 @@ impl App {
         FRAMES[((millis / 160) as usize) % FRAMES.len()]
     }
 
-    fn header_right_text(&self) -> String {
+    fn header_right_text(&self, available_width: u16) -> String {
         if self.pod_paused {
             return "loop paused".to_string();
         }
 
         let countdown = self.next_loop_countdown().as_secs().max(1);
-        let mut text = format!("next wake {countdown}s");
+        let text = format!("next wake {countdown}s");
+        if (text.chars().count() as u16) >= available_width {
+            return format!("{countdown}s");
+        }
+
+        let mut text = text;
         let running = self.running_summary();
         if !running.is_empty() {
-            text.push_str("  ");
-            text.push_str(&running);
+            let combined = format!("{text}  {running}");
+            if (combined.chars().count() as u16) < available_width {
+                text = combined;
+            }
         }
         text
     }
