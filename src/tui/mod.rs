@@ -8,12 +8,10 @@ pub mod app;
 pub mod composer;
 pub mod events;
 pub mod loopctl;
-pub mod operator;
 pub mod run;
 pub mod theme;
 pub mod watcher;
 
-pub use operator::ensure_operator_fin;
 pub use run::run_tui;
 
 #[allow(unused_imports)]

@@ -172,7 +172,16 @@ fn render_agents_template(
         .replace("{role}", role.trim())
 }
 
+#[cfg(test)]
 pub(crate) fn fin_config_template(fin: &FinRef) -> String {
+    fin_config_template_with_backend(fin, None)
+}
+
+pub(crate) fn fin_config_template_with_backend(fin: &FinRef, backend: Option<&str>) -> String {
+    let backend_line = backend
+        .map(|backend| format!("backend = \"{}\"", escape_toml_string(backend)))
+        .unwrap_or_else(|| "# backend = \"codex\"".to_string());
+
     format!(
         r#"# Orqa fin configuration.
 #
@@ -182,7 +191,7 @@ pub(crate) fn fin_config_template(fin: &FinRef) -> String {
 
 [fin]
 slug = "{slug}"
-# backend = "codex"
+{backend_line}
 # Use "0" to run any time there is work.
 # debounce = "5m"
 # Use "0" to run only when there is work.
@@ -193,8 +202,13 @@ slug = "{slug}"
 [backend]
 model = "gpt-5.3-codex"
 "#,
-        slug = fin.fin
+        slug = fin.fin,
+        backend_line = backend_line
     )
+}
+
+fn escape_toml_string(value: &str) -> String {
+    value.replace('\\', "\\\\").replace('"', "\\\"")
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

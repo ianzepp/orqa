@@ -11,7 +11,7 @@ use crate::{
         PodCharterSubcommand, PodCommand, PodSubcommand, TaskCommand, TaskSubcommand,
     },
     config::{
-        DEFAULT_CHARTER, DEFAULT_ROLE, fin_agents_template, fin_config_template,
+        DEFAULT_CHARTER, DEFAULT_ROLE, fin_agents_template, fin_config_template_with_backend,
         pod_agents_template, pod_config_template,
     },
     doctor::pod_doctor,
@@ -169,6 +169,20 @@ pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
 fn validate_slug_for_init(slug: &str) -> Result<(), String> {
     // Reuse existing validation but with a nicer message
     crate::model::validate_slug(slug).map_err(|e| format!("invalid pod slug: {e}"))
+}
+
+fn validate_backend_name(name: &str) -> Result<(), String> {
+    if !name.is_empty()
+        && name
+            .chars()
+            .all(|ch| ch.is_ascii_alphanumeric() || ch == '-' || ch == '_')
+    {
+        Ok(())
+    } else {
+        Err(format!(
+            "invalid backend name {name:?}; use ASCII letters, numbers, '-' or '_'"
+        ))
+    }
 }
 
 /// Shared implementation for creating a new-style pod inside a user-provided directory.
@@ -354,11 +368,17 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             ensure_fin_runtime_homes(orqa, &fin)?;
 
             let role = read_optional_markdown_source(args.role.as_deref(), DEFAULT_ROLE)?;
+            if let Some(backend) = &args.backend {
+                validate_backend_name(backend)?;
+            }
             ensure_maildir(&fin_home.join("mail"))?;
             ensure_maildir(&fin_home.join("tasks"))?;
 
             write_if_missing(&fin_home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
-            write_if_missing(&fin_home.join("fin.toml"), &fin_config_template(&fin))?;
+            write_if_missing(
+                &fin_home.join("fin.toml"),
+                &fin_config_template_with_backend(&fin, args.backend.as_deref()),
+            )?;
             write_if_missing(&fin_home.join("ROLE.md"), &role)?;
             write_if_missing(
                 &fin_home.join("AGENTS.md"),

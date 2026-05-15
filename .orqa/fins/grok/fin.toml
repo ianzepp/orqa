@@ -1,8 +1,0 @@
-[fin]
-slug = "grok"
-backend = "grok"
-debounce = "0"
-exec_always = "0"
-
-[backend]
-model = "grok-code-latest"

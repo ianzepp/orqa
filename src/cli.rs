@@ -349,6 +349,9 @@ pub(crate) struct FinCreateArgs {
     /// Fin role text, @file path, or - for stdin.
     #[arg(long, value_name = "PROMPT|@FILE|-")]
     pub(crate) role: Option<String>,
+    /// Backend name to write into fin.toml.
+    #[arg(long, value_name = "BACKEND")]
+    pub(crate) backend: Option<String>,
 }
 
 impl FinCreateArgs {

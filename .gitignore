@@ -1,10 +1,4 @@
 /target
-.orqa/tui-loop.pid
-.orqa/tui-loop.log
-.orqa/fins/*/.codex/auth.json
-.orqa/fins/*/.grok/auth.json
-.orqa/fins/*/latest-run
-.orqa/fins/*/runs/
-.orqa/fins/*/runs.jsonl
-.orqa/fins/*/mail/
-.orqa/fins/*/tasks/
+
+# Orqa coordination data is local-only runtime/project state.
+/.orqa

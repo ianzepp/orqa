@@ -1,7 +1,0 @@
-# Read-only git activity watcher.
-
-[fin]
-slug = "git-watch"
-backend = "gitlog"
-debounce = "0"
-exec_always = "60s"

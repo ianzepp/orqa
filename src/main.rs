@@ -108,13 +108,6 @@ fn main() -> ExitCode {
         // launch the Operator Cockpit TUI instead of the legacy text overview.
         match crate::model::resolve_pod_context(None, &orqa) {
             Ok((pod_slug, pod_root)) => {
-                // We have a real pod context. Ensure the operator fin exists (safe & idempotent),
-                // then launch the TUI.
-                if let Err(e) = crate::tui::ensure_operator_fin(&orqa, &pod_slug, &pod_root) {
-                    eprintln!("warning: failed to ensure operator fin for TUI: {e}");
-                    // Continue to TUI anyway — it can still be useful even without the fin.
-                }
-
                 if let Err(error) = crate::tui::run_tui(&pod_slug, &pod_root) {
                     eprintln!("orqa tui: {error}");
                     return ExitCode::FAILURE;
