@@ -220,7 +220,13 @@ pub(crate) fn list_runs(orqa: &Orqa, fin: &FinRef) -> Result<RunList, String> {
         for entry in entries.flatten() {
             let status = entry.path().join("status.json");
             if status.is_file() {
-                runs.push(read_run_record(&status)?);
+                match read_run_record(&status) {
+                    Ok(record) => runs.push(record),
+                    Err(err) => {
+                        eprintln!("warning: {err}");
+                        // Skip corrupt run record; do not abort the whole listing
+                    }
+                }
             }
         }
     }
@@ -236,8 +242,8 @@ pub(crate) fn read_run_record_for(
     fin: &FinRef,
     run: Option<&str>,
 ) -> Result<RunRecord, String> {
-    let run = resolve_run_id(orqa, fin, run)?;
-    read_run_record(&orqa.run_home(fin, &run).join("status.json"))
+    let run_id = resolve_run_id(orqa, fin, run)?;
+    read_run_record(&orqa.run_home(fin, &run_id).join("status.json"))
 }
 
 pub(crate) fn latest_run_started_at(
@@ -248,19 +254,26 @@ pub(crate) fn latest_run_started_at(
         Ok(run) => run.trim().to_string(),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
         Err(error) => {
-            return Err(format!(
-                "failed to read latest run for {}: {error}",
+            eprintln!(
+                "warning: failed to read latest-run pointer for {}: {error} (treating as no last run)",
                 fin.label()
-            ));
+            );
+            return Ok(None);
         }
     };
-    let micros = run
-        .split('.')
-        .next()
-        .ok_or_else(|| format!("latest run id {run:?} has no timestamp"))?
-        .parse::<u64>()
-        .map_err(|_| format!("latest run id {run:?} has invalid timestamp"))?;
-    Ok(Some(UNIX_EPOCH + Duration::from_micros(micros)))
+
+    let first = run.split('.').next().unwrap_or("");
+    match first.parse::<u64>() {
+        Ok(micros) => Ok(Some(UNIX_EPOCH + Duration::from_micros(micros))),
+        Err(_) => {
+            eprintln!(
+                "warning: latest-run pointer for {} is corrupt or unreadable ({}). Treating as no valid last run. Consider removing the pointer file.",
+                fin.label(),
+                orqa.latest_run_path(fin).display()
+            );
+            Ok(None)
+        }
+    }
 }
 
 pub(crate) fn read_run_logs(
@@ -333,17 +346,54 @@ pub(crate) fn tail_pod(
 }
 
 fn read_run_record(path: &Path) -> Result<RunRecord, String> {
-    let contents = fs::read_to_string(path)
-        .map_err(|error| format!("failed to read run status {}: {error}", path.display()))?;
-    serde_json::from_str(&contents)
-        .map_err(|error| format!("failed to parse run status {}: {error}", path.display()))
+    let contents = match fs::read_to_string(path) {
+        Ok(c) => c,
+        Err(error) => {
+            return Err(format!(
+                "failed to read run status {}: {error} (file may be corrupt; consider removing the run directory)",
+                path.display()
+            ));
+        }
+    };
+    match serde_json::from_str(&contents) {
+        Ok(record) => Ok(record),
+        Err(error) => Err(format!(
+            "failed to parse run status {}: {error} (file is corrupt; consider removing the run directory)",
+            path.display()
+        )),
+    }
 }
 
 fn resolve_run_id(orqa: &Orqa, fin: &FinRef, run: Option<&str>) -> Result<String, String> {
     match run {
-        Some("latest") | None => fs::read_to_string(orqa.latest_run_path(fin))
-            .map(|value| value.trim().to_string())
-            .map_err(|error| format!("failed to read latest run for {}: {error}", fin.label())),
+        Some("latest") | None => match fs::read_to_string(orqa.latest_run_path(fin)) {
+            Ok(value) => {
+                let trimmed = value.trim();
+                if trimmed.is_empty() {
+                    Err(format!(
+                        "fin {} has no valid latest run (pointer is empty). Run the fin at least once.",
+                        fin.label()
+                    ))
+                } else {
+                    Ok(trimmed.to_string())
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(format!(
+                "fin {} has no latest run yet. Run it at least once before using 'latest'.",
+                fin.label()
+            )),
+            Err(error) => {
+                eprintln!(
+                    "warning: latest-run pointer for {} is unreadable or corrupt ({error}). Treating as no valid last run.",
+                    fin.label()
+                );
+                Err(format!(
+                    "fin {} latest-run pointer is corrupt. Inspect or remove {} and re-run the fin.",
+                    fin.label(),
+                    orqa.latest_run_path(fin).display()
+                ))
+            }
+        },
         Some(run) => Ok(run.to_string()),
     }
 }

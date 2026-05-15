@@ -686,8 +686,45 @@ impl FinLock {
             "pid={pid}\npod={}\nfin={}\ncommand={:?}\n",
             fin.pod, fin.fin, command
         );
-        fs::write(&path, contents)
+
+        // Atomic lock acquisition: create_new(true) fails if the file already exists.
+        // This closes the TOCTOU window between try_existing and write.
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&path)
+            .map_err(|error| {
+                if error.kind() == std::io::ErrorKind::AlreadyExists {
+                    format!(
+                        "fin {} lock was acquired by another process (race)",
+                        fin.label()
+                    )
+                } else {
+                    format!("failed to create lock {}: {error}", path.display())
+                }
+            })?;
+
+        use std::io::Write;
+        file.write_all(contents.as_bytes())
             .map_err(|error| format!("failed to write lock {}: {error}", path.display()))?;
+        // Best-effort fsync for durability
+        let _ = file.sync_all();
+
+        // Post-write owner verification: re-read the lock we just created to confirm we own it.
+        // This catches certain replace/rename races on some filesystems.
+        let written = fs::read_to_string(&path).map_err(|e| {
+            format!(
+                "failed to verify lock we just wrote {}: {e}",
+                path.display()
+            )
+        })?;
+        if !written.contains(&format!("pid={pid}")) {
+            let _ = fs::remove_file(&path);
+            return Err(format!(
+                "lock verification failed for {} after write (race or corruption)",
+                fin.label()
+            ));
+        }
 
         Ok(Self { path, pid })
     }

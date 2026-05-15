@@ -58,5 +58,21 @@ Autocommit after each phase clears correctness + verification + poker-face + che
 
 **Next Phase Selected:** 2 — Daemon Prompt Argument Forwarding (HS #2)
 
+## Phase 2 Result (Completed 2026-05-15)
+
+**Phase Name:** Daemon Prompt Argument Forwarding (HS #2)  
+**Commit:** 3449c79 "Complete Phase 02: Daemon Prompt Argument Forwarding"  
+**Poker Face:** 100% (independent evaluator) — cleared ≥85% gate with no gaps in scope  
+**Checkpoint:** PASS
+
+**What Was Delivered:**
+- `ORQA_LOOP_ARGS` env var (JSON array of strings) is now the canonical way to forward prompt arguments from `loop start -- "..."` to the daemon child.
+- Parent no longer passes user prompt text as CLI args (prevents early clap failure in child).
+- Daemon branch in main.rs now reconstructs `LoopRunArgs { args: <deserialized> }` on every wake iteration and falls back gracefully on bad data.
+- Stale `--forever` references removed from help.md.
+- The exact user-facing pattern from the review and docs now works end-to-end.
+
+**Next Phase Selected:** 3 — FinLock Atomicity + Run State Tolerance (HS #3)
+
 ---
-*Ledger updated after Phase 1 commit. Factory continues.*
+*Ledger updated after Phase 2 commit. Factory continues.*
