@@ -62,9 +62,9 @@ cd ~/work/minted-geek-swarm/swarm-api
 orqa
 ```
 
-- The TUI performs pod auto-detection (upward directory walk for `.orqa/pod.toml` + lookup in the global registry at `~/.orqa/config.toml`).
-- If a pod root is found (`.orqa/pod.toml` exists and/or the directory is registered), the TUI launches in **cockpit mode** for that pod.
-- If no valid pod context is detectable, `orqa` falls back to the existing text-based overview (current `overview()` behavior). There is no global multi-pod TUI view at this time.
+- The TUI performs pod auto-detection via the already-implemented `resolve_pod_context()` (upward walk for `.orqa/pod.toml`, with registry cross-check and `ORQA_POD`/`CLI` precedence).
+- If a pod root is found, the TUI launches in **cockpit mode** for that pod (using `PodRegistration` + data-home paths for everything).
+- If no valid pod context is detectable, `orqa` falls back to the existing text-based overview (current `overview()` behavior, which still primarily scans the legacy `~/.orqa/pods` tree during the transition). There is no global multi-pod TUI view at this time.
 
 The design prioritizes the "I'm inside my project → I get the cockpit for its pod" path. Pod data is created explicitly with `orqa init` (or `orqa pod create --path ...`). The TUI never creates pods.
 
@@ -77,10 +77,11 @@ The TUI **only** creates the special `operator` fin, and only under these strict
 - A valid pod root has already been detected (`.orqa/pod.toml` exists at the project root, and the pod is registered or the directory is a recognized pod root).
 - The `operator` fin does not yet exist under `.orqa/fins/operator/`.
 
-On first TUI startup inside a pod that lacks the operator fin, it safely provisions:
+On first TUI startup inside a pod that lacks the operator fin, it safely provisions it using the new path helpers:
 
-- `.orqa/fins/operator/`
-- Minimal `fin.toml`, `ROLE.md` ("This fin is the dedicated identity for the human operator using the TUI cockpit"), `AGENTS.md`, `fin.txt`, and the standard `mail/`, `tasks/`, `runs/` layout.
+- Build a `PodRegistration { slug, path: pod_root, enabled: true }` from the detected context.
+- Create the fin at `orqa.fin_data_home(&reg, "operator")` (i.e. `<real-root>/.orqa/fins/operator/`).
+- Write minimal `fin.toml`, `ROLE.md` ("This fin is the dedicated identity for the human operator using the TUI cockpit"), `AGENTS.md`, `fin.txt`, and the standard `mail/`, `tasks/`, `runs/` layout.
 
 The operator fin is intentionally excluded from normal background wake-loop scheduling. It is only woken when the human uses the TUI composer to send it mail, or when other fins escalate to `operator@<pod>.orqa`.
 
@@ -226,12 +227,16 @@ The TUI should feel responsive and "always on" — you can leave it running in a
 
 ---
 
-## 7. Integration with Phase 05 Redesign
+## 7. Integration with Phase 05 Redesign (Current Implementation State)
 
-- **Pod detection**: The TUI relies entirely on the upward-walk + registry mechanism described in the redesign. This is the primary reason the redesign makes the TUI "easier" and more natural.
-- **Path resolution**: All TUI code uses the new `PodRegistration` + `Orqa::pod_data_home(reg)`, `fin_data_home`, `mail_data_home`, etc. There is no legacy `~/.orqa/pods/` path in the TUI implementation.
-- **Fin execution environment**: When the TUI wakes a fin in response to an operator message, it uses the post-redesign launch path (`cwd` = real pod root, `HOME` = real pod root, per-fin `*_HOME` still under `.orqa/fins/<fin>/`).
-- **operator@ addressing**: In the local pod context, `operator@<pod>.orqa` resolves to the local `.orqa/fins/operator/` fin. The global bridge to `ops` remains available for true cross-pod escalations.
+The Phase 05 pod-root redesign has been delivered. The TUI design now maps directly onto the implemented mechanisms:
+
+- **Pod detection**: `detect_pod_context()` (walks upward for `.orqa/pod.toml`) and `resolve_pod_context()` (precedence: explicit CLI arg → `ORQA_POD` env → local filesystem detection) already exist in `model.rs`. They are partially wired into commands such as `fin list` and `fin create`. The TUI's primary entry point (bare `orqa` with no subcommand) is the major missing consumer — it still calls the legacy `overview()` that scans `~/.orqa/pods`.
+- **Slug resolution**: Current detection derives the slug from the directory name of the folder containing `.orqa/`. `pod.toml` does contain `slug = "..."`, but it is not yet read by the detector (noted as a Phase 05-2 simplification that can be tightened later).
+- **Path resolution**: Use `PodRegistration { slug, path: pod_root, enabled }` + the `*_data_home()` methods on `Orqa` (`pod_data_home`, `fin_data_home`, `mail_data_home`, etc.). These correctly point at `<real-root>/.orqa/fins/<fin>/...`. Legacy `pod_home`/`fin_home` paths still exist for dual-support during transition.
+- **Effective helpers**: `effective_pod_root()`, `effective_fin_home()`, and `pod_root_for_slug()` prefer the registry + real root when available and fall back for old-style pods.
+- **Fin execution environment**: When the TUI (or loop) wakes a fin, `runtime.rs` and `runtime_home.rs` now set `current_dir` and `HOME` to the real pod root (from `effective_pod_root`), while keeping per-fin runtime state (`.grok/`, `.codex/`, etc.) isolated under `.orqa/fins/<fin>/`.
+- **operator@ addressing**: The current `mailbox` logic (`is_operator_alias`) unconditionally forwards any `operator@<pod>.orqa` to the global `ops` pod. For the TUI's local `operator` fin to work as a first-class per-pod inbox, address resolution will need a small enhancement: when a local `operator` fin exists under the current pod's `.orqa/fins/operator/`, prefer delivering there (the cross-pod escalation bridge to `ops` can remain for true multi-pod/global cases). This is a required change before the TUI can be fully functional.
 
 ---
 
@@ -267,16 +272,29 @@ The TUI should feel responsive and "always on" — you can leave it running in a
 
 ---
 
-## 10. Next Steps (After Design Approval)
+## 10. Next Steps (Current Status)
 
-1. Finalize this spec with feedback.
-2. Implement pod auto-detection + `current_pod_context()` helper (shared with the rest of Phase 05).
-3. Add support for the local `operator` fin creation and the `[operator]` section in `pod.toml`.
-4. Update `pod create` / `init` and the `AGENTS.md` templates to mention the operator surface.
-5. Prototype the Ratatui app (start with a single unified timeline + composer + filter hotkeys).
-6. Wire the composer to `send_mail` + the immediate supervised execution path.
-7. Add file watching / event normalization for the activity stream.
-8. Iterate on layout and keybindings based on real use.
+**Already delivered as part of Phase 05:**
+
+- Pod auto-detection (`detect_pod_context` + `resolve_pod_context`) and the registry + `PodRegistration` model.
+- `orqa init` as the primary "create pod data in this directory" command (thin wrapper over `pod create --path`).
+- New-style pod creation under `<dir>/.orqa/`, automatic `.gitignore` update, registration in `~/.orqa/config.toml`.
+- Updated runtime launch to use real pod root for `cwd`/`HOME`.
+- Effective path helpers and dual support for legacy pods during transition.
+
+**TUI-specific work remaining:**
+
+1. Wire bare `orqa` (no subcommand) in `main.rs` to call `resolve_pod_context()`. When a pod is detected, launch the Ratatui TUI cockpit instead of (or as a richer replacement for) the legacy text `overview()`.
+2. Implement creation of the local `operator` fin on first TUI launch inside a detected pod (using `fin_data_home` via `PodRegistration`). Never create pods.
+3. Optional but recommended: add `[operator] default_fin = "..."` support in `pod.toml` parsing (for the TUI composer default target).
+4. Enhance mail address resolution so that `operator@<pod>.orqa` prefers a local `.orqa/fins/operator/` fin when it exists in the current pod context.
+5. Update pod-level `AGENTS.md` template and `help.md` to document the new operator surface and `orqa init` flow.
+6. Prototype the Ratatui app (single unified timeline + composer + fin/thread/operator filters + live tailing of run logs and maildirs).
+7. Wire the composer send path + the "bypass debounce, respect run.lock, post-run re-wake" logic.
+8. Implement efficient file watching / event stream for the timeline (run logs + mail/new + tasks/new + lock files).
+9. Iterate on layout, keybindings, and mail read/done UI based on real use.
+
+The TUI is the first major end-user feature that makes the full power of the Phase 05 pod-root model visible to humans.
 
 ---
 
