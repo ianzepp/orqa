@@ -20,8 +20,9 @@ use std::{
 
 use clap::{CommandFactory, FromArgMatches};
 
-use cli::{Cli, Command};
-use commands::{fin, loop_command, mail, ops, overview, pod, task};
+#[allow(unused_imports)]
+use cli::{Cli, Command, InitArgs};
+use commands::{fin, loop_command, mail, ops, overview, pod, pod_init, task};
 use model::Orqa;
 use runtime::loop_pod;
 
@@ -120,6 +121,7 @@ fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
             print_operational_help();
             Ok(())
         }
+        Command::Init(args) => pod_init(orqa, args),
         Command::Pod(command) => pod(orqa, command),
         Command::Fin(command) => fin(orqa, command),
         Command::Mail(command) => mail(orqa, command),

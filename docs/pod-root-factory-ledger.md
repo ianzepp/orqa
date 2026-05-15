@@ -179,3 +179,34 @@ These will be resolved per-phase or recorded as accepted constraints.
 **Commit:** `Complete Phase 05-2: Pod Detection & Context Inference (pod root redesign)`
 
 **Next Phase Decision:** Proceed to Phase 05-3 (Pod/Fin Creation + Registry Management) — the big "pod create inside my project" experience.
+
+---
+
+**Active Phase:** 05-3 — Pod/Fin Creation + Registry Management
+
+**Status:** COMPLETE (core functionality delivered)
+
+**Delivery Spec:** `docs/pod-root-phase-03-creation-registration-delivery.md`
+
+**Delivered:**
+- `orqa init` as top-level command (slug default from dir name, `--path`, `--charter` support).
+- Creates full `.orqa/` structure in the user's real project directory.
+- Registers the pod in `~/.orqa/config.toml` under `[pods.<slug>]`.
+- `fin create <fin>` now supports omitting the pod (infers via detection from Phase 05-2) and creates fin files in the correct new location.
+- `fin list` continues to work with inference.
+- `list_pods` updated to read from registry (partial status for new pods).
+- All hygiene (fmt + clippy -D warnings) passes.
+
+**Notes:**
+- `pod create` still primarily legacy in this phase ( `orqa init` is the hero per user decision).
+- Full runtime dir creation (.grok etc.) for new-style pods will be aligned in Phase 05-4.
+- `pod list` status for new pods is partial until pod_status is updated.
+
+**Verification:** Compiles clean, manual flow `orqa init` → inferred `fin create` / `fin list` works.
+
+**Poker Face:** 75% (strong core `init` + inference experience; remaining polish in 05-5/06)
+**Gate:** PASS
+
+**Commit:** `Complete Phase 05-3: Pod/Fin Creation + Registry Management (pod root redesign)`
+
+**Next Phase:** 05-4 Runtime Launch Environment (change HOME/cwd to real pod root for agent execution).

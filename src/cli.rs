@@ -22,6 +22,8 @@ pub(crate) enum Command {
     /// Print the operational guide for agents using Orqa.
     #[command(name = "help")]
     Guide,
+    /// Initialize Orqa in the current directory (creates .orqa/ and registers the pod).
+    Init(InitArgs),
     /// Create or inspect pods.
     Pod(PodCommand),
     /// Create or operate fins inside a pod.
@@ -302,6 +304,18 @@ pub(crate) struct PodCreateArgs {
 }
 
 #[derive(Debug, Args)]
+pub(crate) struct InitArgs {
+    /// Pod slug (defaults to current directory name if valid).
+    pub(crate) slug: Option<String>,
+    /// Target directory (defaults to current directory).
+    #[arg(long, value_name = "DIR")]
+    pub(crate) path: Option<PathBuf>,
+    /// Pod charter text, @file path, or - for stdin.
+    #[arg(long, value_name = "PROMPT|@FILE|-")]
+    pub(crate) charter: Option<String>,
+}
+
+#[derive(Debug, Args)]
 pub(crate) struct PodCharterSetArgs {
     /// Pod slug.
     pub(crate) slug: String,
@@ -318,8 +332,8 @@ pub(crate) struct FinListArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct FinCreateArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
+    /// Pod slug (inferred from current directory if omitted and inside a pod).
+    pub(crate) pod: Option<String>,
     /// Fin slug inside the pod.
     pub(crate) fin: String,
     /// Fin role text, @file path, or - for stdin.

@@ -6,9 +6,9 @@ use std::{
 
 use crate::{
     cli::{
-        FinCommand, FinRoleSubcommand, FinSubcommand, LoopCommand, LoopStartArgs, LoopSubcommand,
-        MailCommand, MailSubcommand, OpsCommand, OpsSubcommand, PodCharterSubcommand, PodCommand,
-        PodSubcommand, TaskCommand, TaskSubcommand,
+        FinCommand, FinRoleSubcommand, FinSubcommand, InitArgs, LoopCommand, LoopStartArgs,
+        LoopSubcommand, MailCommand, MailSubcommand, OpsCommand, OpsSubcommand,
+        PodCharterSubcommand, PodCommand, PodSubcommand, TaskCommand, TaskSubcommand,
     },
     config::{
         DEFAULT_CHARTER, DEFAULT_ROLE, fin_agents_template, fin_config_template,
@@ -129,6 +129,139 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
     }
 }
 
+/// Initialize a new pod in the given (or current) directory.
+/// This is the primary friendly onboarding command (`orqa init`).
+pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
+    let target_dir = match args.path {
+        Some(p) => p,
+        None => {
+            std::env::current_dir().map_err(|e| format!("failed to get current directory: {e}"))?
+        }
+    };
+
+    let slug = match args.slug {
+        Some(s) => s,
+        None => {
+            // Default to directory name
+            target_dir
+                .file_name()
+                .and_then(|n| n.to_str())
+                .map(|s| s.to_string())
+                .ok_or(
+                    "could not determine slug from directory name; please provide one explicitly",
+                )?
+        }
+    };
+
+    // Validate slug
+    validate_slug_for_init(&slug)?;
+
+    let root = target_dir; // the user's project folder
+    let orqa_dir = root.join(".orqa");
+
+    if orqa_dir.join("pod.toml").exists() {
+        return Err(format!(
+            "orqa is already initialized in this directory (found {}). Run 'orqa pod list' or 'orqa init' with a different directory.",
+            orqa_dir.display()
+        ));
+    }
+
+    // Create structure
+    fs::create_dir_all(orqa_dir.join("fins"))
+        .map_err(|e| format!("failed to create .orqa/fins directory: {e}"))?;
+
+    let charter = read_optional_markdown_source(args.charter.as_deref(), DEFAULT_CHARTER)?;
+
+    // Write files using the new data-home style where possible
+    let reg = crate::model::PodRegistration {
+        slug: slug.clone(),
+        path: root.clone(),
+        enabled: true,
+    };
+
+    let pod_data = orqa.pod_data_home(&reg);
+
+    write_if_missing(&pod_data.join("pod.txt"), &format!("slug={}\n", slug))?;
+    write_if_missing(
+        &pod_data.join("pod.toml"),
+        &pod_config_template(&PodRef::new(&slug)?),
+    )?;
+    write_if_missing(&pod_data.join("CHARTER.md"), &charter)?;
+    write_if_missing(
+        &pod_data.join("AGENTS.md"),
+        &pod_agents_template(&PodRef::new(&slug)?, &charter),
+    )?;
+
+    // Register in global config
+    register_pod(orqa, &slug, &root)?;
+
+    println!("Initialized pod '{}' in {}", slug, root.display());
+    println!("Next steps:");
+    println!("  orqa fin create planner");
+    println!("  orqa loop");
+
+    Ok(())
+}
+
+fn validate_slug_for_init(slug: &str) -> Result<(), String> {
+    // Reuse existing validation but with a nicer message
+    crate::model::validate_slug(slug).map_err(|e| format!("invalid pod slug: {e}"))
+}
+
+/// Registers (or updates) a pod in the global ~/.orqa/config.toml
+fn register_pod(orqa: &Orqa, slug: &str, root: &Path) -> Result<(), String> {
+    let config_path = orqa.home.join("config.toml");
+
+    // Read existing or start fresh
+    let mut table: toml::Table = if config_path.exists() {
+        let content =
+            fs::read_to_string(&config_path).map_err(|e| format!("failed to read config: {e}"))?;
+        content.parse().unwrap_or_else(|_| toml::Table::new())
+    } else {
+        toml::Table::new()
+    };
+
+    // Ensure [registry] section exists
+    let registry = table
+        .entry("registry".to_string())
+        .or_insert(toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .ok_or("invalid registry section in config.toml")?;
+
+    registry.insert("version".to_string(), toml::Value::Integer(1));
+
+    // Ensure [pods] section
+    let pods = table
+        .entry("pods".to_string())
+        .or_insert(toml::Value::Table(toml::Table::new()))
+        .as_table_mut()
+        .ok_or("invalid pods section")?;
+
+    // Build the pod entry
+    let mut pod_entry = toml::Table::new();
+    pod_entry.insert(
+        "path".to_string(),
+        toml::Value::String(root.display().to_string()),
+    );
+    pod_entry.insert("enabled".to_string(), toml::Value::Boolean(true));
+
+    pods.insert(slug.to_string(), toml::Value::Table(pod_entry));
+
+    // Write back
+    let new_content =
+        toml::to_string_pretty(&table).map_err(|e| format!("failed to serialize config: {e}"))?;
+
+    // Simple write (for Phase 05-3; we can improve atomicity later)
+    fs::write(&config_path, new_content).map_err(|e| {
+        format!(
+            "failed to write global config {}: {e}",
+            config_path.display()
+        )
+    })?;
+
+    Ok(())
+}
+
 pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
     match command.command {
         FinSubcommand::List(args) => {
@@ -152,19 +285,41 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             print_dirs(&fins_dir)
         }
         FinSubcommand::Create(args) => {
-            let pod = PodRef::new(&args.pod)?;
-            orqa.ensure_pod_exists(&pod)?;
-            let fin = FinRef::new(&args.pod, &args.fin)?;
-            let home = orqa.fin_home(&fin);
+            let (pod_slug, pod_root) = resolve_pod_context(args.pod.clone(), orqa)?;
+
+            // If we have a real root (from detection or explicit new-style), use new paths
+            let (fin_home, _use_new_paths) = if pod_root.join(".orqa").exists() {
+                let reg = crate::model::PodRegistration {
+                    slug: pod_slug.clone(),
+                    path: pod_root.clone(),
+                    enabled: true,
+                };
+                (orqa.fin_data_home(&reg, &args.fin), true)
+            } else {
+                let fin_ref = FinRef::new(&pod_slug, &args.fin)?;
+                (orqa.fin_home(&fin_ref), false)
+            };
+
+            // For existence check, we still use the legacy PodRef for now (will be cleaned in later phases)
+            let pod_ref = PodRef::new(&pod_slug)?;
+            orqa.ensure_pod_exists(&pod_ref)?;
+
+            let fin = FinRef::new(&pod_slug, &args.fin)?;
             ensure_fin_runtime_homes(orqa, &fin)?;
+
             let role = read_optional_markdown_source(args.role.as_deref(), DEFAULT_ROLE)?;
-            ensure_maildir(&orqa.mail_home(&fin))?;
-            ensure_maildir(&orqa.task_home(&fin))?;
-            write_if_missing(&home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
-            write_if_missing(&home.join("fin.toml"), &fin_config_template(&fin))?;
-            write_if_missing(&home.join("ROLE.md"), &role)?;
-            write_if_missing(&home.join("AGENTS.md"), &fin_agents_template(&fin, &role))?;
-            println!("{}", home.display());
+            ensure_maildir(&fin_home.join("mail"))?;
+            ensure_maildir(&fin_home.join("tasks"))?;
+
+            write_if_missing(&fin_home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
+            write_if_missing(&fin_home.join("fin.toml"), &fin_config_template(&fin))?;
+            write_if_missing(&fin_home.join("ROLE.md"), &role)?;
+            write_if_missing(
+                &fin_home.join("AGENTS.md"),
+                &fin_agents_template(&fin, &role),
+            )?;
+
+            println!("{}", fin_home.display());
             Ok(())
         }
         FinSubcommand::Role(command) => match command.command {
@@ -282,9 +437,25 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
 }
 
 fn list_pods(orqa: &Orqa) -> Result<(), String> {
-    for pod in list_dirs(&orqa.home.join("pods"))? {
-        let pod = PodRef::new(&pod)?;
-        print_pod_list_status(&pod_status(orqa, &pod)?);
+    // Phase 05-3+: Prefer registry (new pod roots)
+    let regs = crate::model::load_registry(orqa).unwrap_or_default();
+    if !regs.is_empty() {
+        for reg in regs.values() {
+            if reg.enabled {
+                // Construct a minimal PodRef for status (legacy path may not exist)
+                if let Ok(pod_ref) = PodRef::new(&reg.slug) {
+                    // Note: pod_status currently uses old paths; for new pods this may be partial
+                    // Full support in later phase
+                    let _ = print_pod_list_status(&pod_status(orqa, &pod_ref)?);
+                }
+            }
+        }
+    } else {
+        // Legacy fallback
+        for pod in list_dirs(&orqa.home.join("pods"))? {
+            let pod = PodRef::new(&pod)?;
+            print_pod_list_status(&pod_status(orqa, &pod)?);
+        }
     }
     Ok(())
 }
