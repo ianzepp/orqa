@@ -1123,7 +1123,7 @@ fn mail_to_ops_operator_records_cross_pod_message() {
 }
 
 #[test]
-fn ops_report_prints_pods_tasks_and_mail() {
+fn ops_report_prints_current_pod_tasks_and_mail() {
     let root = temp_root();
 
     create_pod(&root, "ops");
@@ -1173,10 +1173,20 @@ fn ops_report_prints_pods_tasks_and_mail() {
         ],
     );
 
-    let report = orqa_output(&root, ["ops", "report", "--since", "1d"]);
+    let output = command(&root, ["ops", "report", "--since", "1d"])
+        .current_dir(pod_root(&root, "deploy"))
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "orqa failed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let report = String::from_utf8(output.stdout).unwrap();
     assert!(report.contains("# Orqa Ops Report"));
-    assert!(report.contains("## Pod `ops`"));
-    assert!(report.contains("### Fin `operator`"));
+    assert!(report.contains("- pods: `1`"));
+    assert!(!report.contains("## Pod `ops`"));
     assert!(report.contains("## Pod `deploy`"));
     assert!(report.contains("### Fin `release`"));
     assert!(report.contains("#### Tasks"));
@@ -1185,9 +1195,9 @@ fn ops_report_prints_pods_tasks_and_mail() {
     assert!(report.contains("#### Mail"));
     assert!(report.contains("subject=`Release note`"));
     assert!(report.contains("Remember to summarize operator mail."));
-    assert!(report.contains("Cloudflare auth expired"));
-    assert!(report.contains("to=`operator@ops.orqa`"));
-    assert!(report.contains("Need a human to refresh credentials."));
+    assert!(!report.contains("Cloudflare auth expired"));
+    assert!(!report.contains("to=`operator@ops.orqa`"));
+    assert!(!report.contains("Need a human to refresh credentials."));
     assert!(report.contains(" id=`"));
     assert!(report.contains(" path=`"));
 

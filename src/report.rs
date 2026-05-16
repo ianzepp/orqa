@@ -7,7 +7,7 @@ use std::{
 use crate::{
     cli::OpsReportArgs,
     mailbox::{field_value, message_id, sorted_files, split_front_matter},
-    model::{FinRef, Orqa, PodRef, load_registry},
+    model::{FinRef, Orqa, PodRef, resolve_pod_context},
     status::fin_status,
 };
 
@@ -15,7 +15,7 @@ const CONTEXT_LIMIT: usize = 600;
 
 pub(crate) fn ops_report(orqa: &Orqa, args: OpsReportArgs) -> Result<(), String> {
     let since = args.since.as_deref().map(parse_since).transpose()?;
-    let pods = load_registry(orqa)?;
+    let (pod, _) = resolve_pod_context(None, orqa)?;
 
     println!("# Orqa Ops Report");
     println!();
@@ -28,12 +28,10 @@ pub(crate) fn ops_report(orqa: &Orqa, args: OpsReportArgs) -> Result<(), String>
         Some(since) => println!("- since: `{}`", since.label),
         None => println!("- since: `all`"),
     }
-    println!("- pods: `{}`", pods.len());
+    println!("- pods: `1`");
     println!();
 
-    for pod in pods.keys() {
-        print_pod(orqa, pod, since.as_ref())?;
-    }
+    print_pod(orqa, &pod, since.as_ref())?;
 
     Ok(())
 }
