@@ -10,6 +10,7 @@ pub mod events;
 pub mod loopctl;
 pub mod run;
 pub mod theme;
+mod view;
 pub mod watcher;
 
 pub use run::run_tui;
