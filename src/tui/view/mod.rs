@@ -3,6 +3,7 @@
 mod header;
 mod input;
 mod layout;
+mod markdown;
 mod overlays;
 mod style;
 mod timeline;

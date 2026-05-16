@@ -8,7 +8,10 @@ use ratatui::{
 use crate::tui::{
     app::App,
     events::{Event, LogStream},
-    view::style::{bold, fg, strong},
+    view::{
+        markdown::render_markdown,
+        style::{bold, fg, strong},
+    },
 };
 
 pub(super) fn render(app: &mut App, frame: &mut Frame, area: Rect) {
@@ -58,13 +61,18 @@ fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {
                 LogStream::Stderr => app.theme.error,
                 LogStream::Event => app.theme.event,
             };
-            prefixed_wrapped_lines(
-                vec![fin_tag(fin, fg(app.theme.accent)), Span::raw(" ")],
-                fin_tag_width(fin) + 1,
-                line,
-                fg(color),
-                width,
-            )
+            let prefix = vec![fin_tag(fin, fg(app.theme.accent)), Span::raw(" ")];
+            let prefix_width = fin_tag_width(fin) + 1;
+            if *stream == LogStream::Stdout {
+                let content_width = usize::from(width).saturating_sub(prefix_width).max(1);
+                prefixed_lines(
+                    prefix,
+                    prefix_width,
+                    render_markdown(line, content_width, fg(color), &app.theme),
+                )
+            } else {
+                prefixed_wrapped_lines(prefix, prefix_width, line, fg(color), width)
+            }
         }
         Event::MailArrived {
             fin, from, subject, ..
@@ -156,6 +164,26 @@ fn prefixed_wrapped_lines(
         }
     }
 
+    lines
+}
+
+fn prefixed_lines(
+    prefix: Vec<Span<'static>>,
+    prefix_width: usize,
+    content_lines: Vec<Line<'static>>,
+) -> Vec<Line<'static>> {
+    let mut lines = Vec::new();
+    for (index, line) in content_lines.into_iter().enumerate() {
+        if index == 0 {
+            let mut spans = prefix.clone();
+            spans.extend(line.spans);
+            lines.push(Line::from(spans));
+        } else {
+            let mut spans = vec![Span::raw(" ".repeat(prefix_width))];
+            spans.extend(line.spans);
+            lines.push(Line::from(spans));
+        }
+    }
     lines
 }
 
