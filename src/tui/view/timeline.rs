@@ -17,11 +17,11 @@ use crate::tui::{
 
 pub(super) fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let visible_events = app.visible_events();
-    let visible_count = visible_events.len();
     let items: Vec<ListItem> = visible_events
         .into_iter()
-        .map(|event| event_to_item(app, event, area.width))
+        .filter_map(|event| event_to_item(app, event, area.width))
         .collect();
+    let visible_count = items.len();
 
     let list = List::new(items).highlight_style(bold(app.theme.text));
 
@@ -50,8 +50,9 @@ fn render_empty(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(empty), area);
 }
 
-fn event_to_item(app: &App, event: &Event, width: u16) -> ListItem<'static> {
-    ListItem::new(event_to_lines(app, event, width))
+fn event_to_item(app: &App, event: &Event, width: u16) -> Option<ListItem<'static>> {
+    let lines = event_to_lines(app, event, width);
+    (!lines.is_empty()).then(|| ListItem::new(lines))
 }
 
 fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {
@@ -66,13 +67,23 @@ fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {
             let prefix_width = fin_tag_width(fin) + 1;
             if *stream == LogStream::Stdout {
                 let content_width = usize::from(width).saturating_sub(prefix_width).max(1);
-                let rendered_line =
-                    grok_streaming_json_to_markdown(line).unwrap_or_else(|| line.to_string());
+                let rendered_line = match grok_streaming_json_to_markdown(line) {
+                    Some(rendered) if rendered.trim().is_empty() => return Vec::new(),
+                    Some(rendered) => rendered,
+                    None => line.to_string(),
+                };
                 prefixed_lines(
                     prefix,
                     prefix_width,
                     render_markdown(&rendered_line, content_width, fg(color), &app.theme),
                 )
+            } else if *stream == LogStream::Event {
+                let rendered_line = match backend_event_json_to_summary(line) {
+                    Some(rendered) if rendered.trim().is_empty() => return Vec::new(),
+                    Some(rendered) => rendered,
+                    None => line.to_string(),
+                };
+                prefixed_wrapped_lines(prefix, prefix_width, &rendered_line, fg(color), width)
             } else {
                 prefixed_wrapped_lines(prefix, prefix_width, line, fg(color), width)
             }
@@ -172,6 +183,7 @@ fn prefixed_wrapped_lines(
 
 pub(super) fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
     let mut rendered = String::new();
+    let mut thought = String::new();
     let mut saw_stream_event = false;
 
     for raw_line in raw.lines() {
@@ -190,23 +202,19 @@ pub(super) fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
 
         match kind {
             "text" => {
+                flush_thought(&mut rendered, &mut thought);
                 if let Some(data) = value.get("data").and_then(Value::as_str) {
                     rendered.push_str(data);
                 }
             }
             "thought" => {
-                if !rendered.is_empty() && !rendered.ends_with("\n\n") {
-                    rendered.push_str("\n\n");
-                }
-                rendered.push_str("> thinking");
                 if let Some(data) = streaming_event_detail(&value) {
-                    rendered.push_str(": ");
-                    rendered.push_str(&data);
+                    thought.push_str(&data);
                 }
-                rendered.push('\n');
             }
-            "end" => {}
+            "end" => flush_thought(&mut rendered, &mut thought),
             other => {
+                flush_thought(&mut rendered, &mut thought);
                 if !rendered.is_empty() && !rendered.ends_with('\n') {
                     rendered.push('\n');
                 }
@@ -222,7 +230,119 @@ pub(super) fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
         }
     }
 
+    flush_thought(&mut rendered, &mut thought);
     saw_stream_event.then_some(rendered)
+}
+
+pub(super) fn backend_event_json_to_summary(raw: &str) -> Option<String> {
+    let mut rendered = Vec::new();
+    let mut saw_backend_event = false;
+
+    for raw_line in raw.lines() {
+        let raw_line = raw_line.trim();
+        if raw_line.is_empty() {
+            continue;
+        }
+
+        let Ok(value) = serde_json::from_str::<Value>(raw_line) else {
+            return None;
+        };
+        let Some(event) = value.get("event").and_then(Value::as_str) else {
+            return None;
+        };
+        saw_backend_event = true;
+
+        match event {
+            "planned" => {
+                if let Some(command) = value.get("command").and_then(Value::as_str) {
+                    rendered.push(format!("planned: {command}"));
+                } else {
+                    rendered.push("planned run".to_string());
+                }
+            }
+            "spawned" => {
+                if let Some(pid) = value.get("pid").and_then(Value::as_str) {
+                    rendered.push(format!("spawned pid {pid}"));
+                } else {
+                    rendered.push("spawned".to_string());
+                }
+            }
+            "finished" => {}
+            other => {
+                let detail = backend_event_detail(&value);
+                if detail.is_empty() {
+                    rendered.push(other.to_string());
+                } else {
+                    rendered.push(format!("{other}: {detail}"));
+                }
+            }
+        }
+    }
+
+    saw_backend_event.then_some(rendered.join("\n"))
+}
+
+fn flush_thought(rendered: &mut String, thought: &mut String) {
+    let thought_text = normalize_streamed_text(thought);
+    if thought_text.is_empty() {
+        thought.clear();
+        return;
+    }
+
+    if !rendered.is_empty() && !rendered.ends_with("\n\n") {
+        rendered.push_str("\n\n");
+    }
+    rendered.push_str("> thinking: ");
+    rendered.push_str(&thought_text);
+    rendered.push_str("\n\n");
+    thought.clear();
+}
+
+fn normalize_streamed_text(text: &str) -> String {
+    let collapsed = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    let tightened_quotes = tighten_quote_spacing(&collapsed);
+    remove_space_before_punctuation(&tightened_quotes)
+}
+
+fn tighten_quote_spacing(text: &str) -> String {
+    let mut out = String::new();
+    let mut in_quote = false;
+    let mut chars = text.chars().peekable();
+
+    while let Some(ch) = chars.next() {
+        if ch == '"' {
+            if in_quote {
+                while out.ends_with(' ') {
+                    out.pop();
+                }
+                out.push(ch);
+                in_quote = false;
+            } else {
+                out.push(ch);
+                in_quote = true;
+                while chars.peek().is_some_and(|next| next.is_whitespace()) {
+                    chars.next();
+                }
+            }
+        } else {
+            out.push(ch);
+        }
+    }
+
+    out
+}
+
+fn remove_space_before_punctuation(text: &str) -> String {
+    let mut out = String::new();
+    for ch in text.chars() {
+        if matches!(ch, '.' | ',' | '!' | '?' | ';' | ':' | ')' | ']' | '}') {
+            while out.ends_with(' ') {
+                out.pop();
+            }
+        }
+        out.push(ch);
+    }
+    out
 }
 
 fn streaming_event_detail(value: &Value) -> Option<String> {
@@ -242,6 +362,19 @@ fn streaming_event_detail(value: &Value) -> Option<String> {
     } else {
         serde_json::to_string(data).ok()
     }
+}
+
+fn backend_event_detail(value: &Value) -> String {
+    for key in ["command", "pid", "exit_code", "run"] {
+        if let Some(text) = value.get(key).and_then(Value::as_str) {
+            return text.to_string();
+        }
+        if let Some(number) = value.get(key).and_then(Value::as_i64) {
+            return number.to_string();
+        }
+    }
+
+    String::new()
 }
 
 fn prefixed_lines(

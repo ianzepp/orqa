@@ -1,4 +1,4 @@
-use super::{grok_streaming_json_to_markdown, wrap_text};
+use super::{backend_event_json_to_summary, grok_streaming_json_to_markdown, wrap_text};
 
 #[test]
 fn wraps_text_to_available_width() {
@@ -47,7 +47,23 @@ fn joins_multiple_grok_streaming_text_events() {
 fn renders_grok_thought_events_as_blockquotes() {
     assert_eq!(
         grok_streaming_json_to_markdown(r#"{"type":"thought","data":"checking mail"}"#),
-        Some("> thinking: checking mail\n".to_string())
+        Some("> thinking: checking mail\n\n".to_string())
+    );
+}
+
+#[test]
+fn joins_tokenized_grok_thought_events() {
+    assert_eq!(
+        grok_streaming_json_to_markdown(
+            r#"{"type":"thought","data":"The"}
+{"type":"thought","data":" user"}
+{"type":"thought","data":" said"}
+{"type":"thought","data":" \""}
+{"type":"thought","data":" hi"}
+{"type":"thought","data":" \"."}
+{"type":"text","data":"Hello!"}"#
+        ),
+        Some("> thinking: The user said \"hi\".\n\nHello!".to_string())
     );
 }
 
@@ -62,4 +78,26 @@ fn renders_unknown_grok_streaming_events_with_detail() {
 #[test]
 fn leaves_non_streaming_output_alone() {
     assert_eq!(grok_streaming_json_to_markdown("plain markdown"), None);
+}
+
+#[test]
+fn summarizes_backend_lifecycle_events() {
+    assert_eq!(
+        backend_event_json_to_summary(
+            r#"{"command":"grok -p hi --output-format streaming-json --always-approve","event":"planned"}
+{"event":"spawned","pid":"48293"}"#
+        ),
+        Some(
+            "planned: grok -p hi --output-format streaming-json --always-approve\nspawned pid 48293"
+                .to_string()
+        )
+    );
+}
+
+#[test]
+fn hides_duplicate_backend_finished_events() {
+    assert_eq!(
+        backend_event_json_to_summary(r#"{"event":"finished","exit_code":"0"}"#),
+        Some(String::new())
+    );
 }
