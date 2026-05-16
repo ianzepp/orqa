@@ -2,3 +2,10 @@
 
 # Orqa coordination data is local-only runtime/project state.
 /.orqa
+
+# Backend CLIs may still create root-local caches even when Orqa points their
+# primary homes at .orqa/fins/<fin>/.
+/.codex
+/.grok
+/.hermes
+/.pi
