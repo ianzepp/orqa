@@ -63,80 +63,81 @@ chat_args = [
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
 
-# Enable and edit these examples if this pod should allow additional backends.
+# Built-in backend definitions are enabled up front. They do nothing unless a
+# fin selects them with `backend = "..."`
 
-# [backends.opencode]
-# enabled = true
-# command = "opencode"
-# exec_args = ["run", "--model", "{{model}}", "{{prompt}}"]
-# chat_args = ["--model", "{{model}}"]
-#
-# [backends.opencode.defaults]
-# model = "provider/model"
+[backends.opencode]
+enabled = true
+command = "opencode"
+exec_args = ["run", "--model", "{{model}}", "{{prompt}}"]
+chat_args = ["--model", "{{model}}"]
 
-# [backends.hermes]
-# enabled = true
-# command = "hermes"
-# exec_args = ["--model", "{{model}}", "--oneshot", "{{prompt}}"]
-# chat_args = ["chat", "--model", "{{model}}"]
-#
-# [backends.hermes.defaults]
-# model = "anthropic/claude-sonnet-4.6"
+[backends.opencode.defaults]
+model = "provider/model"
 
-# [backends.pi]
-# enabled = true
-# command = "pi"
-# exec_args = [
-#     "--model", "{{model}}",
-#     "--session-dir", "{{fin_home}}/.pi/sessions",
-#     "--print",
-#     "{{prompt}}",
-# ]
-# chat_args = [
-#     "--model", "{{model}}",
-#     "--session-dir", "{{fin_home}}/.pi/sessions",
-# ]
-#
-# [backends.pi.defaults]
-# model = "provider/model"
+[backends.hermes]
+enabled = true
+command = "hermes"
+exec_args = ["--model", "{{model}}", "--oneshot", "{{prompt}}"]
+chat_args = ["chat", "--model", "{{model}}"]
+
+[backends.hermes.defaults]
+model = "anthropic/claude-sonnet-4.6"
+
+[backends.pi]
+enabled = true
+command = "pi"
+exec_args = [
+    "--model", "{{model}}",
+    "--session-dir", "{{fin_home}}/.pi/sessions",
+    "--print",
+    "{{prompt}}",
+]
+chat_args = [
+    "--model", "{{model}}",
+    "--session-dir", "{{fin_home}}/.pi/sessions",
+]
+
+[backends.pi.defaults]
+model = "provider/model"
 
 # Grok (xAI Grok Build) is a powerful coding agent with strong headless support.
 # Use `-p` for single-turn execution and the TUI for interactive chat.
-# [backends.grok]
-# enabled = true
-# command = "grok"
-# exec_args = ["-p", "{{prompt}}", "--always-approve"]
-# chat_args = []
-#
-# [backends.grok.defaults]
-# model = "grok-code-latest"
+[backends.grok]
+enabled = true
+command = "grok"
+exec_args = ["-p", "{{prompt}}", "--always-approve"]
+chat_args = []
+
+[backends.grok.defaults]
+model = "grok-code-latest"
 
 # Ollama is most useful through a coding-agent integration. This runs Codex
 # against an Ollama model while keeping Codex's tool loop and fin-local
 # CODEX_HOME.
-# [backends.ollama_codex]
-# enabled = true
-# command = "ollama"
-# exec_args = [
-#     "launch", "codex",
-#     "--model", "{{model}}",
-#     "--",
-#     "exec",
-#     "--skip-git-repo-check",
-#     "--sandbox", "workspace-write",
-#     "--cd", "{{pod_home}}",
-#     "{{prompt}}",
-# ]
-# chat_args = [
-#     "launch", "codex",
-#     "--model", "{{model}}",
-#     "--",
-#     "--sandbox", "workspace-write",
-#     "--cd", "{{pod_home}}",
-# ]
-#
-# [backends.ollama_codex.defaults]
-# model = "gpt-oss:120b"
+[backends.ollama_codex]
+enabled = true
+command = "ollama"
+exec_args = [
+    "launch", "codex",
+    "--model", "{{model}}",
+    "--",
+    "exec",
+    "--skip-git-repo-check",
+    "--sandbox", "workspace-write",
+    "--cd", "{{pod_home}}",
+    "{{prompt}}",
+]
+chat_args = [
+    "launch", "codex",
+    "--model", "{{model}}",
+    "--",
+    "--sandbox", "workspace-write",
+    "--cd", "{{pod_home}}",
+]
+
+[backends.ollama_codex.defaults]
+model = "gpt-oss:120b"
 
 # [backends.custom]
 # enabled = true

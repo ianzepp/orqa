@@ -13,6 +13,7 @@ use crate::{
 };
 
 pub(crate) const TUI_LOOP_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+pub(crate) const TUI_LOOP_PROMPT: &str = "handle your open Orqa mail and tasks";
 
 pub(crate) struct PodLoopWorker {
     child: Option<Child>,
@@ -68,6 +69,7 @@ pub(crate) fn start_tui_loop_worker(
         .env("ORQA_LOOP_WORKER_PID_PATH", &pid_path)
         .env("ORQA_INTERVAL", TUI_LOOP_INTERVAL.as_secs().to_string())
         .env("ORQA_FORCE", "0")
+        .env("ORQA_LOOP_ARGS", tui_loop_prompt_args_json()?)
         .arg("--home")
         .arg(&orqa.home)
         .current_dir(&reg.path)
@@ -120,3 +122,12 @@ fn pod_loop_pid_path(orqa: &Orqa, reg: &PodRegistration) -> std::path::PathBuf {
     let _ = orqa;
     reg.path.join(".orqa").join("tui-loop.pid")
 }
+
+pub(crate) fn tui_loop_prompt_args_json() -> Result<String, String> {
+    serde_json::to_string(&[TUI_LOOP_PROMPT])
+        .map_err(|error| format!("failed to serialize TUI loop prompt args: {error}"))
+}
+
+#[cfg(test)]
+#[path = "loopctl_test.rs"]
+mod tests;

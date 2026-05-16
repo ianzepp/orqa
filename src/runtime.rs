@@ -382,7 +382,9 @@ fn spawn_supervised_wake(
 ) -> Result<(), String> {
     let exe = std::env::current_exe()
         .map_err(|error| format!("failed to resolve current executable: {error}"))?;
-    let mut child = ProcessCommand::new(exe)
+    let mut supervisor = ProcessCommand::new(exe);
+    clear_loop_worker_env(&mut supervisor);
+    let mut child = supervisor
         .arg("--home")
         .arg(&orqa.home)
         .arg("fin")
@@ -410,6 +412,19 @@ fn spawn_supervised_wake(
         wake.open_tasks
     );
     Ok(())
+}
+
+fn clear_loop_worker_env(command: &mut ProcessCommand) {
+    for key in [
+        "ORQA_LOOP_WORKER",
+        "ORQA_LOOP_WORKER_POD",
+        "ORQA_LOOP_WORKER_PID_PATH",
+        "ORQA_INTERVAL",
+        "ORQA_FORCE",
+        "ORQA_LOOP_ARGS",
+    ] {
+        command.env_remove(key);
+    }
 }
 
 fn supervisor_args(command: &BackendCommand) -> Vec<OsString> {

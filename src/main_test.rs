@@ -206,7 +206,7 @@ fn writes_and_removes_sleep_markers() {
 }
 
 #[test]
-fn pod_config_template_includes_commented_backend_examples() {
+fn pod_config_template_enables_builtin_backends() {
     let pod = PodRef::new("sample-pod").unwrap();
     let toml = pod_config_template(&pod);
 
@@ -222,14 +222,16 @@ fn pod_config_template_includes_commented_backend_examples() {
     assert!(toml.contains(
         "chat_args = [\n    \"--sandbox\", \"workspace-write\",\n    \"--cd\", \"{pod_home}\",\n    \"--model\", \"{model}\",\n]"
     ));
-    assert!(toml.contains("# [backends.opencode]"));
-    assert!(toml.contains("# [backends.hermes]"));
-    assert!(toml.contains("# exec_args = [\"--model\", \"{model}\", \"--oneshot\", \"{prompt}\"]"));
-    assert!(toml.contains("# [backends.pi]"));
-    assert!(toml.contains("#     \"--session-dir\", \"{fin_home}/.pi/sessions\","));
-    assert!(toml.contains("# [backends.ollama_codex]"));
-    assert!(toml.contains("#     \"launch\", \"codex\","));
-    assert!(toml.contains("# [backends.ollama_codex.defaults]"));
+    assert!(toml.contains("[backends.opencode]"));
+    assert!(toml.contains("[backends.hermes]"));
+    assert!(toml.contains("exec_args = [\"--model\", \"{model}\", \"--oneshot\", \"{prompt}\"]"));
+    assert!(toml.contains("[backends.pi]"));
+    assert!(toml.contains("    \"--session-dir\", \"{fin_home}/.pi/sessions\","));
+    assert!(toml.contains("[backends.grok]"));
+    assert!(toml.contains("exec_args = [\"-p\", \"{prompt}\", \"--always-approve\"]"));
+    assert!(toml.contains("[backends.ollama_codex]"));
+    assert!(toml.contains("    \"launch\", \"codex\","));
+    assert!(toml.contains("[backends.ollama_codex.defaults]"));
     assert!(toml.contains("# [backends.custom]"));
 }
 

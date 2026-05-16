@@ -248,8 +248,10 @@ chat_args = [
 model = "gpt-5.3-codex"
 ```
 
-Generated `pod.toml` files also include commented examples for OpenCode,
-Hermes, Pi, Ollama, and custom runners.
+Generated `pod.toml` files enable the built-in backend definitions up front:
+Codex, OpenCode, Hermes, Pi, Grok, and Ollama-through-Codex. They do nothing
+unless a fin selects them. Custom runner examples stay commented because they
+need a site-specific command.
 
 The generated Ollama example uses `ollama launch codex` rather than raw
 `ollama run`, so Codex still provides the tool loop, working directory,

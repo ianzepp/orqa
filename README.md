@@ -112,9 +112,9 @@ Pods and fins have TOML config files:
 ```
 
 `pod.toml` owns backend definitions. This keeps command formats and backend
-policy in one place for the whole pod. `pod create` enables Codex by default
-and writes commented examples for OpenCode, Hermes, Pi, Ollama, and a custom
-runner:
+policy in one place for the whole pod. `pod create` enables built-in backend
+definitions up front; a backend does not run unless a fin selects it. Custom
+runner examples stay commented because they need a site-specific command:
 
 ```toml
 # Orqa pod configuration.
@@ -125,7 +125,6 @@ default_backend = "codex"
 debounce = "5m"
 exec_always = "0"
 
-# Codex is enabled by default.
 [backends.codex]
 enabled = true
 command = "codex"
@@ -146,51 +145,35 @@ chat_args = [
 [backends.codex.defaults]
 model = "gpt-5.3-codex"
 
-# Enable and edit these examples if this pod should allow additional backends.
+[backends.grok]
+enabled = true
+command = "grok"
+exec_args = ["-p", "{prompt}", "--always-approve"]
+chat_args = []
 
-# [backends.opencode]
-# enabled = true
-# command = "opencode"
-# exec_args = ["run", "--model", "{model}", "{prompt}"]
-# chat_args = ["--model", "{model}"]
+[backends.grok.defaults]
+model = "grok-code-latest"
 
-# [backends.hermes]
-# enabled = true
-# command = "hermes"
-# exec_args = ["--model", "{model}", "--oneshot", "{prompt}"]
-# chat_args = ["chat", "--model", "{model}"]
-
-# [backends.pi]
-# enabled = true
-# command = "pi"
-# exec_args = [
-#     "--model", "{model}",
-#     "--session-dir", "{fin_home}/.pi/sessions",
-#     "--print",
-#     "{prompt}",
-# ]
-# chat_args = ["--model", "{model}", "--session-dir", "{fin_home}/.pi/sessions"]
-
-# [backends.ollama_codex]
-# enabled = true
-# command = "ollama"
-# exec_args = [
-#     "launch", "codex",
-#     "--model", "{model}",
-#     "--",
-#     "exec",
-#     "--skip-git-repo-check",
-#     "--sandbox", "workspace-write",
-#     "--cd", "{pod_home}",
-#     "{prompt}",
-# ]
-# chat_args = [
-#     "launch", "codex",
-#     "--model", "{model}",
-#     "--",
-#     "--sandbox", "workspace-write",
-#     "--cd", "{pod_home}",
-# ]
+[backends.ollama_codex]
+enabled = true
+command = "ollama"
+exec_args = [
+    "launch", "codex",
+    "--model", "{model}",
+    "--",
+    "exec",
+    "--skip-git-repo-check",
+    "--sandbox", "workspace-write",
+    "--cd", "{pod_home}",
+    "{prompt}",
+]
+chat_args = [
+    "launch", "codex",
+    "--model", "{model}",
+    "--",
+    "--sandbox", "workspace-write",
+    "--cd", "{pod_home}",
+]
 ```
 
 `fin.toml` records per-fin backend values. A fin inherits the pod default
