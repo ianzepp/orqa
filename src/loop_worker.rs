@@ -17,6 +17,7 @@ pub(crate) struct LoopWorkerConfig {
 pub(crate) fn run(orqa: &Orqa) -> Result<(), String> {
     let config = load_config(orqa)?;
     let my_pid = std::process::id();
+    claim_pidfile(&config.pid_path, my_pid)?;
 
     loop {
         if let Err(error) = wake_pod(
@@ -43,6 +44,24 @@ pub(crate) fn run(orqa: &Orqa) -> Result<(), String> {
     }
 
     Ok(())
+}
+
+fn claim_pidfile(pid_path: &Path, pid: u32) -> Result<(), String> {
+    let parent = pid_path
+        .parent()
+        .ok_or_else(|| format!("loop pid path has no parent: {}", pid_path.display()))?;
+    std::fs::create_dir_all(parent).map_err(|error| {
+        format!(
+            "failed to create loop pid directory {}: {error}",
+            parent.display()
+        )
+    })?;
+    std::fs::write(pid_path, pid.to_string()).map_err(|error| {
+        format!(
+            "failed to write loop pidfile {}: {error}",
+            pid_path.display()
+        )
+    })
 }
 
 pub(crate) fn load_config(orqa: &Orqa) -> Result<LoopWorkerConfig, String> {
