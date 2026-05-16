@@ -171,11 +171,6 @@ impl PodWatcher {
                 state.finished_run = None;
                 state.log_offsets.clear(); // reset offsets for new run
 
-                out.push(Event::RunStarted {
-                    fin: fin.to_string(),
-                    run_id: run_id.clone(),
-                });
-
                 // If we had a previous run we can emit a synthetic finish
                 // (best effort — the real exit code is in status.json)
                 if let Some(old) = old_run {
@@ -185,6 +180,11 @@ impl PodWatcher {
                         exit_code: None,
                     });
                 }
+
+                out.push(Event::RunStarted {
+                    fin: fin.to_string(),
+                    run_id: run_id.clone(),
+                });
             }
         }
 
@@ -332,3 +332,7 @@ fn parse_mail_headers(path: &Path) -> (Option<String>, Option<String>) {
 
     (from, subject)
 }
+
+#[cfg(test)]
+#[path = "watcher_test.rs"]
+mod tests;
