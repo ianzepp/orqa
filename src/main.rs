@@ -32,7 +32,7 @@ const TOP_LEVEL_HELP_TEMPLATE: &str =
 fn main() -> ExitCode {
     let matches = cli_command().get_matches();
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
-    let context = CommandContext::new(cli.pod.clone(), cli.fin.clone());
+    let context = CommandContext::new(cli.context_pod.clone(), cli.context_fin.clone());
     let orqa = Orqa::new(cli.home);
 
     // Internal loop worker mode used by the TUI.

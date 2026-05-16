@@ -32,11 +32,11 @@ pub(crate) struct Cli {
     #[arg(long, global = true, value_name = "DIR")]
     pub(crate) home: Option<PathBuf>,
     /// Explicit pod context for commands that operate inside a pod.
-    #[arg(long, global = true, value_name = "SLUG")]
-    pub(crate) pod: Option<String>,
+    #[arg(long = "pod", global = true, value_name = "SLUG")]
+    pub(crate) context_pod: Option<String>,
     /// Explicit fin context for commands that operate on one fin.
-    #[arg(long, global = true, value_name = "SLUG")]
-    pub(crate) fin: Option<String>,
+    #[arg(long = "fin", global = true, value_name = "SLUG")]
+    pub(crate) context_fin: Option<String>,
 
     #[command(subcommand)]
     pub(crate) command: Option<Command>,

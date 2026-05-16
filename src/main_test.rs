@@ -42,8 +42,8 @@ fn parses_global_pod_and_fin_flags_at_subcommand_depth() {
     ])
     .unwrap();
 
-    assert_eq!(cli.pod.as_deref(), Some("sample-pod"));
-    assert_eq!(cli.fin.as_deref(), Some("builder"));
+    assert_eq!(cli.context_pod.as_deref(), Some("sample-pod"));
+    assert_eq!(cli.context_fin.as_deref(), Some("builder"));
     assert!(matches!(
         cli.command,
         Some(Command::Mail(command))
@@ -64,12 +64,56 @@ fn fin_commands_can_omit_positional_context_when_global_flags_are_present() {
     ])
     .unwrap();
 
-    assert_eq!(cli.pod.as_deref(), Some("sample-pod"));
-    assert_eq!(cli.fin.as_deref(), Some("builder"));
+    assert_eq!(cli.context_pod.as_deref(), Some("sample-pod"));
+    assert_eq!(cli.context_fin.as_deref(), Some("builder"));
     assert!(matches!(
         cli.command,
         Some(Command::Fin(command))
             if matches!(command.command, FinSubcommand::Status(_))
+    ));
+}
+
+#[test]
+fn parses_global_context_flags_after_nested_fin_commands() {
+    let cli = Cli::try_parse_from([
+        "orqa",
+        "fin",
+        "status",
+        "--pod",
+        "sample-pod",
+        "--fin",
+        "builder",
+    ])
+    .unwrap();
+
+    assert_eq!(cli.context_pod.as_deref(), Some("sample-pod"));
+    assert_eq!(cli.context_fin.as_deref(), Some("builder"));
+    assert!(matches!(
+        cli.command,
+        Some(Command::Fin(command))
+            if matches!(command.command, FinSubcommand::Status(_))
+    ));
+}
+
+#[test]
+fn parses_global_context_flags_after_nested_pod_commands() {
+    let cli = Cli::try_parse_from([
+        "orqa",
+        "pod",
+        "tail",
+        "--pod",
+        "sample-pod",
+        "--fin",
+        "builder",
+    ])
+    .unwrap();
+
+    assert_eq!(cli.context_pod.as_deref(), Some("sample-pod"));
+    assert_eq!(cli.context_fin.as_deref(), Some("builder"));
+    assert!(matches!(
+        cli.command,
+        Some(Command::Pod(command))
+            if matches!(command.command, crate::cli::PodSubcommand::Tail(_))
     ));
 }
 
