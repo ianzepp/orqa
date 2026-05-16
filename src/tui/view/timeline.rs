@@ -4,6 +4,7 @@ use ratatui::{
     text::{Line, Span},
     widgets::{List, ListItem, Paragraph},
 };
+use serde_json::Value;
 
 use crate::tui::{
     app::App,
@@ -65,10 +66,12 @@ fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {
             let prefix_width = fin_tag_width(fin) + 1;
             if *stream == LogStream::Stdout {
                 let content_width = usize::from(width).saturating_sub(prefix_width).max(1);
+                let rendered_line =
+                    grok_streaming_json_to_markdown(line).unwrap_or_else(|| line.to_string());
                 prefixed_lines(
                     prefix,
                     prefix_width,
-                    render_markdown(line, content_width, fg(color), &app.theme),
+                    render_markdown(&rendered_line, content_width, fg(color), &app.theme),
                 )
             } else {
                 prefixed_wrapped_lines(prefix, prefix_width, line, fg(color), width)
@@ -165,6 +168,80 @@ fn prefixed_wrapped_lines(
     }
 
     lines
+}
+
+fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
+    let mut rendered = String::new();
+    let mut saw_stream_event = false;
+
+    for raw_line in raw.lines() {
+        let raw_line = raw_line.trim();
+        if raw_line.is_empty() {
+            continue;
+        }
+
+        let Ok(value) = serde_json::from_str::<Value>(raw_line) else {
+            return None;
+        };
+        let Some(kind) = value.get("type").and_then(Value::as_str) else {
+            return None;
+        };
+        saw_stream_event = true;
+
+        match kind {
+            "text" => {
+                if let Some(data) = value.get("data").and_then(Value::as_str) {
+                    rendered.push_str(data);
+                }
+            }
+            "thought" => {
+                if !rendered.is_empty() && !rendered.ends_with("\n\n") {
+                    rendered.push_str("\n\n");
+                }
+                rendered.push_str("> thinking");
+                if let Some(data) = streaming_event_detail(&value) {
+                    rendered.push_str(": ");
+                    rendered.push_str(&data);
+                }
+                rendered.push('\n');
+            }
+            "end" => {}
+            other => {
+                if !rendered.is_empty() && !rendered.ends_with('\n') {
+                    rendered.push('\n');
+                }
+                rendered.push('`');
+                rendered.push_str(other);
+                rendered.push('`');
+                if let Some(data) = streaming_event_detail(&value) {
+                    rendered.push(' ');
+                    rendered.push_str(&data);
+                }
+                rendered.push('\n');
+            }
+        }
+    }
+
+    saw_stream_event.then_some(rendered)
+}
+
+fn streaming_event_detail(value: &Value) -> Option<String> {
+    let data = value.get("data")?;
+    if let Some(text) = data.as_str() {
+        return Some(text.to_string());
+    }
+
+    for key in ["name", "tool", "command", "description"] {
+        if let Some(text) = data.get(key).and_then(Value::as_str) {
+            return Some(text.to_string());
+        }
+    }
+
+    if data.is_null() {
+        None
+    } else {
+        serde_json::to_string(data).ok()
+    }
 }
 
 fn prefixed_lines(

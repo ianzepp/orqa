@@ -228,7 +228,9 @@ fn pod_config_template_enables_builtin_backends() {
     assert!(toml.contains("[backends.pi]"));
     assert!(toml.contains("    \"--session-dir\", \"{fin_home}/.pi/sessions\","));
     assert!(toml.contains("[backends.grok]"));
-    assert!(toml.contains("exec_args = [\"-p\", \"{prompt}\", \"--always-approve\"]"));
+    assert!(toml.contains(
+        "exec_args = [\"-p\", \"{prompt}\", \"--output-format\", \"streaming-json\", \"--always-approve\"]"
+    ));
     assert!(toml.contains("[backends.ollama_codex]"));
     assert!(toml.contains("    \"launch\", \"codex\","));
     assert!(toml.contains("[backends.ollama_codex.defaults]"));

@@ -18,7 +18,7 @@ use crate::{
 
 use super::composer::Composer;
 use super::events::Event;
-use super::loopctl::{TUI_LOOP_INTERVAL, pod_paused, toggle_pod_pause};
+use super::loopctl::{TUI_LOOP_INTERVAL, pod_paused, toggle_pod_pause, trigger_tui_wake};
 use super::theme::{THEMES, Theme, default_theme};
 use super::watcher::PodWatcher;
 
@@ -125,6 +125,23 @@ impl App {
     fn record_event(&mut self, event: Event) {
         if let Some(fin) = event.fin() {
             self.known_fins.insert(fin.to_string());
+        }
+
+        if let Event::LogLine { fin, stream, line } = &event {
+            if let Some(Event::LogLine {
+                fin: previous_fin,
+                stream: previous_stream,
+                line: previous_line,
+            }) = self.events.last_mut()
+            {
+                if previous_fin == fin && previous_stream == stream {
+                    if !previous_line.is_empty() && !previous_line.ends_with('\n') {
+                        previous_line.push('\n');
+                    }
+                    previous_line.push_str(line);
+                    return;
+                }
+            }
         }
 
         self.apply_event_state(&event);
@@ -322,6 +339,12 @@ impl App {
 
         self.record_operator_action(format!("mailed {}: \"{}\"", self.composer.target_fin, body));
         self.known_fins.insert(self.composer.target_fin.clone());
+        if !self.pod_paused {
+            if let Err(error) = trigger_tui_wake(&self.orqa, &self.pod) {
+                self.record_operator_action(format!("mail sent, but wake trigger failed: {error}"));
+            }
+            self.next_loop_at = Instant::now() + TUI_LOOP_INTERVAL;
+        }
         self.follow = true;
         Ok(())
     }

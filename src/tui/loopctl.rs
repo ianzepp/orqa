@@ -48,21 +48,7 @@ pub(crate) fn start_tui_loop_worker(
 
     let exe = std::env::current_exe()
         .map_err(|error| format!("failed to get current executable: {error}"))?;
-    let pod_home = reg.path.join(".orqa");
-    let log_path = pod_home.join("tui-loop.log");
-    let log_file = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(&log_path)
-        .map_err(|error| {
-            format!(
-                "failed to open TUI loop log {}: {error}",
-                log_path.display()
-            )
-        })?;
-    let err_file = log_file
-        .try_clone()
-        .map_err(|error| format!("failed to clone TUI loop log handle: {error}"))?;
+    let (log_file, err_file) = tui_loop_log_files(reg)?;
     let child = ProcessCommand::new(exe)
         .env("ORQA_LOOP_WORKER", "1")
         .env("ORQA_LOOP_WORKER_POD", &reg.slug)
@@ -101,6 +87,27 @@ pub(crate) fn start_tui_loop_worker(
     })
 }
 
+pub(crate) fn trigger_tui_wake(orqa: &Orqa, reg: &PodRegistration) -> Result<(), String> {
+    let exe = std::env::current_exe()
+        .map_err(|error| format!("failed to get current executable: {error}"))?;
+    let (log_file, err_file) = tui_loop_log_files(reg)?;
+    let mut command = ProcessCommand::new(exe);
+    clear_loop_worker_env(&mut command);
+    let mut child = command
+        .args(tui_wake_command_args(orqa))
+        .current_dir(&reg.path)
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(log_file))
+        .stderr(Stdio::from(err_file))
+        .spawn()
+        .map_err(|error| format!("failed to trigger TUI wake: {error}"))?;
+    std::thread::spawn(move || {
+        let _ = child.wait();
+    });
+
+    Ok(())
+}
+
 pub(crate) fn pod_paused(orqa: &Orqa, reg: &PodRegistration) -> bool {
     let _ = orqa;
     reg.path.join(".orqa").join("sleep.lock").exists()
@@ -126,6 +133,49 @@ fn pod_loop_pid_path(orqa: &Orqa, reg: &PodRegistration) -> std::path::PathBuf {
 pub(crate) fn tui_loop_prompt_args_json() -> Result<String, String> {
     serde_json::to_string(&[TUI_LOOP_PROMPT])
         .map_err(|error| format!("failed to serialize TUI loop prompt args: {error}"))
+}
+
+fn tui_loop_log_files(reg: &PodRegistration) -> Result<(fs::File, fs::File), String> {
+    let pod_home = reg.path.join(".orqa");
+    let log_path = pod_home.join("tui-loop.log");
+    let log_file = OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)
+        .map_err(|error| {
+            format!(
+                "failed to open TUI loop log {}: {error}",
+                log_path.display()
+            )
+        })?;
+    let err_file = log_file
+        .try_clone()
+        .map_err(|error| format!("failed to clone TUI loop log handle: {error}"))?;
+    Ok((log_file, err_file))
+}
+
+fn tui_wake_command_args(orqa: &Orqa) -> Vec<std::ffi::OsString> {
+    vec![
+        "--home".into(),
+        orqa.home.as_os_str().into(),
+        "wake".into(),
+        "--force".into(),
+        "--".into(),
+        TUI_LOOP_PROMPT.into(),
+    ]
+}
+
+fn clear_loop_worker_env(command: &mut ProcessCommand) {
+    for key in [
+        "ORQA_LOOP_WORKER",
+        "ORQA_LOOP_WORKER_POD",
+        "ORQA_LOOP_WORKER_PID_PATH",
+        "ORQA_INTERVAL",
+        "ORQA_FORCE",
+        "ORQA_LOOP_ARGS",
+    ] {
+        command.env_remove(key);
+    }
 }
 
 #[cfg(test)]

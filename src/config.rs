@@ -106,7 +106,7 @@ model = "provider/model"
 [backends.grok]
 enabled = true
 command = "grok"
-exec_args = ["-p", "{{prompt}}", "--always-approve"]
+exec_args = ["-p", "{{prompt}}", "--output-format", "streaming-json", "--always-approve"]
 chat_args = []
 
 [backends.grok.defaults]

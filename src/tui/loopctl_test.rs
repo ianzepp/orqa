@@ -1,4 +1,6 @@
-use super::{TUI_LOOP_PROMPT, tui_loop_prompt_args_json};
+use crate::model::Orqa;
+
+use super::{TUI_LOOP_PROMPT, tui_loop_prompt_args_json, tui_wake_command_args};
 
 #[test]
 fn serializes_default_tui_loop_prompt_args() {
@@ -12,4 +14,25 @@ fn serializes_default_tui_loop_prompt_args() {
     };
 
     assert_eq!(args, vec![TUI_LOOP_PROMPT.to_string()]);
+}
+
+#[test]
+fn builds_forced_wake_command_for_tui_prompt() {
+    let orqa = Orqa::new(Some("/tmp/orqa-home".into()));
+    let args: Vec<String> = tui_wake_command_args(&orqa)
+        .into_iter()
+        .map(|arg| arg.to_string_lossy().into_owned())
+        .collect();
+
+    assert_eq!(
+        args,
+        vec![
+            "--home",
+            "/tmp/orqa-home",
+            "wake",
+            "--force",
+            "--",
+            TUI_LOOP_PROMPT,
+        ]
+    );
 }
