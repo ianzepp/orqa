@@ -13,6 +13,21 @@ use crate::{
 };
 
 #[test]
+fn cli_command_help_is_compact_and_direct() {
+    let help = {
+        let mut command = crate::cli_command();
+        command.render_help().to_string()
+    };
+
+    assert!(help.contains("Coordinate local agent pods and fins"));
+    assert!(help.contains("Usage: orqa [OPTIONS] [COMMAND]"));
+    assert!(help.contains("Options:"));
+    assert!(help.contains("  -v, --version     Print version"));
+    assert!(help.contains("Commands:"));
+    assert!(help.contains("guide   Print the operational guide"));
+}
+
+#[test]
 fn accepts_lowercase_slug_parts() {
     assert!(validate_slug("sample-pod").is_ok());
     assert!(validate_slug("bob-jones").is_ok());
