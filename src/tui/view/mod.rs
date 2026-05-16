@@ -4,6 +4,7 @@ mod header;
 mod input;
 mod layout;
 mod overlays;
+mod style;
 mod timeline;
 
 use ratatui::{

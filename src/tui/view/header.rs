@@ -3,17 +3,16 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Style,
     text::{Line, Span},
     widgets::Paragraph,
 };
 
-use crate::tui::app::App;
+use crate::tui::{app::App, view::style::fg};
 
 pub(super) fn render(app: &App, frame: &mut Frame, area: Rect) {
-    let base = Style::default().fg(app.theme.text);
-    let accent = Style::default().fg(app.theme.accent);
-    let dim = Style::default().fg(app.theme.muted);
+    let base = fg(app.theme.text);
+    let accent = fg(app.theme.accent);
+    let dim = fg(app.theme.muted);
     let icon = if any_fin_active(app) {
         spinner_frame()
     } else {
@@ -22,7 +21,7 @@ pub(super) fn render(app: &App, frame: &mut Frame, area: Rect) {
     let icon_style = if any_fin_active(app) {
         accent
     } else {
-        Style::default().fg(app.theme.ok)
+        fg(app.theme.ok)
     };
     let pod_path = display_path(&app.pod_root);
     let paused_width = if app.pod_paused { " paused".len() } else { 0 };
@@ -40,7 +39,7 @@ pub(super) fn render(app: &App, frame: &mut Frame, area: Rect) {
         Span::styled(" ", base),
         Span::styled(&app.pod_slug, accent),
         if app.pod_paused {
-            Span::styled(" paused", Style::default().fg(app.theme.warn))
+            Span::styled(" paused", fg(app.theme.warn))
         } else {
             Span::styled("", base)
         },
@@ -88,11 +87,11 @@ fn header_right_text(app: &App, available_width: u16) -> String {
     text
 }
 
-fn header_right_style(app: &App) -> Style {
+fn header_right_style(app: &App) -> ratatui::style::Style {
     if app.pod_paused {
-        Style::default().fg(app.theme.warn)
+        fg(app.theme.warn)
     } else {
-        Style::default().fg(app.theme.accent)
+        fg(app.theme.accent)
     }
 }
 

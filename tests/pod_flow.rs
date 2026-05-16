@@ -325,17 +325,7 @@ exec_args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{
     orqa_in_pod(&root, "test-pod", ["wake", "--", "from-wake"]);
 
     let marker = fin_home(&root, "test-pod", "amy").join("ran.txt");
-    for _ in 0..20 {
-        if marker.exists() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(25));
-    }
-
-    assert_eq!(
-        fs::read_to_string(&marker).unwrap(),
-        "pod=test-pod fin=amy prompt=from-wake"
-    );
+    wait_for_file_contents(&marker, "pod=test-pod fin=amy prompt=from-wake");
 
     remove_temp_root(root);
 }
@@ -483,16 +473,7 @@ fn wake_runs_pre_plan_hooks_and_continues_after_hook_failure() {
     assert!(output.contains("wake test-pod/amy"));
 
     let marker = fin_home(&root, "test-pod", "amy").join("ran.txt");
-    for _ in 0..20 {
-        if marker.exists() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(25));
-    }
-    assert_eq!(
-        fs::read_to_string(&marker).unwrap(),
-        "pod=test-pod fin=amy prompt=from-wake"
-    );
+    wait_for_file_contents(&marker, "pod=test-pod fin=amy prompt=from-wake");
 
     remove_temp_root(root);
 }
@@ -1057,18 +1038,9 @@ fn foreground_loop_repeats_current_pod_wakes() {
 
     let alpha_marker = fin_home(&root, "alpha-pod", "amy").join("ran.txt");
     let beta_marker = fin_home(&root, "beta-pod", "amy").join("ran.txt");
-    for _ in 0..40 {
-        if alpha_marker.exists() {
-            break;
-        }
-        thread::sleep(Duration::from_millis(25));
-    }
+    wait_for_file_contents(&alpha_marker, "pod=alpha-pod fin=amy prompt=from-loop");
     stop_child(&mut child);
 
-    assert_eq!(
-        fs::read_to_string(&alpha_marker).unwrap(),
-        "pod=alpha-pod fin=amy prompt=from-loop"
-    );
     assert!(!beta_marker.exists());
 
     remove_temp_root(root);
@@ -1410,6 +1382,18 @@ exec_args = ["{{prompt}}"]
 fn stop_child(child: &mut Child) {
     let _ = child.kill();
     let _ = child.wait();
+}
+
+fn wait_for_file_contents(path: &Path, expected: &str) {
+    for _ in 0..40 {
+        if fs::read_to_string(path).is_ok_and(|contents| contents == expected) {
+            return;
+        }
+        thread::sleep(Duration::from_millis(25));
+    }
+
+    let actual = fs::read_to_string(path).unwrap_or_default();
+    assert_eq!(actual, expected, "file contents at {}", path.display());
 }
 
 fn temp_root() -> PathBuf {

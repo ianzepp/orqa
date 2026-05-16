@@ -241,9 +241,7 @@ fn handle_input_key(app: &mut App, key: KeyEvent) -> LoopAction {
 
 fn toggle_pod_pause(app: &mut App) {
     if let Err(error) = app.toggle_pod_pause() {
-        app.events.push(crate::tui::events::Event::OperatorAction {
-            text: format!("failed to toggle pod pause: {error}"),
-        });
+        app.record_operator_action(format!("failed to toggle pod pause: {error}"));
     }
 }
 
@@ -290,9 +288,7 @@ fn submit_composer(app: &mut App) {
     if let Some(msg) = app.composer.submit() {
         if let Err(error) = app.send_operator_message(&msg) {
             app.composer.set_status(format!("send failed: {error}"));
-            app.events.push(crate::tui::events::Event::OperatorAction {
-                text: format!("failed to mail target fin: {error}"),
-            });
+            app.record_operator_action(format!("failed to mail target fin: {error}"));
         }
         app.auto_follow_if_needed();
     }

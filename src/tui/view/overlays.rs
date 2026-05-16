@@ -1,64 +1,40 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::{Modifier, Style},
+    style::Style,
     text::{Line, Span},
-    widgets::{Block, Borders, Clear, Paragraph},
+    widgets::{Clear, Paragraph},
 };
 
-use crate::tui::{app::App, view::layout::centered_rect};
+use crate::tui::{
+    app::App,
+    view::{
+        layout::centered_rect,
+        style::{bold, fg, titled_block},
+    },
+};
 
 pub(super) fn render_command_palette(app: &App, frame: &mut Frame, area: Rect) {
     let palette = centered_rect(area, 64, 13);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Commands ")
-        .style(Style::default().fg(app.theme.text));
+    let block = titled_block(" Commands ", app.theme.text);
     let inner = block.inner(palette);
-    let dim = Style::default().fg(app.theme.muted);
-    let key = Style::default()
-        .fg(app.theme.accent)
-        .add_modifier(Modifier::BOLD);
-    let text = Style::default().fg(app.theme.text);
+    let key = bold(app.theme.accent);
+    let text = fg(app.theme.text);
     let rows = vec![
-        Line::from(vec![
-            Span::styled(" i", key),
-            Span::styled(" compose message", text),
-        ]),
-        Line::from(vec![
-            Span::styled(" Ctrl+T", key),
-            Span::styled(" choose message target", text),
-        ]),
-        Line::from(vec![
-            Span::styled(" F", key),
-            Span::styled(" cycle timeline fin filter", text),
-        ]),
-        Line::from(vec![
-            Span::styled(" o", key),
-            Span::styled(" toggle operator filter", text),
-        ]),
-        Line::from(vec![
-            Span::styled(" /", key),
-            Span::styled(" toggle thread filter", text),
-        ]),
-        Line::from(vec![
-            Span::styled(" H", key),
-            Span::styled(" cycle theme", text),
-        ]),
-        Line::from(vec![
-            Span::styled(" P", key),
-            Span::styled(" pause/resume pod wake loop", text),
-        ]),
-        Line::from(vec![
-            Span::styled(" PgUp/PgDn", key),
-            Span::styled(" scroll timeline", text),
-        ]),
-        Line::from(vec![
-            Span::styled(" Esc", key),
-            Span::styled(" close palette or leave input", text),
-        ]),
-        Line::from(vec![Span::styled(" q", key), Span::styled(" quit", text)]),
-        Line::from(Span::styled(" Ctrl+. closes this palette", dim)),
+        key_row(" i", " compose message", key, text),
+        key_row(" Ctrl+T", " choose message target", key, text),
+        key_row(" F", " cycle timeline fin filter", key, text),
+        key_row(" o", " toggle operator filter", key, text),
+        key_row(" /", " toggle thread filter", key, text),
+        key_row(" H", " cycle theme", key, text),
+        key_row(" P", " pause/resume pod wake loop", key, text),
+        key_row(" PgUp/PgDn", " scroll timeline", key, text),
+        key_row(" Esc", " close palette or leave input", key, text),
+        key_row(" q", " quit", key, text),
+        Line::from(Span::styled(
+            " Ctrl+. closes this palette",
+            fg(app.theme.muted),
+        )),
     ];
 
     frame.render_widget(Clear, palette);
@@ -70,16 +46,13 @@ pub(super) fn render_target_picker(app: &App, frame: &mut Frame, area: Rect) {
     let targets = app.target_choices();
     let height = (targets.len() as u16 + 2).clamp(5, 14);
     let picker = centered_rect(area, 42, height);
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .title(" Target Fin ")
-        .style(Style::default().fg(app.theme.text));
+    let block = titled_block(" Target Fin ", app.theme.text);
     let inner = block.inner(picker);
     let selected = app.target_picker_index.min(targets.len().saturating_sub(1));
     let rows = if targets.is_empty() {
         vec![Line::from(Span::styled(
             " no fins available",
-            Style::default().fg(app.theme.muted),
+            fg(app.theme.muted),
         ))]
     } else {
         targets
@@ -87,11 +60,9 @@ pub(super) fn render_target_picker(app: &App, frame: &mut Frame, area: Rect) {
             .enumerate()
             .map(|(index, fin)| {
                 let style = if index == selected {
-                    Style::default()
-                        .fg(app.theme.accent)
-                        .add_modifier(Modifier::BOLD)
+                    bold(app.theme.accent)
                 } else {
-                    Style::default().fg(app.theme.text)
+                    fg(app.theme.text)
                 };
                 let marker = if index == selected { ">" } else { " " };
                 Line::from(vec![
@@ -105,4 +76,16 @@ pub(super) fn render_target_picker(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Clear, picker);
     frame.render_widget(block, picker);
     frame.render_widget(Paragraph::new(rows), inner);
+}
+
+fn key_row(
+    key: &'static str,
+    description: &'static str,
+    key_style: Style,
+    text: Style,
+) -> Line<'static> {
+    Line::from(vec![
+        Span::styled(key, key_style),
+        Span::styled(description, text),
+    ])
 }

@@ -320,12 +320,15 @@ impl App {
         let message = format!("From: {from}\nTo: {to}\nSubject: Operator message\n\n{body}\n");
         deliver_mail(&mail_home, &message)?;
 
-        self.events.push(Event::OperatorAction {
-            text: format!("mailed {}: \"{}\"", self.composer.target_fin, body),
-        });
+        self.record_operator_action(format!("mailed {}: \"{}\"", self.composer.target_fin, body));
         self.known_fins.insert(self.composer.target_fin.clone());
         self.follow = true;
         Ok(())
+    }
+
+    pub fn record_operator_action(&mut self, text: impl Into<String>) {
+        self.events
+            .push(Event::OperatorAction { text: text.into() });
     }
 
     pub fn target_choices(&self) -> Vec<String> {

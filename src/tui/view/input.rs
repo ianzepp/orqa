@@ -1,29 +1,26 @@
 use ratatui::{
     Frame,
     layout::Rect,
-    style::Style,
     text::{Line, Span},
-    widgets::{Block, Borders, Paragraph},
+    widgets::Paragraph,
 };
 
-use crate::tui::app::{App, InputMode};
+use crate::tui::{
+    app::{App, InputMode},
+    view::style::{bordered_block, fg},
+};
 
 /// Three-row input section: one text row plus a border around all sides.
 pub(super) fn render(app: &App, frame: &mut Frame, area: Rect) {
-    let block = Block::default()
-        .borders(Borders::ALL)
-        .style(Style::default().fg(app.theme.muted));
+    let block = bordered_block(app.theme.muted);
     let inner = block.inner(area);
     frame.render_widget(block, area);
     render_label(app, frame, area);
 
     if app.mode == InputMode::Normal {
         let text = Line::from(vec![
-            Span::styled(" >", Style::default().fg(app.theme.accent)),
-            Span::styled(
-                " press i to write to the target fin",
-                Style::default().fg(app.theme.muted),
-            ),
+            Span::styled(" >", fg(app.theme.accent)),
+            Span::styled(" press i to write to the target fin", fg(app.theme.muted)),
         ]);
         frame.render_widget(Paragraph::new(text), inner);
     } else {
@@ -32,11 +29,13 @@ pub(super) fn render(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 pub(super) fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
-    let dim = Style::default().fg(app.theme.muted);
     let help = "Shift+Tab:mode  |  Ctrl+T:target  |  Ctrl+.:commands";
 
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(format!(" {help}"), dim))),
+        Paragraph::new(Line::from(Span::styled(
+            format!(" {help}"),
+            fg(app.theme.muted),
+        ))),
         area,
     );
 }
@@ -62,9 +61,8 @@ fn render_label(app: &App, frame: &mut Frame, area: Rect) {
         width,
         height: 1,
     };
-    let style = Style::default().fg(app.theme.muted);
     frame.render_widget(
-        Paragraph::new(Line::from(Span::styled(label, style))),
+        Paragraph::new(Line::from(Span::styled(label, fg(app.theme.muted)))),
         label_area,
     );
 }
