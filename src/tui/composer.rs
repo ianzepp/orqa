@@ -1,7 +1,7 @@
 //! Composer widget for the Operator Cockpit.
 //!
 //! Handles the bottom input line, target fin selection, command history,
-//! and the actual "send mail + wake" flow.
+//! and direct operator prompts to a target fin.
 
 use std::collections::VecDeque;
 
@@ -161,8 +161,8 @@ impl Composer {
         }
     }
 
-    /// Called when the user presses Enter with a non-empty message.
-    /// Returns the message that was sent (so the caller can create an OperatorAction event).
+    /// Called when the user presses Enter with a non-empty prompt.
+    /// Returns the prompt so the caller can start a direct fin run.
     pub fn submit(&mut self) -> Option<String> {
         let msg = self.input.trim().to_string();
         if msg.is_empty() {
@@ -180,7 +180,7 @@ impl Composer {
         self.input.clear();
         self.cursor = 0;
         self.history_index = -1;
-        self.set_status(format!("sent to {}", self.target_fin));
+        self.set_status(format!("asked {}", self.target_fin));
 
         Some(msg)
     }

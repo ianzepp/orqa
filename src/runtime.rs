@@ -350,6 +350,16 @@ pub(crate) fn exec_fin(orqa: &Orqa, args: ExecArgs) -> Result<(), String> {
     exec_fin_foreground(orqa, &fin, &command)
 }
 
+pub(crate) fn spawn_fin_prompt(
+    orqa: &Orqa,
+    fin: &FinRef,
+    args: &[OsString],
+) -> Result<crate::runs::RunRecord, String> {
+    orqa.ensure_fin_exists(fin)?;
+    let command = resolve_exec_command(orqa, fin, args)?;
+    spawn_fin_background(orqa, fin, &command)
+}
+
 pub(crate) fn chat_fin(orqa: &Orqa, args: ChatArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
     orqa.ensure_fin_exists(&fin)?;
@@ -453,6 +463,65 @@ fn exec_fin_foreground(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> R
     }
 
     Err(exit_error(&command.command, outcome.code))
+}
+
+fn spawn_fin_background(
+    orqa: &Orqa,
+    fin: &FinRef,
+    command: &BackendCommand,
+) -> Result<crate::runs::RunRecord, String> {
+    if let Some(lock) = FinLock::try_existing(orqa, fin)? {
+        if lock.is_live() {
+            return Err(format!(
+                "fin {} is already running as pid {}",
+                fin.label(),
+                lock.pid
+            ));
+        }
+        lock.remove()?;
+    }
+
+    ensure_runtime_homes(orqa, fin)?;
+    let run = RunFiles::create(
+        orqa,
+        fin,
+        command.mode.as_str(),
+        &command.backend,
+        &command.command,
+        &command.args,
+    )?;
+    let stdout = run.stdout_file()?;
+    let stderr = run.stderr_file()?;
+    let mut child = fin_process(orqa, fin, command)?
+        .stdin(Stdio::null())
+        .stdout(Stdio::from(stdout))
+        .stderr(Stdio::from(stderr))
+        .spawn()
+        .map_err(|error| {
+            let _ = run.mark_spawn_failed(&error.to_string());
+            format!("failed to spawn {:?}: {error}", command.command)
+        })?;
+    let lock = write_child_lock(orqa, fin, &mut child, &command.command, &run)?;
+    run.mark_spawned(child.id())?;
+
+    let record = run.record.clone();
+    let command = command.command.clone();
+    std::thread::spawn(move || {
+        let status = child
+            .wait()
+            .map_err(|error| format!("failed to wait for {:?}: {error}", command));
+        lock.release();
+        match status {
+            Ok(status) => {
+                let _ = run.mark_finished_status(status);
+            }
+            Err(error) => {
+                let _ = run.mark_spawn_failed(&error);
+            }
+        }
+    });
+
+    Ok(record)
 }
 
 fn exit_error(command: &OsString, code: Option<i32>) -> String {

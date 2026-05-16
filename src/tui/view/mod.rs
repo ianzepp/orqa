@@ -1,5 +1,6 @@
 //! View components for the Operator Cockpit.
 
+mod chat;
 mod header;
 mod input;
 mod layout;
@@ -46,6 +47,11 @@ impl App {
                 mail::render(self, frame, layout::section_area(self, chunks[3]));
                 mail::render_status(self, frame, layout::section_area(self, chunks[5]));
                 mail::render_footer(self, frame, layout::section_area(self, chunks[7]));
+            }
+            Surface::Chat => {
+                chat::render(self, frame, layout::section_area(self, chunks[3]));
+                chat::render_status(self, frame, layout::section_area(self, chunks[5]));
+                chat::render_footer(self, frame, layout::section_area(self, chunks[7]));
             }
         }
 

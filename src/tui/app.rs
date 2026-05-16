@@ -5,16 +5,20 @@
 
 use std::{
     collections::{HashMap, HashSet},
+    ffi::OsString,
     fs,
     path::{Path, PathBuf},
-    time::Instant,
+    time::{Instant, SystemTime, UNIX_EPOCH},
 };
 
 use ratatui::widgets::ListState;
+use serde::{Deserialize, Serialize};
 
 use crate::{
     mailbox::{deliver_mail, ensure_maildir, message_id, resolve_address, sorted_files},
     model::{FinRef, Orqa, PodRegistration},
+    runs::{RunRecord, read_run_record_for},
+    runtime::spawn_fin_prompt,
 };
 
 use super::composer::Composer;
@@ -26,13 +30,14 @@ use super::watcher::PodWatcher;
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum InputMode {
     Normal,
-    Input,
+    Chat,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum Surface {
     Timeline,
     Mail,
+    Chat,
 }
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
@@ -47,6 +52,12 @@ pub enum MailComposeField {
     To,
     Subject,
     Body,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum ChatMode {
+    Index,
+    Detail,
 }
 
 #[derive(Clone, Debug)]
@@ -67,6 +78,23 @@ pub struct OperatorMail {
     pub to: String,
     pub subject: String,
     pub body: String,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+pub struct ChatRecord {
+    pub id: String,
+    pub fin: String,
+    pub prompt: String,
+    pub run_id: String,
+    pub created_epoch: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct ChatItem {
+    pub record: ChatRecord,
+    pub run: Option<RunRecord>,
+    pub stdout: String,
+    pub stderr: String,
 }
 
 /// Filter state for the timeline.
@@ -97,7 +125,7 @@ pub struct App {
     /// The bottom message composer.
     pub composer: Composer,
 
-    /// Current input mode (Normal = monitoring hotkeys, Input = composer owns keys)
+    /// Current input mode (Normal = monitoring hotkeys, Chat = composer owns keys)
     pub mode: InputMode,
 
     pub theme: Theme,
@@ -113,6 +141,10 @@ pub struct App {
     pub mail_cursor: usize,
     pub mail_scroll: usize,
     pub mail_compose: Option<MailComposeState>,
+    pub chat_mode: ChatMode,
+    pub chat_items: Vec<ChatItem>,
+    pub chat_cursor: usize,
+    pub chat_scroll: usize,
 }
 
 impl App {
@@ -156,8 +188,13 @@ impl App {
             mail_cursor: 0,
             mail_scroll: 0,
             mail_compose: None,
+            chat_mode: ChatMode::Index,
+            chat_items: Vec::new(),
+            chat_cursor: 0,
+            chat_scroll: 0,
         };
         app.refresh_operator_mail();
+        app.refresh_chat_items();
         app.list_state.select(Some(0));
         app
     }
@@ -175,6 +212,7 @@ impl App {
             self.record_event(event);
         }
         self.refresh_operator_mail();
+        self.refresh_chat_items();
     }
 
     fn record_event(&mut self, event: Event) {
@@ -329,8 +367,8 @@ impl App {
 
     pub fn toggle_input_mode(&mut self) {
         self.mode = match self.mode {
-            InputMode::Normal => InputMode::Input,
-            InputMode::Input => InputMode::Normal,
+            InputMode::Normal => InputMode::Chat,
+            InputMode::Chat => InputMode::Normal,
         };
     }
 
@@ -338,6 +376,7 @@ impl App {
         match self.surface {
             Surface::Timeline => self.show_mail_surface(),
             Surface::Mail => self.show_timeline_surface(),
+            Surface::Chat => self.show_timeline_surface(),
         }
     }
 
@@ -355,8 +394,17 @@ impl App {
         self.mail_mode = MailMode::Index;
         self.mail_scroll = 0;
         self.mail_compose = None;
+        self.chat_mode = ChatMode::Index;
+        self.chat_scroll = 0;
         self.follow = true;
         self.scroll_to_bottom();
+    }
+
+    pub fn show_chat_surface(&mut self) {
+        self.refresh_chat_items();
+        self.surface = Surface::Chat;
+        self.chat_mode = ChatMode::Index;
+        self.chat_scroll = 0;
     }
 
     pub fn toggle_command_palette(&mut self) {
@@ -406,29 +454,6 @@ impl App {
         self.show_target_picker = false;
     }
 
-    pub fn send_operator_message(&mut self, body: &str) -> Result<(), String> {
-        let to_fin = FinRef::new(&self.pod_slug, &self.composer.target_fin)?;
-        self.orqa.ensure_fin_exists(&to_fin)?;
-        let mail_home = self.orqa.mail_home(&to_fin)?;
-        ensure_maildir(&mail_home)?;
-
-        let from = format!("operator@{}.orqa", self.pod_slug);
-        let to = format!("{}@{}.orqa", self.composer.target_fin, self.pod_slug);
-        let message = format!("From: {from}\nTo: {to}\nSubject: Operator message\n\n{body}\n");
-        deliver_mail(&mail_home, &message)?;
-
-        self.record_operator_action(format!("mailed {}: \"{}\"", self.composer.target_fin, body));
-        self.known_fins.insert(self.composer.target_fin.clone());
-        if !self.pod_paused {
-            if let Err(error) = trigger_tui_wake(&self.orqa, &self.pod) {
-                self.record_operator_action(format!("mail sent, but wake trigger failed: {error}"));
-            }
-            self.next_loop_at = Instant::now() + TUI_LOOP_INTERVAL;
-        }
-        self.follow = true;
-        Ok(())
-    }
-
     pub fn refresh_operator_mail(&mut self) {
         let Ok(messages) = load_operator_mail(&self.orqa, &self.pod_slug) else {
             return;
@@ -437,6 +462,87 @@ impl App {
         if self.mail_cursor >= self.operator_mail.len() {
             self.mail_cursor = self.operator_mail.len().saturating_sub(1);
         }
+    }
+
+    pub fn send_chat_prompt(&mut self, prompt: &str) -> Result<(), String> {
+        let target = self.composer.target_fin.clone();
+        let fin = FinRef::new(&self.pod_slug, &target)?;
+        let args = [OsString::from(prompt)];
+        let run = spawn_fin_prompt(&self.orqa, &fin, &args)?;
+        let record = ChatRecord {
+            id: chat_id()?,
+            fin: target.clone(),
+            prompt: prompt.to_string(),
+            run_id: run.id.clone(),
+            created_epoch: now_epoch()?,
+        };
+        write_chat_record(&self.pod, &record)?;
+        self.record_operator_action(format!("asked {target}: \"{prompt}\""));
+        self.known_fins.insert(target);
+        self.refresh_chat_items();
+        self.follow = true;
+        Ok(())
+    }
+
+    pub fn refresh_chat_items(&mut self) {
+        let Ok(items) = load_chat_items(&self.orqa, &self.pod) else {
+            return;
+        };
+        self.chat_items = items;
+        if self.chat_cursor >= self.chat_items.len() {
+            self.chat_cursor = self.chat_items.len().saturating_sub(1);
+        }
+    }
+
+    pub fn chat_cursor_down(&mut self) {
+        if !self.chat_items.is_empty() {
+            self.chat_cursor = (self.chat_cursor + 1).min(self.chat_items.len() - 1);
+        }
+    }
+
+    pub fn chat_cursor_up(&mut self) {
+        self.chat_cursor = self.chat_cursor.saturating_sub(1);
+    }
+
+    pub fn chat_cursor_top(&mut self) {
+        self.chat_cursor = 0;
+    }
+
+    pub fn chat_cursor_bottom(&mut self) {
+        self.chat_cursor = self.chat_items.len().saturating_sub(1);
+    }
+
+    pub fn open_selected_chat(&mut self) {
+        if self.chat_items.is_empty() {
+            return;
+        }
+        self.chat_scroll = 0;
+        self.chat_mode = ChatMode::Detail;
+    }
+
+    pub fn close_chat_detail(&mut self) {
+        self.chat_scroll = 0;
+        self.chat_mode = ChatMode::Index;
+    }
+
+    pub fn chat_scroll_up(&mut self, amount: usize) {
+        self.chat_scroll = self.chat_scroll.saturating_sub(amount);
+    }
+
+    pub fn chat_scroll_down(&mut self, amount: usize) {
+        self.chat_scroll = self.chat_scroll.saturating_add(amount);
+    }
+
+    pub fn chat_scroll_top(&mut self) {
+        self.chat_scroll = 0;
+    }
+
+    pub fn chat_scroll_bottom(&mut self) {
+        self.chat_scroll = usize::MAX;
+    }
+
+    pub fn selected_chat(&self) -> Option<&ChatItem> {
+        self.chat_items.get(self.chat_cursor)
     }
 
     pub fn mail_cursor_down(&mut self) {
@@ -703,6 +809,91 @@ fn load_operator_mail(orqa: &Orqa, pod_slug: &str) -> Result<Vec<OperatorMail>, 
     }
     messages.sort_by(|left, right| right.id.cmp(&left.id));
     Ok(messages)
+}
+
+fn chat_id() -> Result<String, String> {
+    Ok(format!("{}.orqa-chat", now_micros()?))
+}
+
+fn now_epoch() -> Result<u64, String> {
+    Ok(SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("system clock is before Unix epoch: {error}"))?
+        .as_secs())
+}
+
+fn now_micros() -> Result<u128, String> {
+    Ok(SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| format!("system clock is before Unix epoch: {error}"))?
+        .as_micros())
+}
+
+fn write_chat_record(reg: &PodRegistration, record: &ChatRecord) -> Result<(), String> {
+    let chat_dir = chat_home(reg);
+    fs::create_dir_all(&chat_dir).map_err(|error| {
+        format!(
+            "failed to create chat directory {}: {error}",
+            chat_dir.display()
+        )
+    })?;
+    let path = chat_dir.join(format!("{}.json", record.id));
+    let json = serde_json::to_string_pretty(record)
+        .map_err(|error| format!("failed to encode chat record: {error}"))?;
+    fs::write(&path, json)
+        .map_err(|error| format!("failed to write chat record {}: {error}", path.display()))
+}
+
+fn load_chat_items(orqa: &Orqa, reg: &PodRegistration) -> Result<Vec<ChatItem>, String> {
+    let chat_dir = chat_home(reg);
+    if !chat_dir.exists() {
+        return Ok(Vec::new());
+    }
+
+    let mut items = Vec::new();
+    for path in sorted_files(&chat_dir)? {
+        let raw = fs::read_to_string(&path)
+            .map_err(|error| format!("failed to read chat record {}: {error}", path.display()))?;
+        let record = serde_json::from_str::<ChatRecord>(&raw)
+            .map_err(|error| format!("failed to parse chat record {}: {error}", path.display()))?;
+        items.push(load_chat_item(orqa, reg, record));
+    }
+    items.sort_by(|left, right| right.record.id.cmp(&left.record.id));
+    Ok(items)
+}
+
+fn load_chat_item(orqa: &Orqa, reg: &PodRegistration, record: ChatRecord) -> ChatItem {
+    let fin = match FinRef::new(&reg.slug, &record.fin) {
+        Ok(fin) => fin,
+        Err(_) => {
+            return ChatItem {
+                record,
+                run: None,
+                stdout: String::new(),
+                stderr: String::new(),
+            };
+        }
+    };
+    let run = read_run_record_for(orqa, &fin, Some(&record.run_id)).ok();
+    let stdout = run
+        .as_ref()
+        .and_then(|run| fs::read_to_string(&run.stdout_log).ok())
+        .unwrap_or_default();
+    let stderr = run
+        .as_ref()
+        .and_then(|run| fs::read_to_string(&run.stderr_log).ok())
+        .unwrap_or_default();
+
+    ChatItem {
+        record,
+        run,
+        stdout,
+        stderr,
+    }
+}
+
+fn chat_home(reg: &PodRegistration) -> PathBuf {
+    reg.path.join(".orqa").join("chats")
 }
 
 fn load_operator_message(path: PathBuf, state: &str) -> Result<OperatorMail, String> {

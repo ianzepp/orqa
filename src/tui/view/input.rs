@@ -20,7 +20,7 @@ pub(super) fn render(app: &App, frame: &mut Frame, area: Rect) {
     if app.mode == InputMode::Normal {
         let text = Line::from(vec![
             Span::styled(" >", fg(app.theme.accent)),
-            Span::styled(" press i to write to the target fin", fg(app.theme.muted)),
+            Span::styled(" press i to chat with the target fin", fg(app.theme.muted)),
         ]);
         frame.render_widget(Paragraph::new(text), inner);
     } else {
@@ -29,7 +29,7 @@ pub(super) fn render(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 pub(super) fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
-    let help = "m:mail  |  Shift+Tab:mode  |  Ctrl+T:target  |  Ctrl+.:commands";
+    let help = "c:chat  |  m:mail  |  Shift+Tab:mode  |  Ctrl+T:target  |  Ctrl+.:commands";
 
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
@@ -47,7 +47,7 @@ fn render_label(app: &App, frame: &mut Frame, area: Rect) {
 
     let mode = match app.mode {
         InputMode::Normal => "normal",
-        InputMode::Input => "input",
+        InputMode::Chat => "chat",
     };
     let label = format!(" @{} · {} ", app.composer.target_fin, mode);
     let width = label.chars().count() as u16;

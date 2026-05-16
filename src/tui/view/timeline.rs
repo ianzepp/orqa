@@ -170,7 +170,7 @@ fn prefixed_wrapped_lines(
     lines
 }
 
-fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
+pub(super) fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
     let mut rendered = String::new();
     let mut saw_stream_event = false;
 

@@ -13,7 +13,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 
 use crate::model::{Orqa, PodRegistration};
 
-use super::app::{App, InputMode, MailMode, Surface};
+use super::app::{App, ChatMode, InputMode, MailMode, Surface};
 use super::loopctl::start_tui_loop_worker;
 use super::watcher::PodWatcher;
 
@@ -159,10 +159,14 @@ fn handle_key(app: &mut App, key: KeyEvent) -> LoopAction {
         handle_mail_key(app, key);
         return LoopAction::Continue;
     }
+    if app.surface == Surface::Chat {
+        handle_chat_key(app, key);
+        return LoopAction::Continue;
+    }
 
     match app.mode {
         InputMode::Normal => handle_normal_key(app, key),
-        InputMode::Input => handle_input_key(app, key),
+        InputMode::Chat => handle_input_key(app, key),
     }
 }
 
@@ -201,7 +205,8 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) -> LoopAction {
         KeyCode::BackTab => app.toggle_input_mode(),
         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => return LoopAction::Quit,
         KeyCode::Char('c') if has_control(key) => return LoopAction::Quit,
-        KeyCode::Char('i') | KeyCode::Char('I') => app.mode = InputMode::Input,
+        KeyCode::Char('i') | KeyCode::Char('I') => app.mode = InputMode::Chat,
+        KeyCode::Char('c') | KeyCode::Char('C') => app.show_chat_surface(),
         KeyCode::Char('m') | KeyCode::Char('M') => app.toggle_surface(),
         KeyCode::Char('H') => app.cycle_theme(),
         KeyCode::Char('p') | KeyCode::Char('P') => toggle_pod_pause(app),
@@ -217,6 +222,43 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) -> LoopAction {
     }
 
     LoopAction::Continue
+}
+
+fn handle_chat_key(app: &mut App, key: KeyEvent) {
+    if key.code == KeyCode::Tab {
+        app.show_timeline_surface();
+        return;
+    }
+
+    match app.chat_mode {
+        ChatMode::Index => handle_chat_index_key(app, key),
+        ChatMode::Detail => handle_chat_detail_key(app, key),
+    }
+}
+
+fn handle_chat_index_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => app.show_timeline_surface(),
+        KeyCode::Down | KeyCode::Char('j') => app.chat_cursor_down(),
+        KeyCode::Up | KeyCode::Char('k') => app.chat_cursor_up(),
+        KeyCode::Char('g') | KeyCode::Home => app.chat_cursor_top(),
+        KeyCode::Char('G') | KeyCode::End => app.chat_cursor_bottom(),
+        KeyCode::Enter | KeyCode::Char(' ') => app.open_selected_chat(),
+        _ => {}
+    }
+}
+
+fn handle_chat_detail_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('i') => app.close_chat_detail(),
+        KeyCode::Down | KeyCode::Char('j') => app.chat_scroll_down(1),
+        KeyCode::Up | KeyCode::Char('k') => app.chat_scroll_up(1),
+        KeyCode::PageDown | KeyCode::Char(' ') => app.chat_scroll_down(12),
+        KeyCode::PageUp => app.chat_scroll_up(12),
+        KeyCode::Char('g') | KeyCode::Home => app.chat_scroll_top(),
+        KeyCode::Char('G') | KeyCode::End => app.chat_scroll_bottom(),
+        _ => {}
+    }
 }
 
 fn handle_mail_key(app: &mut App, key: KeyEvent) {
@@ -352,9 +394,9 @@ fn input_down(app: &mut App) {
 
 fn submit_composer(app: &mut App) {
     if let Some(msg) = app.composer.submit() {
-        if let Err(error) = app.send_operator_message(&msg) {
-            app.composer.set_status(format!("send failed: {error}"));
-            app.record_operator_action(format!("failed to mail target fin: {error}"));
+        if let Err(error) = app.send_chat_prompt(&msg) {
+            app.composer.set_status(format!("chat failed: {error}"));
+            app.record_operator_action(format!("failed to chat with target fin: {error}"));
         }
         app.auto_follow_if_needed();
     }
