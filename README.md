@@ -666,24 +666,33 @@ totals) plus a hint to run `--help`.
 ### Top Level
 
 ```text
+Coordinate local agent pods and fins
+
 Usage: orqa [OPTIONS] [COMMAND]
 
+Options:
+      --home <DIR>  Override ORQA_HOME for this command
+  -v, --version     Print version
+  -h, --help        Print help
+
 Commands:
-  doctor  Show basic runtime information
-  help    Print the operational guide for agents using Orqa
-  pod     Create or inspect pods
-  fin     Create or operate fins inside a pod
-  mail    Mail helpers for pod-local fin messages
-  task    Task helpers for pod-local work items
-  ops     Human operator surface for cross-pod monitoring
-  wake    Run one wake cycle for the current pod
-  loop    Run a repeated wake loop for the current pod
+  doctor  Show runtime diagnostics
+  guide   Print the operational guide
+  init    Initialize a pod in this directory
+  pod     Manage pods
+  fin     Manage fins
+  mail    Send and read fin mail
+  task    Assign and track fin tasks
+  ops     Monitor pods
+  wake    Run one wake cycle
+  loop    Run wake cycles repeatedly
+  help    Print this message or the help of the given subcommand(s)
 ```
 
 `orqa doctor` prints basic runtime information, including the active
 `ORQA_HOME`.
 
-`orqa help` prints an embedded Markdown operational guide for agents and humans
+`orqa guide` prints an embedded Markdown operational guide for agents and humans
 who need the runtime overview without install or development notes.
 
 ### Pod Commands

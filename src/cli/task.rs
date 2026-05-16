@@ -58,13 +58,13 @@ pub(crate) struct TaskCommand {
 pub(crate) enum TaskSubcommand {
     /// Print the task directory for a fin.
     Home(FinRefArgs),
-    /// Assign a pod-local task.
+    /// Send a task.
     Send(SendTaskArgs),
-    /// List tasks for a fin.
+    /// List tasks.
     List(TaskListArgs),
-    /// Read a task for a fin.
+    /// Read a task.
     Read(MailMessageArgs),
-    /// Mark an open task as done.
+    /// Mark a task done.
     Done(MailMessageArgs),
     /// Delete a task.
     Delete(MailMessageArgs),

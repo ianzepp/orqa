@@ -139,9 +139,9 @@ pub(crate) struct PodHookCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum PodHookSubcommand {
-    /// List hooks for a pod.
+    /// List hooks.
     List(PodHookListArgs),
-    /// Add a hook definition and adjacent script stub.
+    /// Add a hook.
     Add(PodHookAddArgs),
     /// Enable a hook.
     Enable(PodHookRefArgs),
@@ -149,7 +149,7 @@ pub(crate) enum PodHookSubcommand {
     Disable(PodHookRefArgs),
     /// Remove a hook definition and adjacent script.
     Remove(PodHookRefArgs),
-    /// Run enabled hooks for one phase.
+    /// Run hooks for one phase.
     Run(PodHookRunArgs),
 }
 
@@ -171,24 +171,21 @@ pub(crate) enum PodSubcommand {
     /// List pods.
     List,
     /// Create a pod.
-    ///
-    /// Without --path, uses the current directory as the pod root.
-    /// With --path, uses the given directory as the pod root.
     Create(PodCreateArgs),
     /// Get or set a pod charter.
     Charter(PodCharterCommand),
     /// Print the home directory for a pod.
     Home(SlugArgs),
-    /// Print pod runtime status.
+    /// Show pod status.
     Status(PodStatusArgs),
-    /// Check pod filesystem, config, backend command, and LLM connectivity.
+    /// Check pod health.
     Doctor(PodDoctorArgs),
-    /// Manage pod lifecycle hooks.
+    /// Manage hooks.
     Hook(PodHookCommand),
-    /// Print recent run output for fins in a pod.
+    /// Tail recent fin output.
     Tail(PodTailArgs),
-    /// Pause wake runs for a pod.
+    /// Pause a pod.
     Pause(SlugArgs),
-    /// Resume wake eligibility for a pod.
+    /// Resume a pod.
     Resume(PodResumeArgs),
 }

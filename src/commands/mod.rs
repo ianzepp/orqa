@@ -463,7 +463,7 @@ pub(crate) fn overview(orqa: &Orqa) -> Result<(), String> {
         total_tasks
     );
     println!();
-    println!("Run `orqa --help` for commands. Run `orqa help` for the agent operational guide.");
+    println!("Run `orqa --help` for commands. Run `orqa guide` for the operational guide.");
 
     Ok(())
 }

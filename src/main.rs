@@ -12,13 +12,9 @@ mod runtime_home;
 mod status;
 mod tui;
 
-use std::{
-    env,
-    ffi::{OsStr, OsString},
-    process::ExitCode,
-};
+use std::{env, ffi::OsString, process::ExitCode};
 
-use clap::{CommandFactory, FromArgMatches};
+use clap::{Arg, ArgAction, Command as ClapCommand, CommandFactory, FromArgMatches};
 
 #[allow(unused_imports)]
 use cli::{Cli, Command, InitArgs};
@@ -30,13 +26,11 @@ use runtime::wake_pod;
 #[path = "main_test.rs"]
 mod tests;
 
-fn main() -> ExitCode {
-    if operational_help_requested() {
-        print_operational_help();
-        return ExitCode::SUCCESS;
-    }
+const TOP_LEVEL_HELP_TEMPLATE: &str =
+    "{about}\n\nUsage: {usage}\n\nOptions:\n{options}\n\nCommands:\n{subcommands}";
 
-    let matches = Cli::command().disable_help_subcommand(true).get_matches();
+fn main() -> ExitCode {
+    let matches = cli_command().get_matches();
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
     let orqa = Orqa::new(cli.home);
 
@@ -161,21 +155,15 @@ fn print_operational_help() {
     print!("{}", include_str!("help.md"));
 }
 
-fn operational_help_requested() -> bool {
-    let mut args = env::args_os().skip(1);
-
-    while let Some(arg) = args.next() {
-        if arg.as_os_str() == OsStr::new("--home") {
-            let _ = args.next();
-            continue;
-        }
-
-        if arg.to_string_lossy().starts_with("--home=") {
-            continue;
-        }
-
-        return arg.as_os_str() == OsStr::new("help");
-    }
-
-    false
+fn cli_command() -> ClapCommand {
+    Cli::command()
+        .arg(
+            Arg::new("version")
+                .short('v')
+                .long("version")
+                .short_alias('V')
+                .action(ArgAction::Version)
+                .help("Print version"),
+        )
+        .help_template(TOP_LEVEL_HELP_TEMPLATE)
 }

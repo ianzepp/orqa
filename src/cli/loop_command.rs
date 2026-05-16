@@ -3,16 +3,16 @@ use std::ffi::OsString;
 
 #[derive(Debug, Args)]
 pub(crate) struct WakeArgs {
-    /// Ignore pod and fin pause markers for this scan.
+    /// Ignore pause markers.
     #[arg(long)]
     pub(crate) force: bool,
-    /// Print wake decisions without running fins.
+    /// Print decisions without running fins.
     #[arg(long)]
     pub(crate) dry_run: bool,
-    /// Emit machine-readable JSON.
+    /// Emit JSON.
     #[arg(long)]
     pub(crate) json: bool,
-    /// Arguments used to build the backend prompt.
+    /// Backend prompt arguments.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
 }
@@ -23,11 +23,11 @@ pub(crate) struct LoopCommand {
     #[arg(long, default_value_t = 60)]
     pub(crate) interval: u64,
 
-    /// Ignore pod and fin pause markers for each scan.
+    /// Ignore pause markers.
     #[arg(long)]
     pub(crate) force: bool,
 
-    /// Arguments passed to each wake scan.
+    /// Backend prompt arguments.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
 }

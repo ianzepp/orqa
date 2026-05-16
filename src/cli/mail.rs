@@ -48,16 +48,16 @@ pub(crate) struct MailCommand {
 pub(crate) enum MailSubcommand {
     /// Print the mail directory for a fin.
     Home(FinRefArgs),
-    /// Send a pod-local message.
+    /// Send mail.
     Send(SendMailArgs),
-    /// List messages for a fin.
+    /// List mail.
     List(MailListArgs),
-    /// Read a message for a fin.
+    /// Read mail.
     Read(MailMessageArgs),
-    /// Mark an unread message as done.
+    /// Mark mail done.
     Done(MailMessageArgs),
-    /// Delete a message.
+    /// Delete mail.
     Delete(MailMessageArgs),
-    /// List unread messages for a fin.
+    /// List unread mail.
     Unread(FinRefArgs),
 }

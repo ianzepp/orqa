@@ -23,9 +23,9 @@ pub(crate) use task::{SendTaskArgs, TaskCommand, TaskListArgs, TaskSubcommand};
 #[command(
     name = "orqa",
     version,
-    about = "Fan out work to fins",
+    about = "Coordinate local agent pods and fins",
     long_about = None,
-    disable_help_subcommand(true)
+    disable_version_flag = true
 )]
 pub(crate) struct Cli {
     /// Override ORQA_HOME for this command.
@@ -38,29 +38,25 @@ pub(crate) struct Cli {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
-    /// Show basic runtime information.
+    /// Show runtime diagnostics.
     Doctor,
-    /// Print the operational guide for agents using Orqa.
-    #[command(name = "help")]
+    /// Print the operational guide.
     Guide,
-    /// Initialize a new pod in the current (or specified) directory.
-    /// This is the recommended way to start using Orqa inside a project.
+    /// Initialize a pod in this directory.
     Init(InitArgs),
-    /// Create or inspect pods.
-    ///
-    /// Use `orqa init` for the most common case of starting a pod inside a project directory.
+    /// Manage pods.
     Pod(PodCommand),
-    /// Create or operate fins inside a pod.
+    /// Manage fins.
     Fin(FinCommand),
-    /// Mail helpers for pod-local fin messages.
+    /// Send and read fin mail.
     Mail(MailCommand),
-    /// Task helpers for pod-local work items.
+    /// Assign and track fin tasks.
     Task(TaskCommand),
-    /// Human operator surface for cross-pod monitoring.
+    /// Monitor pods.
     Ops(OpsCommand),
-    /// Run one wake cycle for the current pod.
+    /// Run one wake cycle.
     Wake(WakeArgs),
-    /// Run a repeated wake loop for the current pod.
+    /// Run wake cycles repeatedly.
     Loop(LoopCommand),
 }
 
@@ -72,33 +68,33 @@ pub(crate) struct FinCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum FinSubcommand {
-    /// List fins inside a pod.
+    /// List fins.
     List(FinListArgs),
-    /// Create a fin inside a pod.
+    /// Create a fin.
     Create(FinCreateArgs),
     /// Get or set a fin role.
     Role(FinRoleCommand),
     /// Print the home directory for a fin.
     Home(FinRefArgs),
-    /// Print fin runtime status.
+    /// Show fin status.
     Status(FinStatusArgs),
-    /// List recorded runs for a fin.
+    /// List fin runs.
     Runs(FinRunsArgs),
-    /// Print recorded run status for a fin.
+    /// Show run status.
     #[command(name = "run-status")]
     RunStatus(FinRunReadArgs),
-    /// Print recorded run logs for a fin.
+    /// Show run logs.
     #[command(name = "run-log")]
     RunLog(FinRunReadArgs),
-    /// Print recent run output for a fin.
+    /// Tail recent run output.
     Tail(FinTailArgs),
-    /// Pause wake runs for a fin.
+    /// Pause a fin.
     Pause(FinRefArgs),
-    /// Resume wake eligibility for a fin.
+    /// Resume a fin.
     Resume(FinResumeArgs),
-    /// Execute a one-shot fin backend command.
+    /// Run a one-shot backend command.
     Exec(ExecArgs),
-    /// Start an interactive fin backend chat.
+    /// Start backend chat.
     Chat(ChatArgs),
     /// Internal supervised runner used by wake loops.
     #[command(hide = true)]
@@ -114,7 +110,7 @@ pub(crate) struct OpsCommand {
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum OpsSubcommand {
-    /// Generate a Markdown report of pods, tasks, and mail.
+    /// Generate a Markdown report.
     Report(OpsReportArgs),
 }
 
