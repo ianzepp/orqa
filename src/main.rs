@@ -19,7 +19,7 @@ use clap::{Arg, ArgAction, Command as ClapCommand, CommandFactory, FromArgMatche
 
 #[allow(unused_imports)]
 use cli::{Cli, Command, CommandContext, InitArgs};
-use commands::{fin, loop_command, mail, ops, overview, pod, pod_init, task};
+use commands::{fin, loop_command, mail, ops, overview, pod, pod_init, task, template};
 use model::Orqa;
 
 #[cfg(test)]
@@ -86,6 +86,7 @@ fn run(orqa: &Orqa, context: &CommandContext, command: Command) -> Result<(), St
         Command::Fin(command) => fin(orqa, context, command),
         Command::Mail(command) => mail(orqa, context, command),
         Command::Task(command) => task(orqa, context, command),
+        Command::Template(command) => template(orqa, command),
         Command::Ops(command) => ops(orqa, command),
         Command::Wake(args) => runtime::wake_current_pod(orqa, context, args),
         Command::Loop(command) => loop_command(orqa, context, command),

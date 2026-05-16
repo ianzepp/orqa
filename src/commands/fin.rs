@@ -13,6 +13,54 @@ use crate::{
     status::{fin_status, print_fin_status, print_json},
 };
 
+pub(super) fn create_fin_in_current_pod(
+    orqa: &Orqa,
+    context: &CommandContext,
+    fin_slug: &str,
+    role_source: Option<&str>,
+    backend: Option<&str>,
+) -> Result<(), String> {
+    let (pod_slug, pod_root) = context.resolve_pod(None, orqa)?;
+    let pod_ref = PodRef::new(&pod_slug)?;
+    orqa.ensure_pod_exists(&pod_ref)?;
+
+    create_fin_in_pod(orqa, &pod_slug, &pod_root, fin_slug, role_source, backend)
+}
+
+pub(in crate::commands) fn create_fin_in_pod(
+    orqa: &Orqa,
+    pod_slug: &str,
+    pod_root: &std::path::Path,
+    fin_slug: &str,
+    role_source: Option<&str>,
+    backend: Option<&str>,
+) -> Result<(), String> {
+    let fin = FinRef::new(pod_slug, fin_slug)?;
+    let fin_home = pod_root.join(".orqa").join("fins").join(fin_slug);
+    ensure_fin_runtime_homes(orqa, &fin)?;
+
+    let role = read_optional_markdown_source(role_source, DEFAULT_ROLE)?;
+    if let Some(backend) = backend {
+        validate_backend_name(backend)?;
+    }
+    ensure_maildir(&fin_home.join("mail"))?;
+    ensure_maildir(&fin_home.join("tasks"))?;
+
+    write_if_missing(&fin_home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
+    write_if_missing(
+        &fin_home.join("fin.toml"),
+        &fin_config_template_with_backend(&fin, backend),
+    )?;
+    write_if_missing(&fin_home.join("ROLE.md"), &role)?;
+    write_if_missing(
+        &fin_home.join("AGENTS.md"),
+        &fin_agents_template(&fin, &role),
+    )?;
+
+    println!("{}", fin_home.display());
+    Ok(())
+}
+
 pub(crate) fn fin(
     orqa: &Orqa,
     context: &CommandContext,
@@ -26,36 +74,13 @@ pub(crate) fn fin(
             orqa.ensure_pod_exists(&pod_ref)?;
             print_dirs(&fins_dir)
         }
-        FinSubcommand::Create(args) => {
-            let (pod_slug, pod_root) = context.resolve_pod(None, orqa)?;
-            let pod_ref = PodRef::new(&pod_slug)?;
-            orqa.ensure_pod_exists(&pod_ref)?;
-
-            let fin = FinRef::new(&pod_slug, &args.fin)?;
-            let fin_home = pod_root.join(".orqa").join("fins").join(&args.fin);
-            ensure_fin_runtime_homes(orqa, &fin)?;
-
-            let role = read_optional_markdown_source(args.role.as_deref(), DEFAULT_ROLE)?;
-            if let Some(backend) = &args.backend {
-                validate_backend_name(backend)?;
-            }
-            ensure_maildir(&fin_home.join("mail"))?;
-            ensure_maildir(&fin_home.join("tasks"))?;
-
-            write_if_missing(&fin_home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
-            write_if_missing(
-                &fin_home.join("fin.toml"),
-                &fin_config_template_with_backend(&fin, args.backend.as_deref()),
-            )?;
-            write_if_missing(&fin_home.join("ROLE.md"), &role)?;
-            write_if_missing(
-                &fin_home.join("AGENTS.md"),
-                &fin_agents_template(&fin, &role),
-            )?;
-
-            println!("{}", fin_home.display());
-            Ok(())
-        }
+        FinSubcommand::Create(args) => create_fin_in_current_pod(
+            orqa,
+            context,
+            &args.fin,
+            args.role.as_deref(),
+            args.backend.as_deref(),
+        ),
         FinSubcommand::Role(command) => match command.command {
             FinRoleSubcommand::Get(args) => {
                 let fin = context.resolve_fin(None, args.fin, orqa)?;

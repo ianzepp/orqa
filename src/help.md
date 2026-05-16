@@ -79,6 +79,21 @@ orqa --pod sample-pod fin create planner --role "Turn the charter into tasks."
 orqa --pod sample-pod fin create builder
 ```
 
+Create a pod from a reusable global template:
+
+```sh
+mkdir -p ~/.orqa/templates/executive/fins/ceo
+printf '%s\n' 'Own company direction and executive decisions.' \
+  > ~/.orqa/templates/executive/fins/ceo/ROLE.md
+orqa template list
+orqa template create-pod executive launch-team --path /path/to/project
+```
+
+Templates live under `ORQA_HOME/templates/<template-slug>/` and may use either
+`fins/<fin>/ROLE.md` or `.orqa/fins/<fin>/ROLE.md`. Orqa creates a normal pod,
+seeds `operator`, then creates each template fin with the predefined role and
+standard fin directories.
+
 Manage the durable pod charter and fin role files:
 
 ```sh

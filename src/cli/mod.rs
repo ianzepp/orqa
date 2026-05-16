@@ -3,6 +3,7 @@ mod loop_command;
 mod mail;
 mod pod;
 mod task;
+mod template;
 
 pub(crate) use fin::{
     ChatArgs, ExecArgs, FinCreateArgs, FinListArgs, FinRefArgs, FinResumeArgs, FinRoleSetArgs,
@@ -18,6 +19,7 @@ pub(crate) use pod::{
     SlugArgs,
 };
 pub(crate) use task::{SendTaskArgs, TaskCommand, TaskListArgs, TaskSubcommand};
+pub(crate) use template::{TemplateCommand, TemplateSubcommand};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -102,6 +104,9 @@ pub(crate) enum Command {
     Mail(MailCommand),
     /// Assign and track fin tasks.
     Task(TaskCommand),
+    /// Manage pod templates.
+    #[command(alias = "templates")]
+    Template(TemplateCommand),
     /// Monitor pods.
     Ops(OpsCommand),
     /// Run one wake cycle.

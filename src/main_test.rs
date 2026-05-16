@@ -3,7 +3,7 @@ use std::{env, fs};
 use clap::Parser;
 
 use crate::{
-    cli::{Cli, Command, FinSubcommand, MailSubcommand, TaskListArgs},
+    cli::{Cli, Command, FinSubcommand, MailSubcommand, TaskListArgs, TemplateSubcommand},
     config::{fin_agents_template, fin_config_template, pod_agents_template, pod_config_template},
     mailbox::{
         TaskFilters, canonical_task_body, deliver_mail, ensure_maildir, mark_task_done, message_id,
@@ -26,7 +26,10 @@ fn cli_command_help_is_compact_and_direct() {
     assert!(help.contains("Options:"));
     assert!(help.contains("  -v, --version     Print version"));
     assert!(help.contains("Commands:"));
-    assert!(help.contains("guide   Print the operational guide"));
+    assert!(help.contains("guide"));
+    assert!(help.contains("Print the operational guide"));
+    assert!(help.contains("template"));
+    assert!(help.contains("Manage pod templates"));
 }
 
 #[test]
@@ -114,6 +117,38 @@ fn parses_global_context_flags_after_nested_pod_commands() {
         cli.command,
         Some(Command::Pod(command))
             if matches!(command.command, crate::cli::PodSubcommand::Tail(_))
+    ));
+}
+
+#[test]
+fn parses_template_create_pod_command() {
+    let cli = Cli::try_parse_from([
+        "orqa",
+        "template",
+        "create-pod",
+        "executive",
+        "new-co",
+        "--path",
+        "/tmp/new-co",
+    ])
+    .unwrap();
+
+    assert!(matches!(
+        cli.command,
+        Some(Command::Template(command))
+            if matches!(&command.command, TemplateSubcommand::CreatePod(args)
+                if args.template == "executive" && args.slug == "new-co")
+    ));
+}
+
+#[test]
+fn parses_templates_alias() {
+    let cli = Cli::try_parse_from(["orqa", "templates", "list"]).unwrap();
+
+    assert!(matches!(
+        cli.command,
+        Some(Command::Template(command))
+            if matches!(command.command, TemplateSubcommand::List)
     ));
 }
 

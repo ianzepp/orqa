@@ -24,6 +24,7 @@ still keeping per-fin state isolated.
 
 `ORQA_HOME` (defaults to `~/.orqa`) stores the registry (`config.toml`) that
 maps pod slugs to their roots. Pod data lives in each pod root under `.orqa/`.
+Reusable pod templates live under `ORQA_HOME/templates/<template-slug>/`.
 
 **Recommended onboarding:** `cd my-project && orqa init`
 
@@ -197,6 +198,46 @@ there is no mail or task. Pod values are defaults; fin values override them.
 Durations accept plain seconds or units such as `30s`, `5m`, `3h`, or `1d`.
 Use `debounce = "0"` to run any time there is work, and `exec_always = "0"` to
 run only when there is work.
+
+## Templates
+
+Templates let you predefine a set of fins and roles once, then create new pods
+with that starting roster already in place.
+
+Template directories live in the global Orqa home:
+
+```text
+~/.orqa/
+  templates/
+    executive/
+      fins/
+        ceo/
+          ROLE.md
+        cto/
+          ROLE.md
+        cmo/
+          ROLE.md
+        coo/
+          ROLE.md
+```
+
+The full pod-style layout is also accepted:
+
+```text
+~/.orqa/templates/executive/.orqa/fins/ceo/ROLE.md
+```
+
+Create a new pod from a template:
+
+```sh
+orqa template create-pod executive launch-team --path /path/to/project
+```
+
+The command creates the normal pod files, seeds the built-in `operator` fin,
+then creates each template fin with its predefined `ROLE.md`, generated
+`AGENTS.md`, `fin.toml`, maildir, task queue, and runtime state directories.
+Templates may not include an `operator` fin because every pod owns that local
+human identity automatically.
 
 Backend argument lists are stored as argv arrays instead of shell strings. That
 keeps quoting behavior predictable when prompts or paths contain spaces.

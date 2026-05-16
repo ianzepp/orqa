@@ -159,6 +159,56 @@ fn pod_create_and_charter_commands_manage_charter_agents_injection() {
 }
 
 #[test]
+fn template_create_pod_seeds_predefined_fin_roles() {
+    let root = temp_root();
+    let template = root.join("templates/executive");
+    fs::create_dir_all(template.join("fins/ceo")).unwrap();
+    fs::create_dir_all(template.join("fins/cto")).unwrap();
+    fs::write(
+        template.join("fins/ceo/ROLE.md"),
+        "Own company direction and executive decisions.\n",
+    )
+    .unwrap();
+    fs::write(
+        template.join("fins/cto/ROLE.md"),
+        "Own technical architecture and delivery quality.\n",
+    )
+    .unwrap();
+
+    let target = pod_root(&root, "new-co");
+    fs::create_dir_all(&target).unwrap();
+    orqa(
+        &root,
+        [
+            "template",
+            "create-pod",
+            "executive",
+            "new-co",
+            "--path",
+            target.to_str().unwrap(),
+            "--charter",
+            "Launch the new operating pod.",
+        ],
+    );
+
+    let fins = orqa_output(&root, ["--pod", "new-co", "fin", "list"]);
+    assert_eq!(fins, "ceo\ncto\noperator\n");
+    assert_eq!(
+        fs::read_to_string(fin_home(&root, "new-co", "ceo").join("ROLE.md")).unwrap(),
+        "Own company direction and executive decisions.\n"
+    );
+    assert!(
+        fs::read_to_string(fin_home(&root, "new-co", "cto").join("AGENTS.md"))
+            .unwrap()
+            .contains("Own technical architecture and delivery quality.")
+    );
+    assert!(fin_home(&root, "new-co", "ceo").join("mail/new").exists());
+    assert!(fin_home(&root, "new-co", "cto").join(".codex").exists());
+
+    remove_temp_root(root);
+}
+
+#[test]
 fn fin_create_and_role_commands_manage_role_agents_injection() {
     let root = temp_root();
 

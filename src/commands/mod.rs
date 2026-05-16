@@ -9,11 +9,13 @@ mod loop_command;
 mod mail;
 mod pod;
 mod task;
+mod template;
 
 pub(crate) use fin::fin;
 pub(crate) use loop_command::{is_process_running, loop_command};
 pub(crate) use mail::mail;
 pub(crate) use task::task;
+pub(crate) use template::template;
 
 use crate::{
     cli::{
@@ -181,7 +183,7 @@ pub(super) fn validate_backend_name(name: &str) -> Result<(), String> {
 
 /// Shared implementation for creating a pod inside a user-provided project root.
 /// Used by both `orqa init` and `orqa pod create`.
-fn create_pod_in_dir(
+pub(super) fn create_pod_in_dir(
     orqa: &Orqa,
     slug: &str,
     root: PathBuf,
