@@ -8,10 +8,7 @@ use ratatui::{
 
 use crate::tui::{
     app::{App, MailComposeField, MailMode, OperatorMail},
-    view::{
-        markdown::render_markdown,
-        style::{fg, strong},
-    },
+    view::style::{fg, strong},
 };
 
 pub(super) fn render(app: &mut App, frame: &mut Frame, area: Rect) {
@@ -108,13 +105,11 @@ fn render_pager(app: &App, frame: &mut Frame, area: Rect) {
 
     let body_width = usize::from(chunks[1].width).max(1);
     frame.render_widget(
-        Paragraph::new(render_markdown(
+        Paragraph::new(render_mail_body(
             &message.body,
             body_width,
             fg(app.theme.text),
-            &app.theme,
-        ))
-        .wrap(Wrap { trim: false }),
+        )),
         chunks[1],
     );
 }
@@ -206,6 +201,77 @@ fn compose_body(app: &App, body: &str, active: bool) -> Line<'static> {
     ])
 }
 
+fn render_mail_body(body: &str, width: usize, style: ratatui::style::Style) -> Vec<Line<'static>> {
+    let width = width.max(1);
+    let mut lines = Vec::new();
+    for raw_line in body.lines() {
+        if raw_line.is_empty() {
+            lines.push(Line::raw(""));
+        } else {
+            lines.extend(wrap_mail_line(raw_line, width, style));
+        }
+    }
+
+    if lines.is_empty() {
+        lines.push(Line::raw(""));
+    }
+    lines
+}
+
+fn wrap_mail_line(line: &str, width: usize, style: ratatui::style::Style) -> Vec<Line<'static>> {
+    if line.chars().count() <= width {
+        return vec![styled_line(line, style)];
+    }
+
+    let indent = line
+        .chars()
+        .take_while(|ch| ch.is_whitespace())
+        .collect::<String>();
+    let continuation_indent = if indent.chars().count() < width {
+        indent
+    } else {
+        String::new()
+    };
+    let mut remaining = line.to_string();
+    let mut lines = Vec::new();
+    let mut first = true;
+
+    while !remaining.is_empty() {
+        let prefix = if first { "" } else { &continuation_indent };
+        let available = width.saturating_sub(prefix.chars().count()).max(1);
+        let split = mail_wrap_split(&remaining, available);
+        let chunk = remaining[..split].trim_end().to_string();
+        lines.push(styled_line(&format!("{prefix}{chunk}"), style));
+        remaining = remaining[split..].trim_start().to_string();
+        first = false;
+    }
+
+    lines
+}
+
+fn mail_wrap_split(line: &str, width: usize) -> usize {
+    if line.chars().count() <= width {
+        return line.len();
+    }
+
+    let hard_split = line
+        .char_indices()
+        .nth(width)
+        .map(|(index, _)| index)
+        .unwrap_or(line.len());
+    line[..hard_split]
+        .char_indices()
+        .rev()
+        .find(|(_, ch)| ch.is_whitespace())
+        .map(|(index, ch)| index + ch.len_utf8())
+        .filter(|index| *index > 0)
+        .unwrap_or(hard_split)
+}
+
+fn styled_line(text: &str, style: ratatui::style::Style) -> Line<'static> {
+    Line::from(Span::styled(text.to_string(), style))
+}
+
 fn truncate(value: &str, width: usize) -> String {
     let mut chars = value.chars();
     let truncated = chars.by_ref().take(width).collect::<String>();
@@ -220,3 +286,7 @@ fn truncate(value: &str, width: usize) -> String {
         truncated
     }
 }
+
+#[cfg(test)]
+#[path = "mail_test.rs"]
+mod tests;
