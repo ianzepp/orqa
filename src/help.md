@@ -69,32 +69,35 @@ orqa pod create my-pod --path /path/to/project
 orqa pod create my-pod --path . --charter "Build a focused launch plan."
 ```
 
+For commands that operate on an existing pod, select a pod with `--pod`, set
+`ORQA_POD`, or run the command from inside a pod directory.
+
 Create fins inside the pod:
 
 ```sh
-orqa fin create sample-pod planner --role "Turn the charter into tasks."
-orqa fin create sample-pod builder
+orqa --pod sample-pod fin create planner --role "Turn the charter into tasks."
+orqa --pod sample-pod fin create builder
 ```
 
 Manage the durable pod charter and fin role files:
 
 ```sh
-orqa pod charter get sample-pod
-orqa pod charter set sample-pod @charter.md
-orqa fin role get sample-pod planner
-orqa fin role set sample-pod planner -
+orqa --pod sample-pod pod charter get
+orqa --pod sample-pod pod charter set @charter.md
+orqa --pod sample-pod fin role get planner
+orqa --pod sample-pod fin role set planner -
 ```
 
 Print homes when an agent needs to inspect paths:
 
 ```sh
 orqa pod list
-orqa fin list sample-pod
-orqa pod home sample-pod
-orqa pod hook list sample-pod
-orqa fin home sample-pod planner
-orqa mail home sample-pod planner
-orqa task home sample-pod planner
+orqa --pod sample-pod fin list
+orqa --pod sample-pod pod home
+orqa --pod sample-pod pod hook list
+orqa --pod sample-pod fin home planner
+orqa --pod sample-pod mail home planner
+orqa --pod sample-pod task home planner
 ```
 
 Inside a launched fin, `ORQA_POD` is already set, so a fin can list its
@@ -116,7 +119,7 @@ orqa --home /tmp/orqa-demo pod create sample-pod
 `fin.toml`.
 
 ```sh
-orqa fin exec sample-pod planner -- "handle your open mail and tasks"
+orqa --pod sample-pod fin exec planner -- "handle your open mail and tasks"
 ```
 
 `orqa wake` runs one wake turn for the current pod. It scans fins with wake
@@ -139,7 +142,7 @@ orqa wake --dry-run
 Start an interactive backend chat as a fin with the backend's `chat_args`:
 
 ```sh
-orqa fin chat sample-pod planner
+orqa --pod sample-pod fin chat planner
 ```
 
 `fin chat` attaches stdin, stdout, and stderr directly to the terminal while
@@ -176,16 +179,16 @@ does not already have an auth file.
 Inspect the current runtime state:
 
 ```sh
-orqa pod status sample-pod
-orqa fin status sample-pod planner
+orqa --pod sample-pod pod status
+orqa --pod sample-pod fin status planner
 ```
 
 Check pod readiness, including filesystem shape, config resolution, backend
 execution, and upstream LLM connectivity:
 
 ```sh
-orqa pod doctor sample-pod
-orqa pod doctor sample-pod --fin planner --timeout 60
+orqa --pod sample-pod pod doctor
+orqa --pod sample-pod pod doctor --fin planner --timeout 60
 ```
 
 Each fin exec records a small run directory under the fin data home:
@@ -202,18 +205,18 @@ Each fin exec records a small run directory under the fin data home:
 Read recent run history and logs:
 
 ```sh
-orqa fin runs sample-pod planner
-orqa fin run-status sample-pod planner
-orqa fin run-log sample-pod planner
+orqa --pod sample-pod fin runs planner
+orqa --pod sample-pod fin run-status planner
+orqa --pod sample-pod fin run-log planner
 ```
 
 Tail recent output. `fin tail` defaults to the latest run for that fin; `pod
 tail` reads the latest run for each fin in the pod:
 
 ```sh
-orqa fin tail sample-pod planner
-orqa pod tail sample-pod
-orqa pod tail sample-pod --fin planner --follow
+orqa --pod sample-pod fin tail planner
+orqa --pod sample-pod pod tail
+orqa --pod sample-pod pod tail --fin planner --follow
 ```
 
 ## Backend Config
@@ -412,11 +415,11 @@ context. `--since` accepts Unix seconds or relative durations such as `30m`,
 Use pod hooks for cheap lifecycle work around the wake loop:
 
 ```sh
-orqa pod hook add ops pre-plan 10-sync-external-mail -- ./10-sync-external-mail.sh
-orqa pod hook list ops
-orqa pod hook run ops pre-plan
-orqa pod hook disable ops pre-plan 10-sync-external-mail
-orqa pod hook enable ops pre-plan 10-sync-external-mail
+orqa --pod ops pod hook add pre-plan 10-sync-external-mail -- ./10-sync-external-mail.sh
+orqa --pod ops pod hook list
+orqa --pod ops pod hook run pre-plan
+orqa --pod ops pod hook disable pre-plan 10-sync-external-mail
+orqa --pod ops pod hook enable pre-plan 10-sync-external-mail
 ```
 
 The first supported phase is `pre-plan`, which runs at the start of `orqa wake`
@@ -435,21 +438,21 @@ Hook commands receive `ORQA_HOME`, `ORQA_POD`, `ORQA_POD_ROOT`,
 Pause an entire pod:
 
 ```sh
-orqa pod pause sample-pod
+orqa --pod sample-pod pod pause
 ```
 
 Pause one fin:
 
 ```sh
-orqa fin pause sample-pod planner
+orqa --pod sample-pod fin pause planner
 ```
 
 Paused pods and fins are skipped by `orqa wake` and `orqa loop`. Clear pause
 state with an explicit forced resume:
 
 ```sh
-orqa pod resume sample-pod --force
-orqa fin resume sample-pod planner --force
+orqa --pod sample-pod pod resume --force
+orqa --pod sample-pod fin resume planner --force
 ```
 
 Run one scan while ignoring pause markers and debounce without removing pause

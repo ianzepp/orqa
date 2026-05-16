@@ -19,9 +19,9 @@ const PRE_PLAN: &str = "pre-plan";
 pub(crate) fn list_hooks(
     orqa: &Orqa,
     context: &CommandContext,
-    args: PodHookListArgs,
+    _args: PodHookListArgs,
 ) -> Result<(), String> {
-    let (slug, _) = context.resolve_pod(args.pod, orqa)?;
+    let (slug, _) = context.resolve_pod(None, orqa)?;
     let pod = PodRef::new(&slug)?;
     orqa.ensure_pod_exists(&pod)?;
     let hooks = read_phase_hooks(orqa, &pod, PRE_PLAN)?;
@@ -44,19 +44,18 @@ pub(crate) fn add_hook(
     context: &CommandContext,
     args: PodHookAddArgs,
 ) -> Result<(), String> {
-    let (pod_arg, phase, hook_id) = args.resolve_refs()?;
-    let (slug, _) = context.resolve_pod(pod_arg, orqa)?;
+    let (slug, _) = context.resolve_pod(None, orqa)?;
     let pod = PodRef::new(&slug)?;
     orqa.ensure_pod_exists(&pod)?;
-    validate_phase(&phase)?;
-    validate_slug(&hook_id)?;
+    validate_phase(&args.phase)?;
+    validate_slug(&args.hook)?;
     let timeout = parse_duration(&args.timeout)
         .map_err(|error| format!("invalid hook timeout {:?}: {error}", args.timeout))?;
     if timeout.is_zero() {
         return Err("hook timeout must be at least 1 second".to_string());
     }
 
-    let phase_home = orqa.pod_hook_phase_home(&pod, &phase)?;
+    let phase_home = orqa.pod_hook_phase_home(&pod, &args.phase)?;
     fs::create_dir_all(&phase_home).map_err(|error| {
         format!(
             "failed to create hook phase directory {}: {error}",
@@ -65,8 +64,8 @@ pub(crate) fn add_hook(
     })?;
 
     let command = shell_join(&args.command)?;
-    let path = phase_home.join(format!("{}.toml", hook_id));
-    let script = phase_home.join(format!("{}.sh", hook_id));
+    let path = phase_home.join(format!("{}.toml", args.hook));
+    let script = phase_home.join(format!("{}.sh", args.hook));
     let toml = format!(
         "[hook]\nenabled = true\ncommand = {:?}\ntimeout = {:?}\n",
         command, args.timeout
@@ -106,18 +105,17 @@ pub(crate) fn remove_hook(
     context: &CommandContext,
     args: PodHookRefArgs,
 ) -> Result<(), String> {
-    let (pod_arg, phase, hook_id) = args.resolve_refs()?;
-    let (slug, _) = context.resolve_pod(pod_arg, orqa)?;
+    let (slug, _) = context.resolve_pod(None, orqa)?;
     let pod = PodRef::new(&slug)?;
     orqa.ensure_pod_exists(&pod)?;
-    validate_phase(&phase)?;
-    validate_slug(&hook_id)?;
-    let phase_home = orqa.pod_hook_phase_home(&pod, &phase)?;
-    let path = phase_home.join(format!("{}.toml", hook_id));
-    let script = phase_home.join(format!("{}.sh", hook_id));
+    validate_phase(&args.phase)?;
+    validate_slug(&args.hook)?;
+    let phase_home = orqa.pod_hook_phase_home(&pod, &args.phase)?;
+    let path = phase_home.join(format!("{}.toml", args.hook));
+    let script = phase_home.join(format!("{}.sh", args.hook));
     remove_if_exists(&path)?;
     remove_if_exists(&script)?;
-    println!("removed {} {}/{}", pod.slug, phase, hook_id);
+    println!("removed {} {}/{}", pod.slug, args.phase, args.hook);
     Ok(())
 }
 
@@ -126,11 +124,10 @@ pub(crate) fn run_hooks(
     context: &CommandContext,
     args: PodHookRunArgs,
 ) -> Result<(), String> {
-    let (pod_arg, phase) = args.resolve_refs()?;
-    let (slug, _) = context.resolve_pod(pod_arg, orqa)?;
+    let (slug, _) = context.resolve_pod(None, orqa)?;
     let pod = PodRef::new(&slug)?;
     orqa.ensure_pod_exists(&pod)?;
-    run_hook_phase(orqa, &pod, &phase)
+    run_hook_phase(orqa, &pod, &args.phase)
 }
 
 pub(crate) fn run_hook_phase(orqa: &Orqa, pod: &PodRef, phase: &str) -> Result<(), String> {
@@ -166,14 +163,13 @@ fn set_hook_enabled(
     args: PodHookRefArgs,
     enabled: bool,
 ) -> Result<(), String> {
-    let (pod_arg, phase, hook_id) = args.resolve_refs()?;
-    let (slug, _) = context.resolve_pod(pod_arg, orqa)?;
+    let (slug, _) = context.resolve_pod(None, orqa)?;
     let pod = PodRef::new(&slug)?;
-    validate_phase(&phase)?;
-    validate_slug(&hook_id)?;
+    validate_phase(&args.phase)?;
+    validate_slug(&args.hook)?;
     let path = orqa
-        .pod_hook_phase_home(&pod, &phase)?
-        .join(format!("{}.toml", hook_id));
+        .pod_hook_phase_home(&pod, &args.phase)?
+        .join(format!("{}.toml", args.hook));
     let mut table = read_hook_table(&path)?;
     let hook = hook_table_mut(&mut table)?;
     hook.insert("enabled".to_string(), Value::Boolean(enabled));
@@ -182,8 +178,8 @@ fn set_hook_enabled(
         "{} {} {}/{}",
         if enabled { "enabled" } else { "disabled" },
         pod.slug,
-        phase,
-        hook_id
+        args.phase,
+        args.hook
     );
     Ok(())
 }

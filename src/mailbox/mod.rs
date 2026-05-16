@@ -75,7 +75,7 @@ pub(crate) fn unread_mail(
     context: &CommandContext,
     args: FinRefArgs,
 ) -> Result<(), String> {
-    let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+    let fin = context.resolve_fin(None, args.fin, orqa)?;
     let new_dir = orqa.mail_home(&fin)?.join("new");
 
     for path in sorted_files(&new_dir)? {

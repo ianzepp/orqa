@@ -19,21 +19,20 @@ pub(crate) fn fin(
     command: FinCommand,
 ) -> Result<(), String> {
     match command.command {
-        FinSubcommand::List(args) => {
-            let (pod_slug, pod_root) = context.resolve_pod(args.pod.clone(), orqa)?;
+        FinSubcommand::List(_args) => {
+            let (pod_slug, pod_root) = context.resolve_pod(None, orqa)?;
             let pod_ref = PodRef::new(&pod_slug)?;
             let fins_dir = pod_root.join(".orqa").join("fins");
             orqa.ensure_pod_exists(&pod_ref)?;
             print_dirs(&fins_dir)
         }
         FinSubcommand::Create(args) => {
-            let (pod_arg, fin_slug) = args.resolve_refs()?;
-            let (pod_slug, pod_root) = context.resolve_pod(pod_arg, orqa)?;
+            let (pod_slug, pod_root) = context.resolve_pod(None, orqa)?;
             let pod_ref = PodRef::new(&pod_slug)?;
             orqa.ensure_pod_exists(&pod_ref)?;
 
-            let fin = FinRef::new(&pod_slug, &fin_slug)?;
-            let fin_home = pod_root.join(".orqa").join("fins").join(&fin_slug);
+            let fin = FinRef::new(&pod_slug, &args.fin)?;
+            let fin_home = pod_root.join(".orqa").join("fins").join(&args.fin);
             ensure_fin_runtime_homes(orqa, &fin)?;
 
             let role = read_optional_markdown_source(args.role.as_deref(), DEFAULT_ROLE)?;
@@ -59,13 +58,13 @@ pub(crate) fn fin(
         }
         FinSubcommand::Role(command) => match command.command {
             FinRoleSubcommand::Get(args) => {
-                let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+                let fin = context.resolve_fin(None, args.fin, orqa)?;
                 orqa.ensure_fin_exists(&fin)?;
                 print_file(&orqa.fin_data_home(&fin)?.join("ROLE.md"))
             }
             FinRoleSubcommand::Set(args) => {
-                let (pod_arg, fin_arg, role_arg) = args.resolve_refs()?;
-                let fin = context.resolve_fin(pod_arg, fin_arg, orqa)?;
+                let (fin_arg, role_arg) = args.resolve_refs()?;
+                let fin = context.resolve_fin(None, fin_arg, orqa)?;
                 orqa.ensure_fin_exists(&fin)?;
                 let role = read_markdown_source(&role_arg)?;
                 let home = orqa.fin_data_home(&fin)?;
@@ -76,13 +75,13 @@ pub(crate) fn fin(
             }
         },
         FinSubcommand::Home(args) => {
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             orqa.ensure_fin_exists(&fin)?;
             println!("{}", orqa.fin_data_home(&fin)?.display());
             Ok(())
         }
         FinSubcommand::Status(args) => {
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             orqa.ensure_fin_exists(&fin)?;
             let status = fin_status(orqa, &fin)?;
             if args.json {
@@ -93,7 +92,7 @@ pub(crate) fn fin(
             }
         }
         FinSubcommand::Runs(args) => {
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             orqa.ensure_fin_exists(&fin)?;
             let runs = list_runs(orqa, &fin)?;
             if args.json {
@@ -115,7 +114,7 @@ pub(crate) fn fin(
             }
         }
         FinSubcommand::RunStatus(args) => {
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             orqa.ensure_fin_exists(&fin)?;
             let run = read_run_record_for(orqa, &fin, args.run.as_deref())?;
             if args.json {
@@ -135,7 +134,7 @@ pub(crate) fn fin(
             }
         }
         FinSubcommand::RunLog(args) => {
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             let logs = read_run_logs(orqa, &fin, args.run.as_deref())?;
             if args.json {
                 print_json(&logs)
@@ -147,12 +146,12 @@ pub(crate) fn fin(
             }
         }
         FinSubcommand::Tail(args) => {
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             orqa.ensure_fin_exists(&fin)?;
             tail_fin(orqa, &fin, args.run.as_deref(), args.lines, args.follow)
         }
         FinSubcommand::Pause(args) => {
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             write_sleep_marker(&orqa.fin_sleep_path(&fin)?)?;
             println!("pause {}", fin.label());
             Ok(())
@@ -161,7 +160,7 @@ pub(crate) fn fin(
             if !args.force {
                 return Err("fin resume requires --force".to_string());
             }
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             remove_sleep_marker(&orqa.fin_sleep_path(&fin)?)?;
             println!("resume {}", fin.label());
             Ok(())

@@ -10,7 +10,7 @@ pub(crate) fn task(
 ) -> Result<(), String> {
     match command.command {
         TaskSubcommand::Home(args) => {
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             println!("{}", orqa.task_home(&fin)?.display());
             Ok(())
         }

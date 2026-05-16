@@ -271,7 +271,7 @@ fn trim_trailing_space_segments(mut line: Vec<Segment>) -> Vec<Segment> {
     line
 }
 
-fn push_token(lines: &mut Vec<Vec<Segment>>, token: String, style: Style) {
+fn push_token(lines: &mut [Vec<Segment>], token: String, style: Style) {
     if let Some(line) = lines.last_mut() {
         line.push(Segment { text: token, style });
     }

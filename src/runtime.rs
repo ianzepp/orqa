@@ -352,7 +352,7 @@ pub(crate) fn exec_fin(
     context: &CommandContext,
     args: ExecArgs,
 ) -> Result<(), String> {
-    let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+    let fin = context.resolve_fin(None, args.fin, orqa)?;
     orqa.ensure_fin_exists(&fin)?;
     let command = resolve_exec_command(orqa, &fin, &args.args)?;
     exec_fin_foreground(orqa, &fin, &command)
@@ -373,7 +373,7 @@ pub(crate) fn chat_fin(
     context: &CommandContext,
     args: ChatArgs,
 ) -> Result<(), String> {
-    let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+    let fin = context.resolve_fin(None, args.fin, orqa)?;
     orqa.ensure_fin_exists(&fin)?;
     let command = resolve_chat_command(orqa, &fin, &args.args)?;
     fin_chat_interactive(orqa, &fin, &command)

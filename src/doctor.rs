@@ -23,7 +23,7 @@ pub(crate) fn pod_doctor(
         return Err("pod doctor timeout must be at least 1 second".to_string());
     }
 
-    let (slug, _) = context.resolve_pod(args.pod, orqa)?;
+    let (slug, _) = context.resolve_pod(None, orqa)?;
     let pod = PodRef::new(&slug)?;
     orqa.ensure_pod_exists(&pod)?;
     let mut ok = true;

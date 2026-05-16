@@ -118,6 +118,15 @@ fn parses_global_context_flags_after_nested_pod_commands() {
 }
 
 #[test]
+fn fin_commands_reject_positional_pod_context() {
+    let error = Cli::try_parse_from(["orqa", "fin", "status", "sample-pod", "builder"])
+        .unwrap_err()
+        .to_string();
+
+    assert!(error.contains("unexpected argument 'builder'"));
+}
+
+#[test]
 fn accepts_lowercase_slug_parts() {
     assert!(validate_slug("sample-pod").is_ok());
     assert!(validate_slug("bob-jones").is_ok());

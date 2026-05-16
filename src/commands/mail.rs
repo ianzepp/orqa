@@ -10,7 +10,7 @@ pub(crate) fn mail(
 ) -> Result<(), String> {
     match command.command {
         MailSubcommand::Home(args) => {
-            let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
+            let fin = context.resolve_fin(None, args.fin, orqa)?;
             println!("{}", orqa.mail_home(&fin)?.display());
             Ok(())
         }

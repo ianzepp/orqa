@@ -195,9 +195,7 @@ pub(super) fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
         let Ok(value) = serde_json::from_str::<Value>(raw_line) else {
             return None;
         };
-        let Some(kind) = value.get("type").and_then(Value::as_str) else {
-            return None;
-        };
+        let kind = value.get("type").and_then(Value::as_str)?;
         saw_stream_event = true;
 
         match kind {
@@ -247,9 +245,7 @@ pub(super) fn backend_event_json_to_summary(raw: &str) -> Option<String> {
         let Ok(value) = serde_json::from_str::<Value>(raw_line) else {
             return None;
         };
-        let Some(event) = value.get("event").and_then(Value::as_str) else {
-            return None;
-        };
+        let event = value.get("event").and_then(Value::as_str)?;
         saw_backend_event = true;
 
         match event {

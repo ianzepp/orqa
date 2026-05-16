@@ -295,7 +295,7 @@ orqa wake --dry-run
 Run a fin directly through the configured backend:
 
 ```sh
-orqa fin exec sample-pod planner -- --help
+orqa --pod sample-pod fin exec planner -- --help
 ```
 
 Everything can run against a temporary or alternate root with `--home`:
@@ -346,13 +346,13 @@ cargo test --locked
 `fin.backend`.
 
 ```sh
-orqa fin exec sample-pod planner -- "work on the next task"
+orqa --pod sample-pod fin exec planner -- "work on the next task"
 ```
 
 Start an interactive backend chat as a fin with the backend's `chat_args`:
 
 ```sh
-orqa fin chat sample-pod planner
+orqa --pod sample-pod fin chat planner
 ```
 
 `fin chat` attaches stdin, stdout, and stderr directly to the terminal while
@@ -398,16 +398,16 @@ lock as stale, removes it, and the fin can run again.
 Pods and fins can also be paused manually:
 
 ```sh
-orqa pod pause sample-pod
-orqa fin pause sample-pod planner
+orqa --pod sample-pod pod pause
+orqa --pod sample-pod fin pause planner
 ```
 
 Paused pods and fins are skipped by `orqa wake` and `orqa loop`. Clear pause
 state with an explicit forced resume:
 
 ```sh
-orqa pod resume sample-pod --force
-orqa fin resume sample-pod planner --force
+orqa --pod sample-pod pod resume --force
+orqa --pod sample-pod fin resume planner --force
 ```
 
 Use `wake --force` to run one wake turn while ignoring pause markers and
@@ -423,16 +423,16 @@ Runtime status commands summarize wake signals, pause state, live locks, and
 the latest recorded run:
 
 ```sh
-orqa pod status sample-pod
-orqa fin status sample-pod planner
+orqa --pod sample-pod pod status
+orqa --pod sample-pod fin status planner
 ```
 
 Check pod readiness, including filesystem shape, config resolution, backend
 execution, and upstream LLM connectivity:
 
 ```sh
-orqa pod doctor sample-pod
-orqa pod doctor sample-pod --fin planner --timeout 60
+orqa --pod sample-pod pod doctor
+orqa --pod sample-pod pod doctor --fin planner --timeout 60
 ```
 
 Each direct or loop-launched fin exec records logs and status under the fin:
@@ -449,18 +449,18 @@ Each direct or loop-launched fin exec records logs and status under the fin:
 Inspect run history and logs:
 
 ```sh
-orqa fin runs sample-pod planner
-orqa fin run-status sample-pod planner
-orqa fin run-log sample-pod planner
+orqa --pod sample-pod fin runs planner
+orqa --pod sample-pod fin run-status planner
+orqa --pod sample-pod fin run-log planner
 ```
 
 `fin tail` prints the latest run output for one fin. `pod tail` prints the
 latest run output for every fin in a pod, or one fin with `--fin`:
 
 ```sh
-orqa fin tail sample-pod planner
-orqa pod tail sample-pod
-orqa pod tail sample-pod --fin planner --follow
+orqa --pod sample-pod fin tail planner
+orqa --pod sample-pod pod tail
+orqa --pod sample-pod pod tail --fin planner --follow
 ```
 
 ## Mail
@@ -684,24 +684,27 @@ who need the runtime overview without install or development notes.
 orqa init [slug] [--path <dir>] [--charter <...>]
 orqa pod create <slug> [--path <dir>] [--charter <prompt|@file|->]
 orqa pod list
-orqa pod home <slug>
-orqa pod charter get <slug>
-orqa pod charter set <slug> <prompt|@file|->
-orqa pod status <slug>
-orqa pod doctor <slug> [--fin <fin>] [--prompt <prompt>] [--timeout <seconds>]
-orqa pod hook list <slug>
-orqa pod hook add <slug> pre-plan <hook-id> [--timeout <duration>] -- <command>
-orqa pod hook enable <slug> pre-plan <hook-id>
-orqa pod hook disable <slug> pre-plan <hook-id>
-orqa pod hook remove <slug> pre-plan <hook-id>
-orqa pod hook run <slug> pre-plan
-orqa pod tail <slug> [--fin <fin>] [--lines <n>] [--follow]
-orqa pod pause <slug>
-orqa pod resume <slug> --force
+orqa pod home
+orqa pod charter get
+orqa pod charter set <prompt|@file|->
+orqa pod status
+orqa pod doctor [--fin <fin>] [--prompt <prompt>] [--timeout <seconds>]
+orqa pod hook list
+orqa pod hook add pre-plan <hook-id> [--timeout <duration>] -- <command>
+orqa pod hook enable pre-plan <hook-id>
+orqa pod hook disable pre-plan <hook-id>
+orqa pod hook remove pre-plan <hook-id>
+orqa pod hook run pre-plan
+orqa pod tail [--fin <fin>] [--lines <n>] [--follow]
+orqa pod pause
+orqa pod resume --force
 ```
 
 **Recommended:** Use `orqa init` when working inside a project directory.
 `orqa pod create --path` is the explicit form for scripts and power-user flows.
+For commands that operate on an existing pod, the pod context is resolved from
+`--pod`, then `ORQA_POD`, then the nearest `.orqa/pod.toml` in the current
+directory tree. Pod slugs are positional only when creating or initializing a pod.
 
 `pod create` creates `.orqa/`, `pod.toml`, `AGENTS.md`, and the seeded operator
 fin inside the target pod root, then registers that root in global config. If
@@ -722,21 +725,21 @@ marker.
 ### Fin Commands
 
 ```text
-orqa fin create <pod> <fin>
-orqa fin create <pod> <fin> --role <prompt|@file|->
-orqa fin list [pod]
-orqa fin home <pod> <fin>
-orqa fin role get <pod> <fin>
-orqa fin role set <pod> <fin> <prompt|@file|->
-orqa fin status <pod> <fin>
-orqa fin runs <pod> <fin>
-orqa fin run-status <pod> <fin> [run-id|latest]
-orqa fin run-log <pod> <fin> [run-id|latest]
-orqa fin tail <pod> <fin> [run-id|latest] [--lines <n>] [--follow]
-orqa fin pause <pod> <fin>
-orqa fin resume <pod> <fin> --force
-orqa fin exec <pod> <fin> [-- <args>...]
-orqa fin chat <pod> <fin> [-- <args>...]
+orqa fin create <fin>
+orqa fin create <fin> --role <prompt|@file|->
+orqa fin list
+orqa fin home [fin]
+orqa fin role get [fin]
+orqa fin role set [fin] <prompt|@file|->
+orqa fin status [fin]
+orqa fin runs [fin]
+orqa fin run-status [fin] [run-id|latest]
+orqa fin run-log [fin] [run-id|latest]
+orqa fin tail [fin] [run-id|latest] [--lines <n>] [--follow]
+orqa fin pause [fin]
+orqa fin resume [fin] --force
+orqa fin exec [fin] [-- <args>...]
+orqa fin chat [fin] [-- <args>...]
 ```
 
 `fin create` creates the fin home, `ROLE.md`, fin-level `AGENTS.md`, runtime state
@@ -745,13 +748,14 @@ directories such as `.codex/`, `.hermes/`, and `.pi/`, `mail/`, `tasks/`,
 pass it inline, from `@file.md`, or from stdin with `-`. The fin-level
 `AGENTS.md` injects that role for the backend runtime. `fin role set` replaces
 both `ROLE.md` and the generated fin `AGENTS.md`. `fin list` prints fin slugs for
-the provided pod, or for `ORQA_POD` when the pod argument is omitted. `fin exec`
+the current pod context, resolved from `--pod`, `ORQA_POD`, or the current
+directory. `fin exec`
 launches the configured backend and passes any arguments after `--` as the
 `{prompt}` template value:
 
 ```sh
-orqa fin exec sample-pod planner -- "work on the next task"
-orqa fin chat sample-pod planner
+orqa --pod sample-pod fin exec planner -- "work on the next task"
+orqa --pod sample-pod fin chat planner
 ```
 
 `fin resume` requires `--force` before it removes a fin-level pause marker.
@@ -759,13 +763,13 @@ orqa fin chat sample-pod planner
 ### Mail Commands
 
 ```text
-orqa mail home <pod> <fin>
+orqa mail home [fin]
 orqa mail send [--from <from>] --to <to> [--subject <subject>] [body]
 orqa mail list [--pod <pod>] [--fin <fin>] [--all]
 orqa mail read [--pod <pod>] [--fin <fin>] <message>
 orqa mail done [--pod <pod>] [--fin <fin>] <message>
 orqa mail delete [--pod <pod>] [--fin <fin>] <message>
-orqa mail unread <pod> <fin>
+orqa mail unread [fin]
 ```
 
 `mail send` requires `--to`. `--from` defaults to
@@ -785,7 +789,7 @@ prints unread message file paths.
 ### Task Commands
 
 ```text
-orqa task home <pod> <fin>
+orqa task home [fin]
 orqa task send [--from <from>] --to <to> [--title <title>] [body]
 orqa task list [--pod <pod>] [--fin <fin>] [--all]
                [--status <status>] [--priority <priority>] [--kind <kind>]
@@ -861,12 +865,12 @@ periodically with `exec_always`.
 ### Pod Hooks
 
 ```text
-orqa pod hook list <pod>
-orqa pod hook add <pod> pre-plan <hook-id> [--timeout <duration>] -- <command>
-orqa pod hook enable <pod> pre-plan <hook-id>
-orqa pod hook disable <pod> pre-plan <hook-id>
-orqa pod hook remove <pod> pre-plan <hook-id>
-orqa pod hook run <pod> pre-plan
+orqa pod hook list
+orqa pod hook add pre-plan <hook-id> [--timeout <duration>] -- <command>
+orqa pod hook enable pre-plan <hook-id>
+orqa pod hook disable pre-plan <hook-id>
+orqa pod hook remove pre-plan <hook-id>
+orqa pod hook run pre-plan
 ```
 
 Hooks are pod-local shell commands stored under
