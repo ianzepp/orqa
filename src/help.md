@@ -82,9 +82,10 @@ orqa --pod sample-pod fin create builder
 Create a pod from a reusable global template:
 
 ```sh
-mkdir -p ~/.orqa/templates/executive/fins/ceo
-printf '%s\n' 'Own company direction and executive decisions.' \
-  > ~/.orqa/templates/executive/fins/ceo/ROLE.md
+orqa template create executive
+orqa template fin create executive ceo --role "Own company direction and executive decisions."
+orqa template fin create executive cto --role "Own technical architecture and delivery quality."
+orqa template fin list executive
 orqa template list
 orqa template create-pod executive launch-team --path /path/to/project
 ```

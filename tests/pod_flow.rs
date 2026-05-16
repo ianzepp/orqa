@@ -161,19 +161,36 @@ fn pod_create_and_charter_commands_manage_charter_agents_injection() {
 #[test]
 fn template_create_pod_seeds_predefined_fin_roles() {
     let root = temp_root();
-    let template = root.join("templates/executive");
-    fs::create_dir_all(template.join("fins/ceo")).unwrap();
-    fs::create_dir_all(template.join("fins/cto")).unwrap();
-    fs::write(
-        template.join("fins/ceo/ROLE.md"),
-        "Own company direction and executive decisions.\n",
-    )
-    .unwrap();
-    fs::write(
-        template.join("fins/cto/ROLE.md"),
-        "Own technical architecture and delivery quality.\n",
-    )
-    .unwrap();
+    orqa(&root, ["template", "create", "executive"]);
+    orqa(
+        &root,
+        [
+            "template",
+            "fin",
+            "create",
+            "executive",
+            "ceo",
+            "--role",
+            "Own company direction and executive decisions.",
+        ],
+    );
+    orqa(
+        &root,
+        [
+            "template",
+            "fin",
+            "create",
+            "executive",
+            "cto",
+            "--role",
+            "Own technical architecture and delivery quality.",
+        ],
+    );
+
+    assert_eq!(
+        orqa_output(&root, ["template", "fin", "list", "executive"]),
+        "ceo\ncto\n"
+    );
 
     let target = pod_root(&root, "new-co");
     fs::create_dir_all(&target).unwrap();

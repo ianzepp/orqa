@@ -4,15 +4,22 @@ use std::{
 };
 
 use crate::{
-    cli::{TemplateCommand, TemplateSubcommand},
+    cli::{TemplateCommand, TemplateFinSubcommand, TemplateSubcommand},
     model::{Orqa, validate_slug},
 };
 
-use super::{create_pod_in_dir, fin::create_fin_in_pod, list_dirs};
+use super::{create_pod_in_dir, fin::create_fin_in_pod, list_dirs, read_markdown_source};
 
 pub(crate) fn template(orqa: &Orqa, command: TemplateCommand) -> Result<(), String> {
     match command.command {
         TemplateSubcommand::List => list_templates(orqa),
+        TemplateSubcommand::Create(args) => create_template(orqa, &args.template),
+        TemplateSubcommand::Fin(command) => match command.command {
+            TemplateFinSubcommand::List(args) => list_template_fins(orqa, &args.template),
+            TemplateFinSubcommand::Create(args) => {
+                create_template_fin(orqa, &args.template, &args.fin, &args.role)
+            }
+        },
         TemplateSubcommand::CreatePod(args) => {
             validate_slug(&args.template)?;
             validate_slug(&args.slug)?;
@@ -61,6 +68,74 @@ pub(crate) fn template(orqa: &Orqa, command: TemplateCommand) -> Result<(), Stri
             Ok(())
         }
     }
+}
+
+fn create_template(orqa: &Orqa, template: &str) -> Result<(), String> {
+    validate_slug(template)?;
+    let fins_dir = template_home(orqa, template).join("fins");
+    fs::create_dir_all(&fins_dir).map_err(|error| {
+        format!(
+            "failed to create template directory {}: {error}",
+            fins_dir.display()
+        )
+    })?;
+    println!("{}", template_home(orqa, template).display());
+    Ok(())
+}
+
+fn list_template_fins(orqa: &Orqa, template: &str) -> Result<(), String> {
+    validate_slug(template)?;
+    let template_dir = template_home(orqa, template);
+    let fins_dir = template_fins_dir(&template_dir)?;
+    super::print_dirs(&fins_dir)
+}
+
+fn create_template_fin(
+    orqa: &Orqa,
+    template: &str,
+    fin: &str,
+    role_source: &str,
+) -> Result<(), String> {
+    validate_slug(template)?;
+    validate_slug(fin)?;
+    if fin == "operator" {
+        return Err(
+            "template fins may not include 'operator'; pods seed that local human fin automatically"
+                .to_string(),
+        );
+    }
+
+    let template_dir = template_home(orqa, template);
+    if !template_dir.exists() {
+        return Err(format!(
+            "template '{}' does not exist (run 'orqa template create {}' first)",
+            template, template
+        ));
+    }
+
+    let fins_dir = template_fins_dir(&template_dir)?;
+    let fin_dir = fins_dir.join(fin);
+    let role_path = fin_dir.join("ROLE.md");
+    if role_path.exists() {
+        return Err(format!(
+            "template fin '{}' already exists at {}",
+            fin,
+            fin_dir.display()
+        ));
+    }
+
+    fs::create_dir_all(&fin_dir).map_err(|error| {
+        format!(
+            "failed to create template fin {}: {error}",
+            fin_dir.display()
+        )
+    })?;
+    let role = read_markdown_source(role_source)?;
+    fs::write(&role_path, role)
+        .map_err(|error| format!("failed to write {}: {error}", role_path.display()))?;
+
+    println!("{}", fin_dir.display());
+    Ok(())
 }
 
 fn list_templates(orqa: &Orqa) -> Result<(), String> {

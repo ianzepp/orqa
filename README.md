@@ -221,6 +221,15 @@ Template directories live in the global Orqa home:
           ROLE.md
 ```
 
+Create an empty template and add fins with predefined roles:
+
+```sh
+orqa template create executive
+orqa template fin create executive ceo --role "Own company direction and executive decisions."
+orqa template fin create executive cto --role "Own technical architecture and delivery quality."
+orqa template fin list executive
+```
+
 The full pod-style layout is also accepted:
 
 ```text

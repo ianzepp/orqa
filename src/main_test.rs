@@ -142,6 +142,34 @@ fn parses_template_create_pod_command() {
 }
 
 #[test]
+fn parses_template_authoring_commands() {
+    let create = Cli::try_parse_from(["orqa", "template", "create", "executive"]).unwrap();
+    assert!(matches!(
+        create.command,
+        Some(Command::Template(command))
+            if matches!(&command.command, TemplateSubcommand::Create(args)
+                if args.template == "executive")
+    ));
+
+    let fin = Cli::try_parse_from([
+        "orqa",
+        "template",
+        "fin",
+        "create",
+        "executive",
+        "ceo",
+        "--role",
+        "Own company direction.",
+    ])
+    .unwrap();
+    assert!(matches!(
+        fin.command,
+        Some(Command::Template(command))
+            if matches!(&command.command, TemplateSubcommand::Fin(_))
+    ));
+}
+
+#[test]
 fn parses_templates_alias() {
     let cli = Cli::try_parse_from(["orqa", "templates", "list"]).unwrap();
 

@@ -19,7 +19,7 @@ pub(crate) use pod::{
     SlugArgs,
 };
 pub(crate) use task::{SendTaskArgs, TaskCommand, TaskListArgs, TaskSubcommand};
-pub(crate) use template::{TemplateCommand, TemplateSubcommand};
+pub(crate) use template::{TemplateCommand, TemplateFinSubcommand, TemplateSubcommand};
 
 #[derive(Debug, Parser)]
 #[command(
