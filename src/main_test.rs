@@ -121,13 +121,14 @@ fn parses_global_context_flags_after_nested_pod_commands() {
 }
 
 #[test]
-fn parses_template_create_pod_command() {
+fn parses_pod_create_template_flag() {
     let cli = Cli::try_parse_from([
         "orqa",
-        "template",
-        "create-pod",
-        "executive",
+        "pod",
+        "create",
         "new-co",
+        "--template",
+        "executive",
         "--path",
         "/tmp/new-co",
     ])
@@ -135,9 +136,9 @@ fn parses_template_create_pod_command() {
 
     assert!(matches!(
         cli.command,
-        Some(Command::Template(command))
-            if matches!(&command.command, TemplateSubcommand::CreatePod(args)
-                if args.template == "executive" && args.slug == "new-co")
+        Some(Command::Pod(command))
+            if matches!(&command.command, crate::cli::PodSubcommand::Create(args)
+                if args.template.as_deref() == Some("executive") && args.slug == "new-co")
     ));
 }
 

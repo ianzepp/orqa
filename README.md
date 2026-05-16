@@ -239,7 +239,7 @@ The full pod-style layout is also accepted:
 Create a new pod from a template:
 
 ```sh
-orqa template create-pod executive launch-team --path /path/to/project
+orqa pod create launch-team --path /path/to/project --template executive
 ```
 
 The command creates the normal pod files, seeds the built-in `operator` fin,

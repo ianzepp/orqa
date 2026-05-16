@@ -159,7 +159,7 @@ fn pod_create_and_charter_commands_manage_charter_agents_injection() {
 }
 
 #[test]
-fn template_create_pod_seeds_predefined_fin_roles() {
+fn pod_create_template_flag_seeds_predefined_fin_roles() {
     let root = temp_root();
     orqa(&root, ["template", "create", "executive"]);
     orqa(
@@ -197,14 +197,15 @@ fn template_create_pod_seeds_predefined_fin_roles() {
     orqa(
         &root,
         [
-            "template",
-            "create-pod",
-            "executive",
+            "pod",
+            "create",
             "new-co",
             "--path",
             target.to_str().unwrap(),
             "--charter",
             "Launch the new operating pod.",
+            "--template",
+            "executive",
         ],
     );
 

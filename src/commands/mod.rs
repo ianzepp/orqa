@@ -48,7 +48,16 @@ pub(crate) fn pod(
                 None => std::env::current_dir()
                     .map_err(|error| format!("failed to get current directory: {error}"))?,
             };
-            create_pod_in_dir(orqa, &args.slug, target_root, args.charter)
+            let template_fins = args
+                .template
+                .as_deref()
+                .map(|template| load_template_fins(orqa, template))
+                .transpose()?;
+            create_pod_in_dir(orqa, &args.slug, target_root.clone(), args.charter)?;
+            if let Some((template, fins)) = template_fins {
+                seed_template_fins(orqa, &args.slug, &target_root, &template, fins)?;
+            }
+            Ok(())
         }
         PodSubcommand::Charter(command) => match command.command {
             PodCharterSubcommand::Get(_args) => {
@@ -227,6 +236,47 @@ pub(super) fn create_pod_in_dir(
     println!("  orqa fin create planner");
     println!("  orqa wake --dry-run");
 
+    Ok(())
+}
+
+fn load_template_fins(
+    orqa: &Orqa,
+    template: &str,
+) -> Result<(String, Vec<template::TemplateFin>), String> {
+    crate::model::validate_slug(template)?;
+    let template_dir = template::template_home(orqa, template);
+    let fins_dir = template::template_fins_dir(&template_dir)?;
+    let fins = template::template_fins(&fins_dir)?;
+    if fins.is_empty() {
+        return Err(format!(
+            "template '{}' has no fins under {}",
+            template,
+            fins_dir.display()
+        ));
+    }
+    if fins.iter().any(|fin| fin.slug == "operator") {
+        return Err(
+            "template fins may not include 'operator'; pods seed that local human fin automatically"
+                .to_string(),
+        );
+    }
+
+    Ok((template.to_string(), fins))
+}
+
+fn seed_template_fins(
+    orqa: &Orqa,
+    pod_slug: &str,
+    pod_root: &Path,
+    template: &str,
+    fins: Vec<template::TemplateFin>,
+) -> Result<(), String> {
+    for fin in fins {
+        let role_arg = format!("@{}", fin.role_path.display());
+        fin::create_fin_in_pod(orqa, pod_slug, pod_root, &fin.slug, Some(&role_arg), None)?;
+    }
+
+    println!("Seeded pod '{}' from template '{}'", pod_slug, template);
     Ok(())
 }
 

@@ -87,7 +87,7 @@ orqa template fin create executive ceo --role "Own company direction and executi
 orqa template fin create executive cto --role "Own technical architecture and delivery quality."
 orqa template fin list executive
 orqa template list
-orqa template create-pod executive launch-team --path /path/to/project
+orqa pod create launch-team --path /path/to/project --template executive
 ```
 
 Templates live under `ORQA_HOME/templates/<template-slug>/` and may use either

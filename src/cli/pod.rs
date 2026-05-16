@@ -77,6 +77,9 @@ pub(crate) struct PodCreateArgs {
     /// Pod charter text, @file path, or - for stdin.
     #[arg(long, value_name = "PROMPT|@FILE|-")]
     pub(crate) charter: Option<String>,
+    /// Seed fins from a global template under ORQA_HOME/templates.
+    #[arg(long, value_name = "TEMPLATE")]
+    pub(crate) template: Option<String>,
 }
 
 #[derive(Debug, Args)]
