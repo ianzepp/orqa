@@ -13,7 +13,7 @@ use ratatui::{Terminal, backend::CrosstermBackend};
 
 use crate::model::{Orqa, PodRegistration};
 
-use super::app::{App, InputMode};
+use super::app::{App, InputMode, MailMode, Surface};
 use super::loopctl::start_tui_loop_worker;
 use super::watcher::PodWatcher;
 
@@ -155,6 +155,10 @@ fn handle_key(app: &mut App, key: KeyEvent) -> LoopAction {
         handle_command_palette_key(app, key);
         return LoopAction::Continue;
     }
+    if app.surface == Surface::Mail {
+        handle_mail_key(app, key);
+        return LoopAction::Continue;
+    }
 
     match app.mode {
         InputMode::Normal => handle_normal_key(app, key),
@@ -198,6 +202,7 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) -> LoopAction {
         KeyCode::Char('q') | KeyCode::Char('Q') | KeyCode::Esc => return LoopAction::Quit,
         KeyCode::Char('c') if has_control(key) => return LoopAction::Quit,
         KeyCode::Char('i') | KeyCode::Char('I') => app.mode = InputMode::Input,
+        KeyCode::Char('m') | KeyCode::Char('M') => app.toggle_surface(),
         KeyCode::Char('H') => app.cycle_theme(),
         KeyCode::Char('p') | KeyCode::Char('P') => toggle_pod_pause(app),
         KeyCode::Char('F') => cycle_fin_filter(app),
@@ -212,6 +217,61 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) -> LoopAction {
     }
 
     LoopAction::Continue
+}
+
+fn handle_mail_key(app: &mut App, key: KeyEvent) {
+    if key.code == KeyCode::Tab && app.mail_mode != MailMode::Compose {
+        app.toggle_surface();
+        return;
+    }
+
+    match app.mail_mode {
+        MailMode::Index => handle_mail_index_key(app, key),
+        MailMode::Pager => handle_mail_pager_key(app, key),
+        MailMode::Compose => handle_mail_compose_key(app, key),
+    }
+}
+
+fn handle_mail_index_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') => app.toggle_surface(),
+        KeyCode::Down | KeyCode::Char('j') => app.mail_cursor_down(),
+        KeyCode::Up | KeyCode::Char('k') => app.mail_cursor_up(),
+        KeyCode::Char('g') | KeyCode::Home => app.mail_cursor_top(),
+        KeyCode::Char('G') | KeyCode::End => app.mail_cursor_bottom(),
+        KeyCode::Enter | KeyCode::Char(' ') => app.open_selected_mail(),
+        KeyCode::Char('r') => app.start_mail_reply(),
+        KeyCode::Char('m') => app.start_mail_compose(),
+        _ => {}
+    }
+}
+
+fn handle_mail_pager_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('i') => app.mail_mode = MailMode::Index,
+        KeyCode::Char('r') => app.start_mail_reply(),
+        _ => {}
+    }
+}
+
+fn handle_mail_compose_key(app: &mut App, key: KeyEvent) {
+    match key.code {
+        KeyCode::Esc => app.abort_mail_compose(),
+        KeyCode::Char('c') if has_control(key) => app.abort_mail_compose(),
+        KeyCode::Char('y') if has_control(key) => send_mail_compose(app),
+        KeyCode::Tab => app.advance_mail_compose_field(),
+        KeyCode::BackTab => app.previous_mail_compose_field(),
+        KeyCode::Enter => app.mail_compose_enter(),
+        KeyCode::Backspace => app.mail_compose_backspace(),
+        KeyCode::Char(ch) if !has_control(key) => app.mail_compose_push(ch),
+        _ => {}
+    }
+}
+
+fn send_mail_compose(app: &mut App) {
+    if let Err(error) = app.send_mail_compose() {
+        app.record_operator_action(format!("failed to send mail compose: {error}"));
+    }
 }
 
 fn handle_input_key(app: &mut App, key: KeyEvent) -> LoopAction {

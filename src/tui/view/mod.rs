@@ -3,6 +3,7 @@
 mod header;
 mod input;
 mod layout;
+mod mail;
 mod markdown;
 mod overlays;
 mod style;
@@ -13,7 +14,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
 };
 
-use super::app::App;
+use super::app::{App, Surface};
 
 impl App {
     /// Render the cockpit as four main sections: header, content, input, footer.
@@ -35,9 +36,18 @@ impl App {
             .split(area);
 
         header::render(self, frame, layout::section_area(self, chunks[1]));
-        timeline::render(self, frame, layout::section_area(self, chunks[3]));
-        input::render(self, frame, layout::section_area(self, chunks[5]));
-        input::render_footer(self, frame, layout::section_area(self, chunks[7]));
+        match self.surface {
+            Surface::Timeline => {
+                timeline::render(self, frame, layout::section_area(self, chunks[3]));
+                input::render(self, frame, layout::section_area(self, chunks[5]));
+                input::render_footer(self, frame, layout::section_area(self, chunks[7]));
+            }
+            Surface::Mail => {
+                mail::render(self, frame, layout::section_area(self, chunks[3]));
+                mail::render_status(self, frame, layout::section_area(self, chunks[5]));
+                mail::render_footer(self, frame, layout::section_area(self, chunks[7]));
+            }
+        }
 
         if self.show_command_palette {
             overlays::render_command_palette(self, frame, area);

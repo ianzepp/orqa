@@ -6,13 +6,14 @@
 use std::{
     collections::{HashMap, HashSet},
     fs,
+    path::{Path, PathBuf},
     time::Instant,
 };
 
 use ratatui::widgets::ListState;
 
 use crate::{
-    mailbox::{deliver_mail, ensure_maildir},
+    mailbox::{deliver_mail, ensure_maildir, message_id, resolve_address, sorted_files},
     model::{FinRef, Orqa, PodRegistration},
 };
 
@@ -26,6 +27,46 @@ use super::watcher::PodWatcher;
 pub enum InputMode {
     Normal,
     Input,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum Surface {
+    Timeline,
+    Mail,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MailMode {
+    Index,
+    Pager,
+    Compose,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum MailComposeField {
+    To,
+    Subject,
+    Body,
+}
+
+#[derive(Clone, Debug)]
+pub struct MailComposeState {
+    pub to: String,
+    pub subject: String,
+    pub body: String,
+    pub field: MailComposeField,
+    pub reply_to: Option<String>,
+}
+
+#[derive(Clone, Debug)]
+pub struct OperatorMail {
+    pub id: String,
+    pub path: PathBuf,
+    pub state: String,
+    pub from: String,
+    pub to: String,
+    pub subject: String,
+    pub body: String,
 }
 
 /// Filter state for the timeline.
@@ -66,6 +107,11 @@ pub struct App {
     pub target_picker_index: usize,
     pub pod_paused: bool,
     pub next_loop_at: Instant,
+    pub surface: Surface,
+    pub mail_mode: MailMode,
+    pub operator_mail: Vec<OperatorMail>,
+    pub mail_cursor: usize,
+    pub mail_compose: Option<MailComposeState>,
 }
 
 impl App {
@@ -103,7 +149,13 @@ impl App {
             target_picker_index: 0,
             pod_paused: paused,
             next_loop_at: Instant::now() + TUI_LOOP_INTERVAL,
+            surface: Surface::Timeline,
+            mail_mode: MailMode::Index,
+            operator_mail: Vec::new(),
+            mail_cursor: 0,
+            mail_compose: None,
         };
+        app.refresh_operator_mail();
         app.list_state.select(Some(0));
         app
     }
@@ -120,6 +172,7 @@ impl App {
         for event in new_events {
             self.record_event(event);
         }
+        self.refresh_operator_mail();
     }
 
     fn record_event(&mut self, event: Event) {
@@ -279,6 +332,18 @@ impl App {
         };
     }
 
+    pub fn toggle_surface(&mut self) {
+        self.surface = match self.surface {
+            Surface::Timeline => {
+                self.refresh_operator_mail();
+                Surface::Mail
+            }
+            Surface::Mail => Surface::Timeline,
+        };
+        self.mail_mode = MailMode::Index;
+        self.mail_compose = None;
+    }
+
     pub fn toggle_command_palette(&mut self) {
         self.show_command_palette = !self.show_command_palette;
         if self.show_command_palette {
@@ -349,6 +414,202 @@ impl App {
         Ok(())
     }
 
+    pub fn refresh_operator_mail(&mut self) {
+        let Ok(messages) = load_operator_mail(&self.orqa, &self.pod_slug) else {
+            return;
+        };
+        self.operator_mail = messages;
+        if self.mail_cursor >= self.operator_mail.len() {
+            self.mail_cursor = self.operator_mail.len().saturating_sub(1);
+        }
+    }
+
+    pub fn mail_cursor_down(&mut self) {
+        if !self.operator_mail.is_empty() {
+            self.mail_cursor = (self.mail_cursor + 1).min(self.operator_mail.len() - 1);
+        }
+    }
+
+    pub fn mail_cursor_up(&mut self) {
+        self.mail_cursor = self.mail_cursor.saturating_sub(1);
+    }
+
+    pub fn mail_cursor_top(&mut self) {
+        self.mail_cursor = 0;
+    }
+
+    pub fn mail_cursor_bottom(&mut self) {
+        self.mail_cursor = self.operator_mail.len().saturating_sub(1);
+    }
+
+    pub fn open_selected_mail(&mut self) {
+        if self.operator_mail.is_empty() {
+            return;
+        }
+        self.mark_selected_mail_read();
+        self.mail_mode = MailMode::Pager;
+    }
+
+    pub fn start_mail_compose(&mut self) {
+        self.mail_compose = Some(MailComposeState {
+            to: self.composer.target_fin.clone(),
+            subject: String::new(),
+            body: String::new(),
+            field: MailComposeField::To,
+            reply_to: None,
+        });
+        self.mail_mode = MailMode::Compose;
+    }
+
+    pub fn start_mail_reply(&mut self) {
+        let Some(message) = self.selected_mail() else {
+            return;
+        };
+        self.mail_compose = Some(MailComposeState {
+            to: message.from.clone(),
+            subject: reply_subject(&message.subject),
+            body: String::new(),
+            field: MailComposeField::Body,
+            reply_to: Some(message.id.clone()),
+        });
+        self.mail_mode = MailMode::Compose;
+    }
+
+    pub fn abort_mail_compose(&mut self) {
+        self.mail_compose = None;
+        self.mail_mode = MailMode::Index;
+    }
+
+    pub fn advance_mail_compose_field(&mut self) {
+        let Some(compose) = self.mail_compose.as_mut() else {
+            return;
+        };
+        compose.field = match compose.field {
+            MailComposeField::To => MailComposeField::Subject,
+            MailComposeField::Subject | MailComposeField::Body => MailComposeField::Body,
+        };
+    }
+
+    pub fn previous_mail_compose_field(&mut self) {
+        let Some(compose) = self.mail_compose.as_mut() else {
+            return;
+        };
+        compose.field = match compose.field {
+            MailComposeField::To => MailComposeField::To,
+            MailComposeField::Subject => MailComposeField::To,
+            MailComposeField::Body => MailComposeField::Subject,
+        };
+    }
+
+    pub fn mail_compose_enter(&mut self) {
+        let Some(compose) = self.mail_compose.as_mut() else {
+            return;
+        };
+        match compose.field {
+            MailComposeField::To => compose.field = MailComposeField::Subject,
+            MailComposeField::Subject => compose.field = MailComposeField::Body,
+            MailComposeField::Body => compose.body.push('\n'),
+        }
+    }
+
+    pub fn mail_compose_push(&mut self, ch: char) {
+        let Some(compose) = self.mail_compose.as_mut() else {
+            return;
+        };
+        match compose.field {
+            MailComposeField::To => compose.to.push(ch),
+            MailComposeField::Subject => compose.subject.push(ch),
+            MailComposeField::Body => compose.body.push(ch),
+        }
+    }
+
+    pub fn mail_compose_backspace(&mut self) {
+        let Some(compose) = self.mail_compose.as_mut() else {
+            return;
+        };
+        match compose.field {
+            MailComposeField::To => {
+                compose.to.pop();
+            }
+            MailComposeField::Subject => {
+                compose.subject.pop();
+            }
+            MailComposeField::Body => {
+                compose.body.pop();
+            }
+        }
+    }
+
+    pub fn send_mail_compose(&mut self) -> Result<(), String> {
+        let Some(compose) = self.mail_compose.take() else {
+            return Ok(());
+        };
+        if compose.to.trim().is_empty() {
+            self.mail_compose = Some(compose);
+            return Err("recipient is required".to_string());
+        }
+
+        let to = resolve_address(compose.to.trim(), Some(&self.pod_slug))?;
+        let to_fin = FinRef::new(&to.pod, &to.fin)?;
+        self.orqa.ensure_fin_exists(&to_fin)?;
+        let mail_home = self.orqa.mail_home(&to_fin)?;
+        ensure_maildir(&mail_home)?;
+
+        let from = format!("operator@{}.orqa", self.pod_slug);
+        let subject = if compose.subject.trim().is_empty() {
+            "(no subject)"
+        } else {
+            compose.subject.trim()
+        };
+        let message = format!(
+            "From: {from}\nTo: {}\nSubject: {}\n\n{}\n",
+            to.label(),
+            subject,
+            compose.body
+        );
+        deliver_mail(&mail_home, &message)?;
+        if !self.pod_paused {
+            if let Err(error) = trigger_tui_wake(&self.orqa, &self.pod) {
+                self.record_operator_action(format!("mail sent, but wake trigger failed: {error}"));
+            }
+            self.next_loop_at = Instant::now() + TUI_LOOP_INTERVAL;
+        }
+
+        let action = if compose.reply_to.is_some() {
+            format!("replied to {}", to.label())
+        } else {
+            format!("mailed {}", to.label())
+        };
+        self.record_operator_action(action);
+        self.mail_mode = MailMode::Index;
+        self.refresh_operator_mail();
+        Ok(())
+    }
+
+    pub fn selected_mail(&self) -> Option<&OperatorMail> {
+        self.operator_mail.get(self.mail_cursor)
+    }
+
+    fn mark_selected_mail_read(&mut self) {
+        let Some(message) = self.operator_mail.get_mut(self.mail_cursor) else {
+            return;
+        };
+        if message.state != "new" {
+            return;
+        }
+        let Some(id) = message.path.file_name().map(|name| name.to_os_string()) else {
+            return;
+        };
+        let Some(mail_home) = message.path.parent().and_then(Path::parent) else {
+            return;
+        };
+        let done_path = mail_home.join("cur").join(id);
+        if fs::rename(&message.path, &done_path).is_ok() {
+            message.path = done_path;
+            message.state = "cur".to_string();
+        }
+    }
+
     pub fn record_operator_action(&mut self, text: impl Into<String>) {
         self.events
             .push(Event::OperatorAction { text: text.into() });
@@ -385,6 +646,63 @@ impl App {
         while self.next_loop_at <= now {
             self.next_loop_at += TUI_LOOP_INTERVAL;
         }
+    }
+}
+
+fn load_operator_mail(orqa: &Orqa, pod_slug: &str) -> Result<Vec<OperatorMail>, String> {
+    let fin = FinRef::new(pod_slug, "operator")?;
+    let mail_home = orqa.mail_home(&fin)?;
+    ensure_maildir(&mail_home)?;
+
+    let mut messages = Vec::new();
+    for state in ["new", "cur"] {
+        for path in sorted_files(&mail_home.join(state))? {
+            messages.push(load_operator_message(path, state)?);
+        }
+    }
+    messages.sort_by(|left, right| right.id.cmp(&left.id));
+    Ok(messages)
+}
+
+fn load_operator_message(path: PathBuf, state: &str) -> Result<OperatorMail, String> {
+    let raw = fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read mail {}: {error}", path.display()))?;
+    let (headers, body) = split_mail_message(&raw);
+    Ok(OperatorMail {
+        id: message_id(&path)?,
+        path,
+        state: state.to_string(),
+        from: header_value(&headers, "From").unwrap_or_else(|| "?".to_string()),
+        to: header_value(&headers, "To").unwrap_or_else(|| "?".to_string()),
+        subject: header_value(&headers, "Subject").unwrap_or_else(|| "(no subject)".to_string()),
+        body,
+    })
+}
+
+fn split_mail_message(raw: &str) -> (Vec<(String, String)>, String) {
+    let (header_raw, body) = raw.split_once("\n\n").unwrap_or((raw, ""));
+    let headers = header_raw
+        .lines()
+        .filter_map(|line| {
+            let (key, value) = line.split_once(':')?;
+            Some((key.trim().to_string(), value.trim().to_string()))
+        })
+        .collect();
+    (headers, body.trim_end().to_string())
+}
+
+fn header_value(headers: &[(String, String)], key: &str) -> Option<String> {
+    headers
+        .iter()
+        .find(|(name, _)| name.eq_ignore_ascii_case(key))
+        .map(|(_, value)| value.clone())
+}
+
+fn reply_subject(subject: &str) -> String {
+    if subject.to_ascii_lowercase().starts_with("re:") {
+        subject.to_string()
+    } else {
+        format!("Re: {subject}")
     }
 }
 
