@@ -47,7 +47,8 @@ pub(crate) fn start_tui_loop_worker(
 
     let exe = std::env::current_exe()
         .map_err(|error| format!("failed to get current executable: {error}"))?;
-    let log_path = orqa.pod_data_home(reg).join("tui-loop.log");
+    let pod_home = reg.path.join(".orqa");
+    let log_path = pod_home.join("tui-loop.log");
     let log_file = OpenOptions::new()
         .create(true)
         .append(true)
@@ -99,11 +100,13 @@ pub(crate) fn start_tui_loop_worker(
 }
 
 pub(crate) fn pod_paused(orqa: &Orqa, reg: &PodRegistration) -> bool {
-    orqa.pod_sleep_data_path(reg).exists()
+    let _ = orqa;
+    reg.path.join(".orqa").join("sleep.lock").exists()
 }
 
 pub(crate) fn toggle_pod_pause(orqa: &Orqa, reg: &PodRegistration) -> Result<bool, String> {
-    let path = orqa.pod_sleep_data_path(reg);
+    let _ = orqa;
+    let path = reg.path.join(".orqa").join("sleep.lock");
     if path.exists() {
         remove_sleep_marker(&path)?;
         Ok(false)
@@ -114,5 +117,6 @@ pub(crate) fn toggle_pod_pause(orqa: &Orqa, reg: &PodRegistration) -> Result<boo
 }
 
 fn pod_loop_pid_path(orqa: &Orqa, reg: &PodRegistration) -> std::path::PathBuf {
-    orqa.pod_data_home(reg).join("tui-loop.pid")
+    let _ = orqa;
+    reg.path.join(".orqa").join("tui-loop.pid")
 }

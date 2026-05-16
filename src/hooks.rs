@@ -45,7 +45,7 @@ pub(crate) fn add_hook(orqa: &Orqa, args: PodHookAddArgs) -> Result<(), String> 
         return Err("hook timeout must be at least 1 second".to_string());
     }
 
-    let phase_home = orqa.pod_hook_phase_home(&pod, &args.phase);
+    let phase_home = orqa.pod_hook_phase_home(&pod, &args.phase)?;
     fs::create_dir_all(&phase_home).map_err(|error| {
         format!(
             "failed to create hook phase directory {}: {error}",
@@ -87,7 +87,7 @@ pub(crate) fn remove_hook(orqa: &Orqa, args: PodHookRefArgs) -> Result<(), Strin
     orqa.ensure_pod_exists(&pod)?;
     validate_phase(&args.phase)?;
     validate_slug(&args.hook)?;
-    let phase_home = orqa.pod_hook_phase_home(&pod, &args.phase);
+    let phase_home = orqa.pod_hook_phase_home(&pod, &args.phase)?;
     let path = phase_home.join(format!("{}.toml", args.hook));
     let script = phase_home.join(format!("{}.sh", args.hook));
     remove_if_exists(&path)?;
@@ -134,7 +134,7 @@ fn set_hook_enabled(orqa: &Orqa, args: PodHookRefArgs, enabled: bool) -> Result<
     validate_phase(&args.phase)?;
     validate_slug(&args.hook)?;
     let path = orqa
-        .pod_hook_phase_home(&pod, &args.phase)
+        .pod_hook_phase_home(&pod, &args.phase)?
         .join(format!("{}.toml", args.hook));
     let mut table = read_hook_table(&path)?;
     let hook = hook_table_mut(&mut table)?;
@@ -152,7 +152,7 @@ fn set_hook_enabled(orqa: &Orqa, args: PodHookRefArgs, enabled: bool) -> Result<
 
 fn read_phase_hooks(orqa: &Orqa, pod: &PodRef, phase: &str) -> Result<Vec<Hook>, String> {
     validate_phase(phase)?;
-    let phase_home = orqa.pod_hook_phase_home(pod, phase);
+    let phase_home = orqa.pod_hook_phase_home(pod, phase)?;
     if !phase_home.exists() {
         return Ok(Vec::new());
     }
@@ -211,8 +211,10 @@ fn read_hook(path: &Path, phase: &str) -> Result<Hook, String> {
 
 fn run_one_hook(orqa: &Orqa, pod: &PodRef, hook: &Hook) -> Result<HookRun, String> {
     let timeout = parse_duration(&hook.timeout)?;
-    let phase_home = orqa.pod_hook_phase_home(pod, &hook.phase);
-    let state_home = orqa.pod_hook_state_home(pod, &hook.id);
+    let phase_home = orqa.pod_hook_phase_home(pod, &hook.phase)?;
+    let state_home = orqa.pod_hook_state_home(pod, &hook.id)?;
+    let pod_root = orqa.pod_root(pod)?;
+    let pod_home = orqa.pod_data_home(pod)?;
     fs::create_dir_all(&state_home).map_err(|error| {
         format!(
             "failed to create hook state directory {}: {error}",
@@ -226,7 +228,8 @@ fn run_one_hook(orqa: &Orqa, pod: &PodRef, hook: &Hook) -> Result<HookRun, Strin
         .current_dir(&phase_home)
         .env("ORQA_HOME", &orqa.home)
         .env("ORQA_POD", &pod.slug)
-        .env("ORQA_POD_HOME", orqa.pod_home(pod))
+        .env("ORQA_POD_ROOT", &pod_root)
+        .env("ORQA_POD_HOME", &pod_home)
         .env("ORQA_HOOK", &hook.id)
         .env("ORQA_HOOK_PHASE", &hook.phase)
         .env("ORQA_HOOK_HOME", &phase_home)

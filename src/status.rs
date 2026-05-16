@@ -36,8 +36,8 @@ pub(crate) struct FinStatus {
 }
 
 pub(crate) fn pod_status(orqa: &Orqa, pod: &PodRef) -> Result<PodStatus, String> {
-    let root = orqa.pod_root_for_slug(&pod.slug);
-    let data_home = orqa.effective_pod_home(pod);
+    let root = orqa.pod_root_for_slug(&pod.slug)?;
+    let data_home = orqa.pod_data_home(pod)?;
     let fins_dir = data_home.join("fins");
 
     let mut fins = Vec::new();
@@ -68,14 +68,15 @@ pub(crate) fn fin_status(orqa: &Orqa, fin: &FinRef) -> Result<FinStatus, String>
     let lock = FinLock::try_existing(orqa, fin)?;
     let pid = lock.as_ref().map(|lock| lock.pid());
     let running = pid.is_some_and(process_is_alive);
+    let fin_home = orqa.fin_data_home(fin)?;
     Ok(FinStatus {
         fin: fin.label(),
-        home: orqa.effective_fin_home(fin),
-        sleeping: orqa.effective_fin_home(fin).join("sleep.lock").exists(),
+        home: fin_home.clone(),
+        sleeping: fin_home.join("sleep.lock").exists(),
         running,
         pid,
-        unread_mail: unread_count(&orqa.effective_fin_home(fin).join("mail"))?,
-        open_tasks: unread_count(&orqa.effective_fin_home(fin).join("tasks"))?,
+        unread_mail: unread_count(&fin_home.join("mail"))?,
+        open_tasks: unread_count(&fin_home.join("tasks"))?,
         last_run: read_run_record_for(orqa, fin, None).ok(),
     })
 }

@@ -7,7 +7,7 @@ pub(crate) fn mail(orqa: &Orqa, command: MailCommand) -> Result<(), String> {
     match command.command {
         MailSubcommand::Home(args) => {
             let fin = crate::model::FinRef::new(&args.pod, &args.fin)?;
-            println!("{}", orqa.mail_home(&fin).display());
+            println!("{}", orqa.mail_home(&fin)?.display());
             Ok(())
         }
         MailSubcommand::Send(args) => crate::mailbox::send_mail(orqa, args),

@@ -1,4 +1,4 @@
-//! TUI Operator Cockpit for orqa (Phase 05+ pod roots).
+//! TUI Operator Cockpit for project-root pods.
 //!
 //! This module contains the Ratatui-based live monitoring + operator injection
 //! surface. It is only entered when `resolve_pod_context` successfully detects
@@ -17,4 +17,4 @@ pub use run::run_tui;
 #[allow(unused_imports)]
 pub use watcher::PodWatcher;
 
-// Event will be publicly re-exported once the timeline renderer (Phase 3) consumes it.
+// Event will be publicly re-exported once the timeline renderer consumes it.

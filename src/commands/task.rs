@@ -7,7 +7,7 @@ pub(crate) fn task(orqa: &Orqa, command: TaskCommand) -> Result<(), String> {
     match command.command {
         TaskSubcommand::Home(args) => {
             let fin = crate::model::FinRef::new(&args.pod, &args.fin)?;
-            println!("{}", orqa.task_home(&fin).display());
+            println!("{}", orqa.task_home(&fin)?.display());
             Ok(())
         }
         TaskSubcommand::Send(args) => crate::mailbox::send_task(orqa, args),

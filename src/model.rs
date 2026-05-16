@@ -11,62 +11,16 @@ impl Orqa {
         }
     }
 
-    pub(crate) fn pod_home(&self, pod: &PodRef) -> PathBuf {
-        self.home.join("pods").join(&pod.slug)
-    }
-
-    pub(crate) fn fin_home(&self, fin: &FinRef) -> PathBuf {
-        self.home
-            .join("pods")
-            .join(&fin.pod)
-            .join("fins")
-            .join(&fin.fin)
-    }
-
-    pub(crate) fn mail_home(&self, fin: &FinRef) -> PathBuf {
-        self.fin_home(fin).join("mail")
-    }
-
-    pub(crate) fn task_home(&self, fin: &FinRef) -> PathBuf {
-        self.fin_home(fin).join("tasks")
-    }
-
-    pub(crate) fn runs_home(&self, fin: &FinRef) -> PathBuf {
-        self.fin_home(fin).join("runs")
-    }
-
-    pub(crate) fn run_home(&self, fin: &FinRef, run: &str) -> PathBuf {
-        self.runs_home(fin).join(run)
-    }
-
-    pub(crate) fn pod_sleep_path(&self, pod: &PodRef) -> PathBuf {
-        self.pod_home(pod).join("sleep.lock")
-    }
-
-    pub(crate) fn fin_sleep_path(&self, fin: &FinRef) -> PathBuf {
-        self.fin_home(fin).join("sleep.lock")
-    }
-
-    pub(crate) fn pod_hooks_home(&self, pod: &PodRef) -> PathBuf {
-        self.pod_home(pod).join("hooks")
-    }
-
-    pub(crate) fn pod_hook_phase_home(&self, pod: &PodRef, phase: &str) -> PathBuf {
-        self.pod_hooks_home(pod).join(phase)
-    }
-
-    pub(crate) fn pod_hook_state_home(&self, pod: &PodRef, hook: &str) -> PathBuf {
-        self.pod_hooks_home(pod).join("state").join(hook)
-    }
-
-    /// Returns true if the pod home contains a `pod.toml` file.
+    /// Returns true if the pod data home contains a `pod.toml` file.
     pub(crate) fn pod_exists(&self, pod: &PodRef) -> bool {
-        self.effective_pod_home(pod).join("pod.toml").exists()
+        self.pod_data_home(pod)
+            .is_ok_and(|home| home.join("pod.toml").exists())
     }
 
-    /// Returns true if the fin home contains a `fin.toml` file.
+    /// Returns true if the fin data home contains a `fin.toml` file.
     pub(crate) fn fin_exists(&self, fin: &FinRef) -> bool {
-        self.effective_fin_home(fin).join("fin.toml").exists()
+        self.fin_data_home(fin)
+            .is_ok_and(|home| home.join("fin.toml").exists())
     }
 
     /// Returns Ok if the pod exists (has `pod.toml`), otherwise a friendly error
@@ -184,14 +138,12 @@ pub(crate) fn default_home() -> PathBuf {
 /// Represents a pod registered in the global `~/.orqa/config.toml`.
 /// The `path` is the user's real pod root directory (e.g. `~/work/my-project`).
 #[derive(Debug, Clone, PartialEq, Eq)]
-#[allow(dead_code)]
 pub(crate) struct PodRegistration {
     pub(crate) slug: String,
     pub(crate) path: PathBuf,
     pub(crate) enabled: bool,
 }
 
-#[allow(dead_code)]
 pub(crate) fn load_registry(orqa: &Orqa) -> Result<BTreeMap<String, PodRegistration>, String> {
     let config_path = orqa.home.join("config.toml");
     if !config_path.exists() {
@@ -271,135 +223,95 @@ pub(crate) struct Orqa {
     pub(crate) home: PathBuf,
 }
 
-#[allow(dead_code)]
 impl Orqa {
-    /// Returns the `.orqa` data directory for a registered pod.
-    /// Example: `/real/path/to/project/.orqa`
-    pub(crate) fn pod_data_home(&self, reg: &PodRegistration) -> PathBuf {
-        reg.path.join(".orqa")
+    /// Returns the real filesystem root directory for a registered pod.
+    pub(crate) fn pod_root_for_slug(&self, slug: &str) -> Result<PathBuf, String> {
+        if let Some((detected_slug, root)) = detect_pod_context() {
+            if detected_slug == slug {
+                return Ok(root);
+            }
+        }
+
+        let regs = load_registry(self)?;
+        match regs.get(slug) {
+            Some(reg) if reg.enabled => Ok(reg.path.clone()),
+            Some(_) => Err(format!("pod '{slug}' is registered but disabled")),
+            None => Err(format!(
+                "pod '{slug}' is not registered. Run 'orqa init {slug} --path <pod-root>' or cd into a pod root containing .orqa/pod.toml"
+            )),
+        }
+    }
+
+    pub(crate) fn pod_root(&self, pod: &PodRef) -> Result<PathBuf, String> {
+        self.pod_root_for_slug(&pod.slug)
+    }
+
+    /// Returns the `.orqa` data directory inside the pod root.
+    pub(crate) fn pod_data_home(&self, pod: &PodRef) -> Result<PathBuf, String> {
+        Ok(self.pod_root(pod)?.join(".orqa"))
     }
 
     /// Returns the fin home directory under the pod's `.orqa/fins/<fin>`.
-    pub(crate) fn fin_data_home(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
-        self.pod_data_home(reg).join("fins").join(fin_slug)
+    pub(crate) fn fin_data_home(&self, fin: &FinRef) -> Result<PathBuf, String> {
+        Ok(self
+            .pod_root_for_slug(&fin.pod)?
+            .join(".orqa")
+            .join("fins")
+            .join(&fin.fin))
     }
 
-    pub(crate) fn mail_data_home(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
-        self.fin_data_home(reg, fin_slug).join("mail")
+    pub(crate) fn mail_home(&self, fin: &FinRef) -> Result<PathBuf, String> {
+        Ok(self.fin_data_home(fin)?.join("mail"))
     }
 
-    pub(crate) fn task_data_home(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
-        self.fin_data_home(reg, fin_slug).join("tasks")
+    pub(crate) fn task_home(&self, fin: &FinRef) -> Result<PathBuf, String> {
+        Ok(self.fin_data_home(fin)?.join("tasks"))
     }
 
-    pub(crate) fn lock_data_path(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
-        self.fin_data_home(reg, fin_slug).join("run.lock")
+    pub(crate) fn lock_path(&self, fin: &FinRef) -> Result<PathBuf, String> {
+        Ok(self.fin_data_home(fin)?.join("run.lock"))
     }
 
-    pub(crate) fn runs_data_home(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
-        self.fin_data_home(reg, fin_slug).join("runs")
+    pub(crate) fn runs_home(&self, fin: &FinRef) -> Result<PathBuf, String> {
+        Ok(self.fin_data_home(fin)?.join("runs"))
     }
 
-    pub(crate) fn latest_run_data_path(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
-        self.fin_data_home(reg, fin_slug).join("latest-run")
+    pub(crate) fn run_home(&self, fin: &FinRef, run: &str) -> Result<PathBuf, String> {
+        Ok(self.runs_home(fin)?.join(run))
     }
 
-    pub(crate) fn runs_ledger_data_path(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
-        self.fin_data_home(reg, fin_slug).join("runs.jsonl")
+    pub(crate) fn latest_run_path(&self, fin: &FinRef) -> Result<PathBuf, String> {
+        Ok(self.fin_data_home(fin)?.join("latest-run"))
     }
 
-    pub(crate) fn pod_sleep_data_path(&self, reg: &PodRegistration) -> PathBuf {
-        self.pod_data_home(reg).join("sleep.lock")
+    pub(crate) fn runs_ledger_path(&self, fin: &FinRef) -> Result<PathBuf, String> {
+        Ok(self.fin_data_home(fin)?.join("runs.jsonl"))
     }
 
-    pub(crate) fn fin_sleep_data_path(&self, reg: &PodRegistration, fin_slug: &str) -> PathBuf {
-        self.fin_data_home(reg, fin_slug).join("sleep.lock")
+    pub(crate) fn pod_sleep_path(&self, pod: &PodRef) -> Result<PathBuf, String> {
+        Ok(self.pod_data_home(pod)?.join("sleep.lock"))
     }
 
-    pub(crate) fn pod_hooks_data_home(&self, reg: &PodRegistration) -> PathBuf {
-        self.pod_data_home(reg).join("hooks")
-    }
-}
-
-impl Orqa {
-    /// Returns the real filesystem root directory for a pod (from registry if registered,
-    /// otherwise falls back to the legacy ~/.orqa/pods/<slug> location).
-    pub(crate) fn pod_root_for_slug(&self, slug: &str) -> PathBuf {
-        if let Ok(regs) = load_registry(self) {
-            if let Some(reg) = regs.get(slug) {
-                return reg.path.clone();
-            }
-        }
-        // Legacy fallback
-        self.home.join("pods").join(slug)
+    pub(crate) fn fin_sleep_path(&self, fin: &FinRef) -> Result<PathBuf, String> {
+        Ok(self.fin_data_home(fin)?.join("sleep.lock"))
     }
 
-    /// Returns the effective per-fin home directory (contains mail/, tasks/, .grok/, etc.).
-    /// Works for both new-style registered pods and legacy pods.
-    pub(crate) fn effective_fin_home(&self, fin: &FinRef) -> PathBuf {
-        let pod_root = self.pod_root_for_slug(&fin.pod);
-        let orqa_dir = pod_root.join(".orqa");
-
-        if orqa_dir.exists() {
-            // New-style pod
-            orqa_dir.join("fins").join(&fin.fin)
-        } else {
-            // Legacy layout
-            self.home
-                .join("pods")
-                .join(&fin.pod)
-                .join("fins")
-                .join(&fin.fin)
-        }
+    pub(crate) fn pod_hooks_home(&self, pod: &PodRef) -> Result<PathBuf, String> {
+        Ok(self.pod_data_home(pod)?.join("hooks"))
     }
 
-    pub(crate) fn effective_pod_home(&self, pod: &PodRef) -> PathBuf {
-        let pod_root = self.pod_root_for_slug(&pod.slug);
-        let orqa_dir = pod_root.join(".orqa");
-
-        if orqa_dir.exists() {
-            orqa_dir
-        } else {
-            self.pod_home(pod)
-        }
+    pub(crate) fn pod_hook_phase_home(&self, pod: &PodRef, phase: &str) -> Result<PathBuf, String> {
+        Ok(self.pod_hooks_home(pod)?.join(phase))
     }
 
-    pub(crate) fn effective_mail_home(&self, fin: &FinRef) -> PathBuf {
-        self.effective_fin_home(fin).join("mail")
-    }
-
-    pub(crate) fn effective_task_home(&self, fin: &FinRef) -> PathBuf {
-        self.effective_fin_home(fin).join("tasks")
-    }
-
-    pub(crate) fn effective_lock_path(&self, fin: &FinRef) -> PathBuf {
-        self.effective_fin_home(fin).join("run.lock")
-    }
-
-    pub(crate) fn effective_run_home(&self, fin: &FinRef, run: &str) -> PathBuf {
-        self.effective_fin_home(fin).join("runs").join(run)
-    }
-
-    pub(crate) fn effective_latest_run_path(&self, fin: &FinRef) -> PathBuf {
-        self.effective_fin_home(fin).join("latest-run")
-    }
-
-    pub(crate) fn effective_runs_ledger_path(&self, fin: &FinRef) -> PathBuf {
-        self.effective_fin_home(fin).join("runs.jsonl")
-    }
-
-    /// Returns the real pod root directory to use as cwd and HOME for launched agents.
-    pub(crate) fn effective_pod_root(&self, pod: &PodRef) -> PathBuf {
-        self.pod_root_for_slug(&pod.slug)
+    pub(crate) fn pod_hook_state_home(&self, pod: &PodRef, hook: &str) -> Result<PathBuf, String> {
+        Ok(self.pod_hooks_home(pod)?.join("state").join(hook))
     }
 }
 
 /// Walks upward from the current working directory looking for a directory
 /// that contains `.orqa/pod.toml`. Returns (slug, pod_root) if found.
-///
 /// The slug is currently derived from the directory name of the pod root.
-/// This is sufficient for Phase 05-2 and can be enhanced later to read the
-/// actual `slug` field from `pod.toml`.
 pub(crate) fn detect_pod_context() -> Option<(String, PathBuf)> {
     let mut current = match std::env::current_dir() {
         Ok(dir) => dir,
@@ -431,7 +343,7 @@ pub(crate) fn detect_pod_context() -> Option<(String, PathBuf)> {
     None
 }
 
-/// Resolves the effective pod slug and root directory using the standard precedence:
+/// Resolves the pod slug and root directory using the standard precedence:
 /// 1. Explicit CLI argument (if provided)
 /// 2. ORQA_POD environment variable
 /// 3. Local filesystem detection (nearest .orqa/pod.toml)
@@ -444,19 +356,12 @@ pub(crate) fn resolve_pod_context(
 ) -> Result<(String, PathBuf), String> {
     // 1. Explicit CLI arg
     if let Some(slug) = cli_pod {
-        // For now, if user gave a slug explicitly, we don't have the root.
-        // In Phase 05-2 we will try to look it up from the registry.
-        // For the initial detection win, we fall through to detection if the explicit
-        // slug doesn't have a known root yet. For simplicity in this phase:
         if let Some((detected_slug, root)) = detect_pod_context() {
             if detected_slug == slug {
                 return Ok((slug, root));
             }
         }
-        // If explicit slug but no local match, we can't know the root yet.
-        // Return a synthetic root under the old location so old code paths still work
-        // during transition. Real registry lookup comes in Phase 05-3.
-        let root = orqa.pod_root_for_slug(&slug);
+        let root = orqa.pod_root_for_slug(&slug)?;
         return Ok((slug, root));
     }
 
@@ -467,7 +372,7 @@ pub(crate) fn resolve_pod_context(
                 return Ok((slug, root));
             }
         }
-        let root = orqa.pod_root_for_slug(&slug);
+        let root = orqa.pod_root_for_slug(&slug)?;
         return Ok((slug, root));
     }
 

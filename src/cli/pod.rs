@@ -96,7 +96,7 @@ pub(crate) struct SlugArgs {
 pub(crate) struct PodCreateArgs {
     /// Pod slug (required).
     pub(crate) slug: String,
-    /// Create the pod rooted in this directory (new-style pod).
+    /// Create the pod rooted in this directory.
     /// This is the explicit/power-user equivalent of `orqa init`.
     #[arg(long, value_name = "DIR")]
     pub(crate) path: Option<PathBuf>,
@@ -172,9 +172,8 @@ pub(crate) enum PodSubcommand {
     List,
     /// Create a pod.
     ///
-    /// Without --path, creates a legacy pod under ORQA_HOME/pods/.
-    /// With --path, creates a new-style pod rooted in the given directory
-    /// (equivalent to `orqa init`, but requires an explicit slug).
+    /// Without --path, uses the current directory as the pod root.
+    /// With --path, uses the given directory as the pod root.
     Create(PodCreateArgs),
     /// Get or set a pod charter.
     Charter(PodCharterCommand),

@@ -72,7 +72,7 @@ impl RunFiles {
         args: &[OsString],
     ) -> Result<Self, String> {
         let id = run_id()?;
-        let run_dir = orqa.effective_run_home(fin, &id);
+        let run_dir = orqa.run_home(fin, &id)?;
         fs::create_dir_all(&run_dir).map_err(|error| {
             format!(
                 "failed to create run directory {}: {error}",
@@ -107,7 +107,7 @@ impl RunFiles {
 
         let files = Self {
             status_path: run_dir.join("status.json"),
-            ledger_path: orqa.effective_runs_ledger_path(fin),
+            ledger_path: orqa.runs_ledger_path(fin)?,
             record,
         };
         files.write_status("planned", None, None)?;
@@ -216,7 +216,7 @@ impl RunFiles {
 
 pub(crate) fn list_runs(orqa: &Orqa, fin: &FinRef) -> Result<RunList, String> {
     let mut runs = Vec::new();
-    if let Ok(entries) = fs::read_dir(orqa.runs_home(fin)) {
+    if let Ok(entries) = fs::read_dir(orqa.runs_home(fin)?) {
         for entry in entries.flatten() {
             let status = entry.path().join("status.json");
             if status.is_file() {
@@ -243,14 +243,14 @@ pub(crate) fn read_run_record_for(
     run: Option<&str>,
 ) -> Result<RunRecord, String> {
     let run_id = resolve_run_id(orqa, fin, run)?;
-    read_run_record(&orqa.effective_run_home(fin, &run_id).join("status.json"))
+    read_run_record(&orqa.run_home(fin, &run_id)?.join("status.json"))
 }
 
 pub(crate) fn latest_run_started_at(
     orqa: &Orqa,
     fin: &FinRef,
 ) -> Result<Option<SystemTime>, String> {
-    let latest_run_path = orqa.effective_latest_run_path(fin);
+    let latest_run_path = orqa.latest_run_path(fin)?;
     let run = match fs::read_to_string(&latest_run_path) {
         Ok(run) => run.trim().to_string(),
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
@@ -283,7 +283,7 @@ pub(crate) fn read_run_logs(
     run: Option<&str>,
 ) -> Result<RunLogs, String> {
     let run = resolve_run_id(orqa, fin, run)?;
-    let run_dir = orqa.effective_run_home(fin, &run);
+    let run_dir = orqa.run_home(fin, &run)?;
     Ok(RunLogs {
         fin: fin.label(),
         run,
@@ -301,7 +301,7 @@ pub(crate) fn tail_fin(
     follow: bool,
 ) -> Result<(), String> {
     let run = resolve_run_id(orqa, fin, run)?;
-    let run_dir = orqa.effective_run_home(fin, &run);
+    let run_dir = orqa.run_home(fin, &run)?;
     tail_paths(
         &[
             ("stdout", run_dir.join("stdout.log")),
@@ -322,7 +322,7 @@ pub(crate) fn tail_pod(
     follow: bool,
 ) -> Result<(), String> {
     let pod_ref = PodRef::new(pod)?;
-    let pod_home = orqa.effective_pod_home(&pod_ref);
+    let pod_home = orqa.pod_data_home(&pod_ref)?;
     if !pod_home.join("pod.toml").exists() {
         return Err(format!(
             "pod '{}' does not exist (run 'orqa pod create {}' to create it)",
@@ -340,7 +340,7 @@ pub(crate) fn tail_pod(
         let Ok(run) = resolve_run_id(orqa, &fin, None) else {
             continue;
         };
-        let run_dir = orqa.effective_run_home(&fin, &run);
+        let run_dir = orqa.run_home(&fin, &run)?;
         paths.push((format!("{fin_slug} stdout"), run_dir.join("stdout.log")));
         paths.push((format!("{fin_slug} stderr"), run_dir.join("stderr.log")));
         paths.push((format!("{fin_slug} event"), run_dir.join("events.jsonl")));
@@ -373,40 +373,43 @@ fn read_run_record(path: &Path) -> Result<RunRecord, String> {
 
 fn resolve_run_id(orqa: &Orqa, fin: &FinRef, run: Option<&str>) -> Result<String, String> {
     match run {
-        Some("latest") | None => match fs::read_to_string(orqa.effective_latest_run_path(fin)) {
-            Ok(value) => {
-                let trimmed = value.trim();
-                if trimmed.is_empty() {
-                    Err(format!(
-                        "fin {} has no valid latest run (pointer is empty). Run the fin at least once.",
+        Some("latest") | None => {
+            let latest_run_path = orqa.latest_run_path(fin)?;
+            match fs::read_to_string(&latest_run_path) {
+                Ok(value) => {
+                    let trimmed = value.trim();
+                    if trimmed.is_empty() {
+                        Err(format!(
+                            "fin {} has no valid latest run (pointer is empty). Run the fin at least once.",
+                            fin.label()
+                        ))
+                    } else {
+                        Ok(trimmed.to_string())
+                    }
+                }
+                Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(format!(
+                    "fin {} has no latest run yet. Run it at least once before using 'latest'.",
+                    fin.label()
+                )),
+                Err(error) => {
+                    eprintln!(
+                        "warning: latest-run pointer for {} is unreadable or corrupt ({error}). Treating as no valid last run.",
                         fin.label()
+                    );
+                    Err(format!(
+                        "fin {} latest-run pointer is corrupt. Inspect or remove {} and re-run the fin.",
+                        fin.label(),
+                        latest_run_path.display()
                     ))
-                } else {
-                    Ok(trimmed.to_string())
                 }
             }
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Err(format!(
-                "fin {} has no latest run yet. Run it at least once before using 'latest'.",
-                fin.label()
-            )),
-            Err(error) => {
-                eprintln!(
-                    "warning: latest-run pointer for {} is unreadable or corrupt ({error}). Treating as no valid last run.",
-                    fin.label()
-                );
-                Err(format!(
-                    "fin {} latest-run pointer is corrupt. Inspect or remove {} and re-run the fin.",
-                    fin.label(),
-                    orqa.effective_latest_run_path(fin).display()
-                ))
-            }
-        },
+        }
         Some(run) => Ok(run.to_string()),
     }
 }
 
 fn write_latest(orqa: &Orqa, fin: &FinRef, run: &str) -> Result<(), String> {
-    write_file(&orqa.effective_latest_run_path(fin), &format!("{run}\n"))
+    write_file(&orqa.latest_run_path(fin)?, &format!("{run}\n"))
 }
 
 fn run_id() -> Result<String, String> {

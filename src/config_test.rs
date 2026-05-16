@@ -15,13 +15,13 @@ static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn resolves_backend_command_from_pod_and_fin_config() {
     let root = temp_root();
     let orqa = Orqa::new(Some(root.clone()));
+    let pod_home = register_test_pod(&root);
     let fin = FinRef::new("test-pod", "amy").unwrap();
-    let fin_home = orqa.fin_home(&fin);
+    let fin_home = orqa.fin_data_home(&fin).unwrap();
 
     fs::create_dir_all(&fin_home).unwrap();
     fs::write(
-        orqa.pod_home(&PodRef::new("test-pod").unwrap())
-            .join("pod.toml"),
+        pod_home.join("pod.toml"),
         r#"
 [pod]
 slug = "test-pod"
@@ -84,13 +84,13 @@ model = "fin-model"
 fn resolves_run_policy_with_fin_overrides() {
     let root = temp_root();
     let orqa = Orqa::new(Some(root.clone()));
+    let pod_home = register_test_pod(&root);
     let fin = FinRef::new("test-pod", "amy").unwrap();
-    let fin_home = orqa.fin_home(&fin);
+    let fin_home = orqa.fin_data_home(&fin).unwrap();
 
     fs::create_dir_all(&fin_home).unwrap();
     fs::write(
-        orqa.pod_home(&PodRef::new("test-pod").unwrap())
-            .join("pod.toml"),
+        pod_home.join("pod.toml"),
         r#"
 [pod]
 slug = "test-pod"
@@ -127,13 +127,13 @@ debounce = "30s"
 fn zero_run_policy_values_disable_policy() {
     let root = temp_root();
     let orqa = Orqa::new(Some(root.clone()));
+    let pod_home = register_test_pod(&root);
     let fin = FinRef::new("test-pod", "amy").unwrap();
-    let fin_home = orqa.fin_home(&fin);
+    let fin_home = orqa.fin_data_home(&fin).unwrap();
 
     fs::create_dir_all(&fin_home).unwrap();
     fs::write(
-        orqa.pod_home(&PodRef::new("test-pod").unwrap())
-            .join("pod.toml"),
+        pod_home.join("pod.toml"),
         r#"
 [pod]
 slug = "test-pod"
@@ -177,4 +177,19 @@ fn temp_root() -> std::path::PathBuf {
         "orqa-config-test-{}-{suffix}-{counter}",
         std::process::id(),
     ))
+}
+
+fn register_test_pod(root: &std::path::Path) -> std::path::PathBuf {
+    let project = root.join("test-pod");
+    let pod_home = project.join(".orqa");
+    fs::create_dir_all(&pod_home).unwrap();
+    fs::write(
+        root.join("config.toml"),
+        format!(
+            "[registry]\nversion = 1\n\n[pods.test-pod]\npath = {:?}\nenabled = true\n",
+            project.display().to_string()
+        ),
+    )
+    .unwrap();
+    pod_home
 }

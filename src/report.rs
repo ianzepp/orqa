@@ -7,7 +7,7 @@ use std::{
 use crate::{
     cli::OpsReportArgs,
     mailbox::{field_value, message_id, sorted_files, split_front_matter},
-    model::{FinRef, Orqa, PodRef},
+    model::{FinRef, Orqa, PodRef, load_registry},
     status::fin_status,
 };
 
@@ -15,7 +15,7 @@ const CONTEXT_LIMIT: usize = 600;
 
 pub(crate) fn ops_report(orqa: &Orqa, args: OpsReportArgs) -> Result<(), String> {
     let since = args.since.as_deref().map(parse_since).transpose()?;
-    let pods = list_dirs(&orqa.home.join("pods"))?;
+    let pods = load_registry(orqa)?;
 
     println!("# Orqa Ops Report");
     println!();
@@ -31,8 +31,8 @@ pub(crate) fn ops_report(orqa: &Orqa, args: OpsReportArgs) -> Result<(), String>
     println!("- pods: `{}`", pods.len());
     println!();
 
-    for pod in pods {
-        print_pod(orqa, &pod, since.as_ref())?;
+    for pod in pods.keys() {
+        print_pod(orqa, pod, since.as_ref())?;
     }
 
     Ok(())
@@ -41,8 +41,9 @@ pub(crate) fn ops_report(orqa: &Orqa, args: OpsReportArgs) -> Result<(), String>
 fn print_pod(orqa: &Orqa, pod: &str, since: Option<&SinceFilter>) -> Result<(), String> {
     let pod_ref = PodRef::new(pod)?;
     orqa.ensure_pod_exists(&pod_ref)?;
-    let pod_root = orqa.pod_root_for_slug(&pod_ref.slug);
-    let fins = list_dirs(&pod_root.join(".orqa").join("fins"))?;
+    let pod_root = orqa.pod_root_for_slug(&pod_ref.slug)?;
+    let pod_data = orqa.pod_data_home(&pod_ref)?;
+    let fins = list_dirs(&pod_data.join("fins"))?;
     println!("## Pod `{}`", pod_ref.slug);
     println!();
     println!("- path: `{}`", pod_root.display());
@@ -59,7 +60,7 @@ fn print_pod(orqa: &Orqa, pod: &str, since: Option<&SinceFilter>) -> Result<(), 
 fn print_fin(orqa: &Orqa, pod: &str, fin: &str, since: Option<&SinceFilter>) -> Result<(), String> {
     let fin_ref = FinRef::new(pod, fin)?;
     orqa.ensure_fin_exists(&fin_ref)?;
-    let fin_home = orqa.effective_fin_home(&fin_ref);
+    let fin_home = orqa.fin_data_home(&fin_ref)?;
     let status = fin_status(orqa, &fin_ref)?;
 
     println!("### Fin `{}`", fin_ref.fin);
@@ -74,7 +75,7 @@ fn print_fin(orqa: &Orqa, pod: &str, fin: &str, since: Option<&SinceFilter>) -> 
             "- latest_run: `{}` status=`{}` path=`{}`",
             run.id,
             run.status,
-            orqa.run_home(&fin_ref, &run.id).display()
+            orqa.run_home(&fin_ref, &run.id)?.display()
         );
     }
     println!();
@@ -88,7 +89,7 @@ fn print_tasks(orqa: &Orqa, fin: &FinRef, since: Option<&SinceFilter>) -> Result
     println!("#### Tasks");
     let mut count = 0usize;
     for state in ["new", "cur"] {
-        for path in sorted_files(&orqa.task_home(fin).join(state))? {
+        for path in sorted_files(&orqa.task_home(fin)?.join(state))? {
             if !include_path(&path, since)? {
                 continue;
             }
@@ -121,7 +122,7 @@ fn print_mail(orqa: &Orqa, fin: &FinRef, since: Option<&SinceFilter>) -> Result<
     println!("#### Mail");
     let mut count = 0usize;
     for state in ["new", "cur"] {
-        for path in sorted_files(&orqa.mail_home(fin).join(state))? {
+        for path in sorted_files(&orqa.mail_home(fin)?.join(state))? {
             if !include_path(&path, since)? {
                 continue;
             }

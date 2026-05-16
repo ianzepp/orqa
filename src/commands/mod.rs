@@ -34,40 +34,24 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
     match command.command {
         PodSubcommand::List => pod::list_pods(orqa),
         PodSubcommand::Create(args) => {
-            if let Some(target_root) = args.path {
-                // New-style pod via explicit path — delegate to shared implementation
-                create_pod_in_dir(orqa, &args.slug, target_root, args.charter)
-            } else {
-                // Legacy behavior (old ~/.orqa/pods/<slug> layout)
-                let pod = PodRef::new(&args.slug)?;
-                let home = orqa.pod_home(&pod);
-                fs::create_dir_all(home.join("fins")).map_err(|error| {
-                    format!("failed to create pod directory {}: {error}", home.display())
-                })?;
-                let charter =
-                    read_optional_markdown_source(args.charter.as_deref(), DEFAULT_CHARTER)?;
-                write_if_missing(&home.join("pod.txt"), &format!("slug={}\n", pod.slug))?;
-                write_if_missing(&home.join("pod.toml"), &pod_config_template(&pod))?;
-                write_if_missing(&home.join("CHARTER.md"), &charter)?;
-                write_if_missing(
-                    &home.join("AGENTS.md"),
-                    &pod_agents_template(&pod, &charter),
-                )?;
-                println!("{}", home.display());
-                Ok(())
-            }
+            let target_root = match args.path {
+                Some(path) => path,
+                None => std::env::current_dir()
+                    .map_err(|error| format!("failed to get current directory: {error}"))?,
+            };
+            create_pod_in_dir(orqa, &args.slug, target_root, args.charter)
         }
         PodSubcommand::Charter(command) => match command.command {
             PodCharterSubcommand::Get(args) => {
                 let pod = PodRef::new(&args.slug)?;
                 orqa.ensure_pod_exists(&pod)?;
-                print_file(&orqa.pod_home(&pod).join("CHARTER.md"))
+                print_file(&orqa.pod_data_home(&pod)?.join("CHARTER.md"))
             }
             PodCharterSubcommand::Set(args) => {
                 let pod = PodRef::new(&args.slug)?;
                 orqa.ensure_pod_exists(&pod)?;
                 let charter = read_markdown_source(&args.charter)?;
-                let home = orqa.pod_home(&pod);
+                let home = orqa.pod_data_home(&pod)?;
                 write_text(&home.join("CHARTER.md"), &charter)?;
                 write_text(
                     &home.join("AGENTS.md"),
@@ -79,7 +63,7 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
         },
         PodSubcommand::Home(args) => {
             let pod = PodRef::new(&args.slug)?;
-            println!("{}", orqa.pod_home(&pod).display());
+            println!("{}", orqa.pod_root(&pod)?.display());
             Ok(())
         }
         PodSubcommand::Status(args) => {
@@ -117,7 +101,7 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
         }
         PodSubcommand::Sleep(args) => {
             let pod = PodRef::new(&args.slug)?;
-            write_sleep_marker(&orqa.effective_pod_home(&pod).join("sleep.lock"))?;
+            write_sleep_marker(&orqa.pod_sleep_path(&pod)?)?;
             println!("sleep {}", pod.slug);
             Ok(())
         }
@@ -126,7 +110,7 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
                 return Err("pod wake requires --force".to_string());
             }
             let pod = PodRef::new(&args.slug)?;
-            remove_sleep_marker(&orqa.effective_pod_home(&pod).join("sleep.lock"))?;
+            remove_sleep_marker(&orqa.pod_sleep_path(&pod)?)?;
             println!("wake {}", pod.slug);
             Ok(())
         }
@@ -137,8 +121,7 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
 /// This is the primary friendly onboarding command (`orqa init`).
 ///
 /// It is intentionally a thin layer: it generates the slug (from the directory
-/// name if not provided) and delegates to the shared creation logic used by
-/// `orqa pod create --path`.
+/// name if not provided) and delegates to the shared pod-root creation logic.
 pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
     let root = match args.path {
         Some(p) => p,
@@ -182,8 +165,8 @@ pub(super) fn validate_backend_name(name: &str) -> Result<(), String> {
     }
 }
 
-/// Shared implementation for creating a new-style pod inside a user-provided directory.
-/// Used by both `orqa init` and `orqa pod create --path`.
+/// Shared implementation for creating a pod inside a user-provided project root.
+/// Used by both `orqa init` and `orqa pod create`.
 fn create_pod_in_dir(
     orqa: &Orqa,
     slug: &str,
@@ -343,7 +326,7 @@ fn register_pod(orqa: &Orqa, slug: &str, root: &Path) -> Result<(), String> {
     let new_content =
         toml::to_string_pretty(&table).map_err(|e| format!("failed to serialize config: {e}"))?;
 
-    // Simple write (for Phase 05-3; we can improve atomicity later)
+    // Simple write; this can become atomic once registry writes need stronger guarantees.
     fs::write(&config_path, new_content).map_err(|e| {
         format!(
             "failed to write global config {}: {e}",
@@ -459,13 +442,12 @@ pub(crate) fn overview(orqa: &Orqa) -> Result<(), String> {
     }
 
     // Pods and wake signals
-    let pods_dir = orqa.home.join("pods");
-    let pods = list_dirs(&pods_dir)?;
+    let pods = crate::model::load_registry(orqa)?;
 
     if pods.is_empty() {
         println!("pods: none");
         println!();
-        println!("Create your first pod with: orqa pod create <slug>");
+        println!("Create your first pod with: orqa init <slug>");
         println!("Run `orqa --help` for a list of commands.");
         return Ok(());
     }
@@ -477,7 +459,7 @@ pub(crate) fn overview(orqa: &Orqa) -> Result<(), String> {
     let mut total_tasks = 0usize;
 
     println!("pods:");
-    for pod_name in &pods {
+    for pod_name in pods.keys() {
         let pod = PodRef::new(pod_name)?;
         let status = pod_status(orqa, &pod)?;
         total_fins += status.fin_count;

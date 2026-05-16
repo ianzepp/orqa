@@ -317,7 +317,7 @@ impl App {
     pub fn send_operator_message(&mut self, body: &str) -> Result<(), String> {
         let to_fin = FinRef::new(&self.pod_slug, &self.composer.target_fin)?;
         self.orqa.ensure_fin_exists(&to_fin)?;
-        let mail_home = self.orqa.effective_mail_home(&to_fin);
+        let mail_home = self.orqa.mail_home(&to_fin)?;
         ensure_maildir(&mail_home)?;
 
         let from = format!("operator@{}.orqa", self.pod_slug);
@@ -830,12 +830,8 @@ fn display_path(path: &std::path::Path) -> String {
     }
 }
 
-fn discover_known_fins(orqa: &Orqa, pod: &PodRegistration) -> HashSet<String> {
-    let fins_dir = orqa
-        .effective_pod_home(&crate::model::PodRef {
-            slug: pod.slug.clone(),
-        })
-        .join("fins");
+fn discover_known_fins(_orqa: &Orqa, pod: &PodRegistration) -> HashSet<String> {
+    let fins_dir = pod.path.join(".orqa").join("fins");
     let Ok(entries) = fs::read_dir(fins_dir) else {
         return HashSet::new();
     };

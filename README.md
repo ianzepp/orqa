@@ -58,46 +58,46 @@ brew install ianzepp/tap/orqa
 ```
 
 ```text
-ORQA_HOME/
-  pods/
-    sample-pod/
-      AGENTS.md      # pod-level runtime instructions
-      CHARTER.md     # shared goal and operating charter
-      pod.txt
-      pod.toml
-      fins/
-        planner/
-          AGENTS.md  # fin-specific role instructions
-          ROLE.md    # fin purpose inside the pod
-          fin.txt
-          fin.toml
-          .codex/       # Codex state
-          .hermes/      # Hermes state
-          .pi/          # Pi config and sessions
-          mail/
-            cur/
-            new/
-            tmp/
-          tasks/
-            cur/
-            new/
-            tmp/
-        builder/
-          AGENTS.md
-          ROLE.md
-          fin.txt
-          fin.toml
-          .codex/       # Codex state
-          .hermes/      # Hermes state
-          .pi/          # Pi config and sessions
-          mail/
-            cur/
-            new/
-            tmp/
-          tasks/
-            cur/
-            new/
-            tmp/
+my-project/
+  .orqa/
+    AGENTS.md      # pod-level runtime instructions
+    CHARTER.md     # shared goal and operating charter
+    pod.txt
+    pod.toml
+    fins/
+      operator/    # seeded local human/operator identity
+      planner/
+        AGENTS.md  # fin-specific role instructions
+        ROLE.md    # fin purpose inside the pod
+        fin.txt
+        fin.toml
+        .codex/       # Codex state
+        .hermes/      # Hermes state
+        .pi/          # Pi config and sessions
+        mail/
+          cur/
+          new/
+          tmp/
+        tasks/
+          cur/
+          new/
+          tmp/
+      builder/
+        AGENTS.md
+        ROLE.md
+        fin.txt
+        fin.toml
+        .codex/
+        .hermes/
+        .pi/
+        mail/
+          cur/
+          new/
+          tmp/
+        tasks/
+          cur/
+          new/
+          tmp/
 ```
 
 Pods and fins are referenced by slug. Slugs may contain lowercase letters,
@@ -108,8 +108,8 @@ digits, and hyphens.
 Pods and fins have TOML config files:
 
 ```text
-ORQA_HOME/pods/<pod>/pod.toml
-ORQA_HOME/pods/<pod>/fins/<fin>/fin.toml
+<pod-root>/.orqa/pod.toml
+<pod-root>/.orqa/fins/<fin>/fin.toml
 ```
 
 `pod.toml` owns backend definitions. This keeps command formats and backend
@@ -377,10 +377,8 @@ orqa fin chat sample-pod planner
 `fin chat` attaches stdin, stdout, and stderr directly to the terminal while
 using the same fin environment and lock behavior as `fin exec`.
 
-Backend processes start with their current directory set to the fin home. That
-lets runtimes that discover instruction files from the working directory read
-both the fin-level `AGENTS.md` and the pod-level `AGENTS.md` in parent
-directories.
+Backend processes start with their current directory and `HOME` set to the pod
+root. Runtime-specific homes stay isolated under the fin data directory.
 
 When a fin runs, `orqa` sets these environment variables:
 
@@ -388,17 +386,17 @@ When a fin runs, `orqa` sets these environment variables:
 ORQA_HOME=<home>
 ORQA_POD=<pod-slug>
 ORQA_FIN=<fin-slug>
-HOME=<home>/pods/<pod-slug>/fins/<fin-slug>
-CODEX_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.codex
-GROK_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.grok
-HERMES_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.hermes
-PI_CODING_AGENT_DIR=<home>/pods/<pod-slug>/fins/<fin-slug>/.pi/agent
+HOME=<pod-root>
+CODEX_HOME=<pod-root>/.orqa/fins/<fin-slug>/.codex
+GROK_HOME=<pod-root>/.orqa/fins/<fin-slug>/.grok
+HERMES_HOME=<pod-root>/.orqa/fins/<fin-slug>/.hermes
+PI_CODING_AGENT_DIR=<pod-root>/.orqa/fins/<fin-slug>/.pi/agent
 ```
 
 The `ORQA_*` variables give commands executed by the fin enough context to use
 short mail addresses. Setting the standard `HOME` variable (plus the classic
 tool-specific variables for compatibility) lets every supported backend keep
-its state isolated under the fin home instead of sharing your global user
+its state isolated under the fin data home instead of sharing your global user
 profile. Backends can also reference `{fin_home}` or `{home}` from `exec_args`
 or `chat_args`.
 
@@ -409,7 +407,7 @@ source exists and the fin does not already have an auth file.
 Direct fin runs and loop-launched runs use a per-fin lock file:
 
 ```text
-ORQA_HOME/pods/<pod>/fins/<fin>/run.lock
+<pod-root>/.orqa/fins/<fin>/run.lock
 ```
 
 The lock records the child process PID. If the lock exists and the PID is still
@@ -459,7 +457,7 @@ orqa pod doctor sample-pod --fin planner --timeout 60
 Each direct or loop-launched fin exec records logs and status under the fin:
 
 ```text
-ORQA_HOME/pods/<pod>/fins/<fin>/runs/<run-id>/
+<pod-root>/.orqa/fins/<fin>/runs/<run-id>/
   stdout.log
   stderr.log
   events.jsonl
@@ -507,7 +505,7 @@ orqa mail send \
 is delivered to:
 
 ```text
-ORQA_HOME/pods/sample-pod/fins/builder/mail/new/
+<sample-pod-root>/.orqa/fins/builder/mail/new/
 ```
 
 Unread messages in `mail/new` are wake signals. `orqa loop sample-pod` scans
@@ -530,20 +528,19 @@ Messages can also be deleted from either `mail/new` or `mail/cur`:
 orqa mail delete <message-id>
 ```
 
-`operator@<pod>.orqa` is reserved. Mail sent to that address is forwarded to
-the real operator mailbox at `operator@ops.orqa`:
+Each pod has a local `operator` fin. To escalate work to the central ops pod,
+send mail explicitly to `operator@ops.orqa`:
 
 ```sh
 orqa mail send \
   --from release@sample-pod.orqa \
-  --to operator@sample-pod.orqa \
+  --to operator@ops.orqa \
   --subject "Railway auth expired" \
   "Railway CLI is not logged in."
 ```
 
-The forwarded mail keeps the original body and adds headers such as
-`Original-To`, `Source-Pod`, and `Source-Fin` so the ops pod can tell where the
-escalation came from.
+The ops pod can receive cross-pod mail from any pod; ordinary cross-pod mail
+between non-ops pods remains blocked.
 
 ### Short Addresses
 
@@ -593,7 +590,7 @@ orqa task send \
 That task is delivered to:
 
 ```text
-ORQA_HOME/pods/sample-pod/fins/builder/tasks/new/
+<sample-pod-root>/.orqa/fins/builder/tasks/new/
 ```
 
 Task bodies are Markdown documents with YAML front matter. Fins may provide a
@@ -714,19 +711,15 @@ orqa pod wake <slug> --force
 ```
 
 **Recommended:** Use `orqa init` when working inside a project directory.
-`orqa pod create --path` is the explicit form for new-style pods.
+`orqa pod create --path` is the explicit form for scripts and power-user flows.
 
-`pod create` creates a pod. Without `--path`, it creates a legacy pod under
-`ORQA_HOME/pods/<slug>/`. With `--path`, it creates a new-style pod inside the
-given directory (creating `.orqa/`, `pod.toml`, `AGENTS.md`, etc. and registering
-it globally). The charter is the shared goal and operating context for the pod;
-pass it inline, from `@file.md`, or from stdin with `-`. The pod-level
-`AGENTS.md` injects that charter and tells backend runtimes how to use Orqa mail,
-tasks, status, and fin discovery. `pod charter set` replaces both `CHARTER.md`
-and the generated pod `AGENTS.md`.
-
-**Recommended:** Use `orqa init` when working inside a project directory.
-`orqa pod create --path` is the explicit form for new-style pods.
+`pod create` creates `.orqa/`, `pod.toml`, `AGENTS.md`, and the seeded operator
+fin inside the target pod root, then registers that root in global config. If
+`--path` is omitted, the current directory is the pod root. The charter is the
+shared goal and operating context for the pod; pass it inline, from `@file.md`,
+or from stdin with `-`. The pod-level `AGENTS.md` injects that charter and tells
+backend runtimes how to use Orqa mail, tasks, status, and fin discovery. `pod
+charter set` replaces both `CHARTER.md` and the generated pod `AGENTS.md`.
 
 `pod list` prints one status line per pod with fin count, sleep state,
 wakeable/running counts, unread mail, and open tasks. `pod doctor` checks
@@ -887,7 +880,7 @@ orqa pod hook run <pod> pre-plan
 ```
 
 Hooks are pod-local shell commands stored under
-`ORQA_HOME/pods/<pod>/hooks/<phase>/`. The first supported phase is `pre-plan`,
+`<pod-root>/.orqa/hooks/<phase>/`. The first supported phase is `pre-plan`,
 which runs at the start of `orqa loop` before Orqa checks mail, tasks, debounce,
 or `exec_always`. This is intended for cheap local synchronization, such as
 syncing an external inbox to disk and delivering new messages into the operator
@@ -908,9 +901,10 @@ like `10-sync-mail` and `20-import-events` give stable priority. Failed or timed
 out hooks are reported and the loop continues to normal wake planning.
 
 Hook commands receive these environment variables: `ORQA_HOME`, `ORQA_POD`,
-`ORQA_POD_HOME`, `ORQA_HOOK`, `ORQA_HOOK_PHASE`, `ORQA_HOOK_HOME`, and
-`ORQA_HOOK_STATE`. The state directory is
-`ORQA_HOME/pods/<pod>/hooks/state/<hook-id>/`.
+`ORQA_POD_ROOT`, `ORQA_POD_HOME`, `ORQA_HOOK`, `ORQA_HOOK_PHASE`,
+`ORQA_HOOK_HOME`, and `ORQA_HOOK_STATE`. `ORQA_POD_HOME` is the pod data
+directory (`<pod-root>/.orqa`). The state directory is
+`<pod-root>/.orqa/hooks/state/<hook-id>/`.
 
 ```sh
 orqa loop sample-pod

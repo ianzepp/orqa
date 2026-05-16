@@ -13,10 +13,10 @@ static TEMP_COUNTER: AtomicUsize = AtomicUsize::new(0);
 fn fin_exec_uses_generated_pod_config_backend() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
 
-    let pod_config = root.join("pods/test-pod/pod.toml");
+    let pod_config = pod_home(&root, "test-pod").join("pod.toml");
     let config = fs::read_to_string(&pod_config).unwrap();
     let config = config.replace("default_backend = \"codex\"", "default_backend = \"echo\"");
     fs::write(
@@ -37,20 +37,21 @@ exec_args = ["pod={{pod}}", "fin={{fin}}", "prompt={{prompt}}"]
 
     assert_eq!(output.trim(), "pod=test-pod fin=amy prompt=hello");
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn pod_and_fin_create_seed_agents_files() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "planner"]);
 
-    let pod_agents = fs::read_to_string(root.join("pods/test-pod/AGENTS.md")).unwrap();
-    let fin_agents = fs::read_to_string(root.join("pods/test-pod/fins/planner/AGENTS.md")).unwrap();
-    let charter = fs::read_to_string(root.join("pods/test-pod/CHARTER.md")).unwrap();
-    let role = fs::read_to_string(root.join("pods/test-pod/fins/planner/ROLE.md")).unwrap();
+    let pod_agents = fs::read_to_string(pod_home(&root, "test-pod").join("AGENTS.md")).unwrap();
+    let fin_agents =
+        fs::read_to_string(fin_home(&root, "test-pod", "planner").join("AGENTS.md")).unwrap();
+    let charter = fs::read_to_string(pod_home(&root, "test-pod").join("CHARTER.md")).unwrap();
+    let role = fs::read_to_string(fin_home(&root, "test-pod", "planner").join("ROLE.md")).unwrap();
 
     assert!(charter.contains("No pod charter has been set yet."));
     assert!(role.contains("No fin role has been set yet."));
@@ -61,7 +62,7 @@ fn pod_and_fin_create_seed_agents_files() {
     assert!(fin_agents.contains("You are the `planner` fin"));
     assert!(fin_agents.contains("No fin role has been set yet."));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
@@ -95,7 +96,7 @@ fn init_seeds_operator_fin_for_tui_identity() {
     assert!(agents.contains("You are the `operator` fin"));
     assert!(gitignore.contains("/.orqa"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
@@ -108,13 +109,15 @@ fn pod_create_and_charter_commands_manage_charter_agents_injection() {
             "pod",
             "create",
             "test-pod",
+            "--path",
+            pod_root(&root, "test-pod").to_str().unwrap(),
             "--charter",
             "Build a tiny orchestration tool.",
         ],
     );
 
-    let charter_path = root.join("pods/test-pod/CHARTER.md");
-    let agents_path = root.join("pods/test-pod/AGENTS.md");
+    let charter_path = pod_home(&root, "test-pod").join("CHARTER.md");
+    let agents_path = pod_home(&root, "test-pod").join("AGENTS.md");
     assert_eq!(
         fs::read_to_string(&charter_path).unwrap(),
         "Build a tiny orchestration tool.\n"
@@ -146,14 +149,14 @@ fn pod_create_and_charter_commands_manage_charter_agents_injection() {
             .contains("Keep the fins aligned around product work.")
     );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn fin_create_and_role_commands_manage_role_agents_injection() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(
         &root,
         [
@@ -166,8 +169,8 @@ fn fin_create_and_role_commands_manage_role_agents_injection() {
         ],
     );
 
-    let role_path = root.join("pods/test-pod/fins/planner/ROLE.md");
-    let agents_path = root.join("pods/test-pod/fins/planner/AGENTS.md");
+    let role_path = fin_home(&root, "test-pod", "planner").join("ROLE.md");
+    let agents_path = fin_home(&root, "test-pod", "planner").join("AGENTS.md");
     assert_eq!(
         fs::read_to_string(&role_path).unwrap(),
         "Turn charter goals into concrete tasks.\n"
@@ -202,7 +205,7 @@ fn fin_create_and_role_commands_manage_role_agents_injection() {
             .contains("Review work and send precise follow-up mail.")
     );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
@@ -214,7 +217,7 @@ fn fin_create_symlinks_existing_codex_auth() {
     let user_auth = user_codex_home.join("auth.json");
     fs::write(&user_auth, "{}\n").unwrap();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     let output = command(&root, ["fin", "create", "test-pod", "builder"])
         .env("HOME", &user_home)
         .env_remove("CODEX_HOME")
@@ -227,36 +230,36 @@ fn fin_create_symlinks_existing_codex_auth() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let fin_auth = root.join("pods/test-pod/fins/builder/.codex/auth.json");
+    let fin_auth = fin_home(&root, "test-pod", "builder").join(".codex/auth.json");
     assert_eq!(fs::read_link(fin_auth).unwrap(), user_auth);
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
-fn fin_exec_runs_from_fin_home_for_agents_discovery() {
+fn fin_exec_runs_from_pod_root_for_agents_discovery() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_pwd_backend(&root, "test-pod");
 
     orqa(&root, ["fin", "exec", "test-pod", "amy"]);
 
-    let cwd = fs::read_to_string(root.join("pods/test-pod/fins/amy/cwd.txt")).unwrap();
+    let cwd = fs::read_to_string(fin_home(&root, "test-pod", "amy").join("cwd.txt")).unwrap();
     assert_eq!(
         fs::canonicalize(Path::new(cwd.trim())).unwrap(),
-        fs::canonicalize(root.join("pods/test-pod/fins/amy")).unwrap()
+        fs::canonicalize(pod_root(&root, "test-pod")).unwrap()
     );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn fin_exec_adds_orqa_binary_directory_to_child_path() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_path_backend(&root, "test-pod");
 
@@ -271,23 +274,23 @@ fn fin_exec_adds_orqa_binary_directory_to_child_path() {
         String::from_utf8_lossy(&output.stderr)
     );
 
-    let path = fs::read_to_string(root.join("pods/test-pod/fins/amy/path.txt")).unwrap();
+    let path = fs::read_to_string(fin_home(&root, "test-pod", "amy").join("path.txt")).unwrap();
     let orqa_bin_dir = Path::new(env!("CARGO_BIN_EXE_orqa")).parent().unwrap();
     let child_paths = env::split_paths(path.trim()).collect::<Vec<_>>();
     assert_eq!(child_paths.first().unwrap(), orqa_bin_dir);
     assert!(child_paths.iter().any(|path| path == Path::new("/usr/bin")));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn loop_uses_generated_pod_config_backend_for_wakeable_fin() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
 
-    let pod_config = root.join("pods/test-pod/pod.toml");
+    let pod_config = pod_home(&root, "test-pod").join("pod.toml");
     let config = fs::read_to_string(&pod_config).unwrap();
     let config = config.replace(
         "default_backend = \"codex\"",
@@ -321,7 +324,7 @@ exec_args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{
     );
     orqa(&root, ["loop", "test-pod", "--", "from-loop"]);
 
-    let marker = root.join("pods/test-pod/fins/amy/ran.txt");
+    let marker = fin_home(&root, "test-pod", "amy").join("ran.txt");
     for _ in 0..20 {
         if marker.exists() {
             break;
@@ -334,14 +337,14 @@ exec_args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{
         "pod=test-pod fin=amy prompt=from-loop"
     );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn plan_and_dry_run_explain_wake_decisions_without_running() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_writer_backend(&root, "test-pod");
     orqa(
@@ -363,16 +366,16 @@ fn plan_and_dry_run_explain_wake_decisions_without_running() {
 
     let dry_run = orqa_output(&root, ["loop", "--dry-run", "test-pod"]);
     assert!(dry_run.contains("decision=would-wake"));
-    assert!(!root.join("pods/test-pod/fins/amy/ran.txt").exists());
+    assert!(!fin_home(&root, "test-pod", "amy").join("ran.txt").exists());
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn pod_hook_add_list_run_and_toggle_manage_pre_plan_hooks() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(
         &root,
         [
@@ -387,7 +390,7 @@ fn pod_hook_add_list_run_and_toggle_manage_pre_plan_hooks() {
         ],
     );
 
-    let hook_home = root.join("pods/test-pod/hooks/pre-plan");
+    let hook_home = pod_home(&root, "test-pod").join("hooks/pre-plan");
     let script = hook_home.join("10-env.sh");
     fs::write(
         &script,
@@ -415,7 +418,8 @@ printf '%s|%s|%s|%s|%s' "$ORQA_HOME" "$ORQA_POD" "$ORQA_HOOK" "$ORQA_HOOK_PHASE"
     let run = orqa_output(&root, ["pod", "hook", "run", "test-pod", "pre-plan"]);
     assert!(run.contains("hook test-pod pre-plan/10-env status=ok"));
 
-    let state = fs::read_to_string(root.join("pods/test-pod/hooks/state/10-env/env.txt")).unwrap();
+    let state =
+        fs::read_to_string(pod_home(&root, "test-pod").join("hooks/state/10-env/env.txt")).unwrap();
     let parts = state.split('|').collect::<Vec<_>>();
     assert_eq!(Path::new(parts[0]), root.as_path());
     assert_eq!(parts[1], "test-pod");
@@ -433,14 +437,14 @@ printf '%s|%s|%s|%s|%s' "$ORQA_HOME" "$ORQA_POD" "$ORQA_HOOK" "$ORQA_HOOK_PHASE"
     assert!(!hook_home.join("10-env.toml").exists());
     assert!(!script.exists());
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn loop_runs_pre_plan_hooks_and_continues_after_hook_failure() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_writer_backend(&root, "test-pod");
     orqa(
@@ -457,7 +461,7 @@ fn loop_runs_pre_plan_hooks_and_continues_after_hook_failure() {
         ],
     );
     fs::write(
-        root.join("pods/test-pod/hooks/pre-plan/10-fail.sh"),
+        pod_home(&root, "test-pod").join("hooks/pre-plan/10-fail.sh"),
         "#!/usr/bin/env sh\nexit 7\n",
     )
     .unwrap();
@@ -478,7 +482,7 @@ fn loop_runs_pre_plan_hooks_and_continues_after_hook_failure() {
     assert!(output.contains("hook test-pod pre-plan/10-fail status=failed exit=7"));
     assert!(output.contains("wake test-pod/amy"));
 
-    let marker = root.join("pods/test-pod/fins/amy/ran.txt");
+    let marker = fin_home(&root, "test-pod", "amy").join("ran.txt");
     for _ in 0..20 {
         if marker.exists() {
             break;
@@ -490,17 +494,17 @@ fn loop_runs_pre_plan_hooks_and_continues_after_hook_failure() {
         "pod=test-pod fin=amy prompt=from-loop"
     );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn plan_ignores_backend_errors_until_fin_is_wakeable() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     fs::write(
-        root.join("pods/test-pod/pod.toml"),
+        pod_home(&root, "test-pod").join("pod.toml"),
         r#"
 [pod]
 slug = "test-pod"
@@ -531,14 +535,14 @@ exec_always = "0"
     assert!(wakeable.contains("decision=would-skip"));
     assert!(wakeable.contains("reason=backend-error"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn plan_debounces_recent_runs_even_with_queued_work() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_echo_backend(&root, "test-pod");
     set_pod_run_policy(&root, "test-pod", "debounce = \"1h\"\n");
@@ -562,14 +566,14 @@ fn plan_debounces_recent_runs_even_with_queued_work() {
     assert!(plan.contains("reason=debounced"));
     assert!(plan.contains("debounce=1h"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn zero_debounce_allows_queued_work_after_recent_runs() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_echo_backend(&root, "test-pod");
     set_pod_run_policy(&root, "test-pod", "debounce = \"0\"\n");
@@ -592,14 +596,14 @@ fn zero_debounce_allows_queued_work_after_recent_runs() {
     assert!(plan.contains("decision=would-wake"));
     assert!(plan.contains("reason=mail"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn plan_wakes_idle_fin_when_exec_always_is_due() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_echo_backend(&root, "test-pod");
     set_pod_run_policy(&root, "test-pod", "exec_always = \"3h\"\n");
@@ -609,14 +613,14 @@ fn plan_wakes_idle_fin_when_exec_always_is_due() {
     assert!(plan.contains("reason=exec-always"));
     assert!(plan.contains("exec_always=3h"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn zero_exec_always_does_not_wake_idle_fin() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_echo_backend(&root, "test-pod");
     set_pod_run_policy(&root, "test-pod", "exec_always = \"0\"\n");
@@ -625,14 +629,14 @@ fn zero_exec_always_does_not_wake_idle_fin() {
     assert!(plan.contains("decision=would-skip"));
     assert!(plan.contains("reason=no-action"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn fin_exec_records_status_and_tail_output() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_echo_backend(&root, "test-pod");
 
@@ -647,14 +651,14 @@ fn fin_exec_records_status_and_tail_output() {
     let tail = orqa_output(&root, ["fin", "tail", "test-pod", "amy"]);
     assert!(tail.contains("from-run"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn repeated_fin_execs_get_distinct_finished_records() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_echo_backend(&root, "test-pod");
 
@@ -675,7 +679,7 @@ fn repeated_fin_execs_get_distinct_finished_records() {
             .all(|line| line.contains("status=finished"))
     );
 
-    let ledger = fs::read_to_string(root.join("pods/test-pod/fins/amy/runs.jsonl")).unwrap();
+    let ledger = fs::read_to_string(fin_home(&root, "test-pod", "amy").join("runs.jsonl")).unwrap();
     assert_eq!(ledger.lines().count(), 2);
     assert!(
         ledger
@@ -684,17 +688,17 @@ fn repeated_fin_execs_get_distinct_finished_records() {
                 || line.contains("\"status\": \"finished\""))
     );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn fin_chat_uses_chat_args_with_interactive_stdio() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
 
-    let pod_config = root.join("pods/test-pod/pod.toml");
+    let pod_config = pod_home(&root, "test-pod").join("pod.toml");
     let config = fs::read_to_string(&pod_config).unwrap();
     let config = config.replace("default_backend = \"codex\"", "default_backend = \"echo\"");
     fs::write(
@@ -718,14 +722,14 @@ chat_args = ["chat", "pod={{pod}}", "fin={{fin}}"]
     let runs = orqa_output(&root, ["fin", "runs", "test-pod", "amy"]);
     assert!(runs.contains("mode=chat"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn task_done_marks_front_matter_status_done() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     orqa(
         &root,
@@ -762,16 +766,16 @@ fn task_done_marks_front_matter_status_done() {
     );
     assert_eq!(done_again.trim(), done_path.trim());
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn ops_pod_can_bridge_mail_and_tasks_cross_pod() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "ops"]);
+    create_pod(&root, "ops");
     orqa(&root, ["fin", "create", "ops", "operator"]);
-    orqa(&root, ["pod", "create", "target-pod"]);
+    create_pod(&root, "target-pod");
     orqa(&root, ["fin", "create", "target-pod", "ceo"]);
 
     orqa(
@@ -846,14 +850,14 @@ fn ops_pod_can_bridge_mail_and_tasks_cross_pod() {
     );
     assert!(blocked.contains("cross-pod tasks are not supported"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn mail_and_tasks_reject_unknown_target_fins() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "target-pod"]);
+    create_pod(&root, "target-pod");
     orqa(&root, ["fin", "create", "target-pod", "ceo"]);
 
     let mail = orqa_output_failing(
@@ -871,7 +875,11 @@ fn mail_and_tasks_reject_unknown_target_fins() {
         ],
     );
     assert!(mail.contains("fin 'target-pod/dispatcher' does not exist"));
-    assert!(!root.join("pods/target-pod/fins/dispatcher").exists());
+    assert!(
+        !pod_home(&root, "target-pod")
+            .join("fins/dispatcher")
+            .exists()
+    );
 
     let task = orqa_output_failing(
         &root,
@@ -888,16 +896,20 @@ fn mail_and_tasks_reject_unknown_target_fins() {
         ],
     );
     assert!(task.contains("fin 'target-pod/dispatcher' does not exist"));
-    assert!(!root.join("pods/target-pod/fins/dispatcher").exists());
+    assert!(
+        !pod_home(&root, "target-pod")
+            .join("fins/dispatcher")
+            .exists()
+    );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn pod_doctor_checks_files_config_and_backend_probe() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_echo_backend(&root, "test-pod");
 
@@ -914,19 +926,19 @@ fn pod_doctor_checks_files_config_and_backend_probe() {
         ],
     );
 
-    assert!(output.contains("ok check=pod home"));
+    assert!(output.contains("ok check=pod root"));
     assert!(output.contains("ok test-pod/amy check=backend backend=echo"));
     assert!(output.contains("ok test-pod/amy check=probe"));
     assert!(output.contains("doctor pod=test-pod status=ok"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn pod_doctor_reports_backend_spawn_failures() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "test-pod"]);
+    create_pod(&root, "test-pod");
     orqa(&root, ["fin", "create", "test-pod", "amy"]);
     set_missing_backend(&root, "test-pod");
 
@@ -952,15 +964,15 @@ fn pod_doctor_reports_backend_spawn_failures() {
     assert!(stdout.contains("fail test-pod/amy check=probe"));
     assert!(stderr.contains("pod test-pod doctor failed"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn pod_list_prints_sorted_status_and_fin_list_prints_sorted_slugs() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "zeta-pod"]);
-    orqa(&root, ["pod", "create", "alpha-pod"]);
+    create_pod(&root, "zeta-pod");
+    create_pod(&root, "alpha-pod");
     orqa(&root, ["fin", "create", "alpha-pod", "zoe"]);
     orqa(&root, ["fin", "create", "alpha-pod", "amy"]);
     orqa(&root, ["pod", "sleep", "zeta-pod"]);
@@ -969,18 +981,18 @@ fn pod_list_prints_sorted_status_and_fin_list_prints_sorted_slugs() {
     let lines = pods.lines().collect::<Vec<_>>();
     assert_eq!(lines.len(), 2);
     assert!(lines[0].starts_with("alpha-pod "));
-    assert!(lines[0].contains("fins=2"));
+    assert!(lines[0].contains("fins=3"));
     assert!(lines[0].contains("sleeping=false"));
     assert!(lines[0].contains("wakeable=0"));
     assert!(lines[0].contains("running=0"));
     assert!(lines[0].contains("unread_mail=0"));
     assert!(lines[0].contains("open_tasks=0"));
     assert!(lines[1].starts_with("zeta-pod "));
-    assert!(lines[1].contains("fins=0"));
+    assert!(lines[1].contains("fins=1"));
     assert!(lines[1].contains("sleeping=true"));
     assert_eq!(
         orqa_output(&root, ["fin", "list", "alpha-pod"]),
-        "amy\nzoe\n"
+        "amy\noperator\nzoe\n"
     );
 
     let output = command(&root, ["fin", "list"])
@@ -993,9 +1005,12 @@ fn pod_list_prints_sorted_status_and_fin_list_prints_sorted_slugs() {
         String::from_utf8_lossy(&output.stdout),
         String::from_utf8_lossy(&output.stderr)
     );
-    assert_eq!(String::from_utf8(output.stdout).unwrap(), "amy\nzoe\n");
+    assert_eq!(
+        String::from_utf8(output.stdout).unwrap(),
+        "amy\noperator\nzoe\n"
+    );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
@@ -1007,7 +1022,7 @@ fn fin_list_without_pod_context_explains_missing_pod() {
     assert!(!output.status.success());
     assert!(String::from_utf8_lossy(&output.stderr).contains("missing pod"));
 
-    fs::remove_dir_all(root).unwrap_or(());
+    let _ = fs::remove_dir_all(root);
 }
 
 #[test]
@@ -1015,7 +1030,7 @@ fn service_run_scans_all_pods() {
     let root = temp_root();
 
     for pod in ["alpha-pod", "beta-pod"] {
-        orqa(&root, ["pod", "create", pod]);
+        create_pod(&root, pod);
         orqa(&root, ["fin", "create", pod, "amy"]);
         set_writer_backend(&root, pod);
         orqa(
@@ -1039,8 +1054,8 @@ fn service_run_scans_all_pods() {
     .spawn()
     .unwrap();
 
-    let alpha_marker = root.join("pods/alpha-pod/fins/amy/ran.txt");
-    let beta_marker = root.join("pods/beta-pod/fins/amy/ran.txt");
+    let alpha_marker = fin_home(&root, "alpha-pod", "amy").join("ran.txt");
+    let beta_marker = fin_home(&root, "beta-pod", "amy").join("ran.txt");
     for _ in 0..40 {
         if alpha_marker.exists() && beta_marker.exists() {
             break;
@@ -1058,16 +1073,16 @@ fn service_run_scans_all_pods() {
         "pod=beta-pod fin=amy prompt=from-service"
     );
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
-fn mail_to_operator_alias_delivers_to_ops_operator() {
+fn mail_to_ops_operator_records_cross_pod_message() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "ops"]);
+    create_pod(&root, "ops");
     orqa(&root, ["fin", "create", "ops", "operator"]);
-    orqa(&root, ["pod", "create", "deploy"]);
+    create_pod(&root, "deploy");
     orqa(&root, ["fin", "create", "deploy", "release"]);
     orqa(
         &root,
@@ -1077,7 +1092,7 @@ fn mail_to_operator_alias_delivers_to_ops_operator() {
             "--from",
             "release@deploy.orqa",
             "--to",
-            "operator@deploy.orqa",
+            "operator@ops.orqa",
             "--subject",
             "Railway auth expired",
             "--",
@@ -1100,23 +1115,20 @@ fn mail_to_operator_alias_delivers_to_ops_operator() {
     );
     assert!(message.contains("From: release@deploy.orqa"));
     assert!(message.contains("To: operator@ops.orqa"));
-    assert!(message.contains("Original-To: operator@deploy.orqa"));
-    assert!(message.contains("Source-Pod: deploy"));
-    assert!(message.contains("Source-Fin: release"));
     assert!(message.contains("severity: blocked"));
     assert!(message.contains("kind: auth"));
     assert!(message.contains("Railway CLI is not logged in."));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 #[test]
 fn ops_report_prints_pods_tasks_and_mail() {
     let root = temp_root();
 
-    orqa(&root, ["pod", "create", "ops"]);
+    create_pod(&root, "ops");
     orqa(&root, ["fin", "create", "ops", "operator"]);
-    orqa(&root, ["pod", "create", "deploy"]);
+    create_pod(&root, "deploy");
     orqa(&root, ["fin", "create", "deploy", "release"]);
     orqa(
         &root,
@@ -1154,7 +1166,7 @@ fn ops_report_prints_pods_tasks_and_mail() {
             "--from",
             "release@deploy.orqa",
             "--to",
-            "operator@deploy.orqa",
+            "operator@ops.orqa",
             "--subject",
             "Cloudflare auth expired",
             "Need a human to refresh credentials.",
@@ -1179,7 +1191,7 @@ fn ops_report_prints_pods_tasks_and_mail() {
     assert!(report.contains(" id=`"));
     assert!(report.contains(" path=`"));
 
-    fs::remove_dir_all(root).unwrap();
+    remove_temp_root(root);
 }
 
 fn orqa<const N: usize>(root: &Path, args: [&str; N]) {
@@ -1224,8 +1236,35 @@ fn command<const N: usize>(root: &Path, args: [&str; N]) -> Command {
     command
 }
 
+fn create_pod(root: &Path, pod: &str) {
+    let pod_root = pod_root(root, pod);
+    fs::create_dir_all(&pod_root).unwrap();
+    let path = pod_root.to_str().unwrap();
+    let output = command(root, ["pod", "create", pod, "--path", path])
+        .output()
+        .unwrap();
+    assert!(
+        output.status.success(),
+        "orqa failed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn pod_root(root: &Path, pod: &str) -> PathBuf {
+    root.join("projects").join(pod)
+}
+
+fn pod_home(root: &Path, pod: &str) -> PathBuf {
+    pod_root(root, pod).join(".orqa")
+}
+
+fn fin_home(root: &Path, pod: &str, fin: &str) -> PathBuf {
+    pod_home(root, pod).join("fins").join(fin)
+}
+
 fn set_writer_backend(root: &Path, pod: &str) {
-    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let pod_config = pod_home(root, pod).join("pod.toml");
     let config = fs::read_to_string(&pod_config).unwrap();
     let config = config.replace(
         "default_backend = \"codex\"",
@@ -1247,7 +1286,7 @@ exec_args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{
 }
 
 fn set_echo_backend(root: &Path, pod: &str) {
-    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let pod_config = pod_home(root, pod).join("pod.toml");
     let config = fs::read_to_string(&pod_config).unwrap();
     let config = config.replace("default_backend = \"codex\"", "default_backend = \"echo\"");
     fs::write(
@@ -1266,7 +1305,7 @@ exec_args = ["{{prompt}}"]
 }
 
 fn set_pod_run_policy(root: &Path, pod: &str, policy: &str) {
-    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let pod_config = pod_home(root, pod).join("pod.toml");
     let config = fs::read_to_string(&pod_config).unwrap();
     let config = config.replace("exec_always = \"0\"\n", "");
     let config = config.replace("debounce = \"5m\"\n", policy);
@@ -1274,7 +1313,7 @@ fn set_pod_run_policy(root: &Path, pod: &str, policy: &str) {
 }
 
 fn set_pwd_backend(root: &Path, pod: &str) {
-    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let pod_config = pod_home(root, pod).join("pod.toml");
     let config = fs::read_to_string(&pod_config).unwrap();
     let config = config.replace("default_backend = \"codex\"", "default_backend = \"pwd\"");
     fs::write(
@@ -1293,7 +1332,7 @@ exec_args = ["-c", "pwd > {{fin_home}}/cwd.txt"]
 }
 
 fn set_path_backend(root: &Path, pod: &str) {
-    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let pod_config = pod_home(root, pod).join("pod.toml");
     let config = fs::read_to_string(&pod_config).unwrap();
     let config = config.replace("default_backend = \"codex\"", "default_backend = \"path\"");
     fs::write(
@@ -1312,7 +1351,7 @@ exec_args = ["-c", "printf '%s' \"$PATH\" > {{fin_home}}/path.txt"]
 }
 
 fn set_missing_backend(root: &Path, pod: &str) {
-    let pod_config = root.join(format!("pods/{pod}/pod.toml"));
+    let pod_config = pod_home(root, pod).join("pod.toml");
     let config = fs::read_to_string(&pod_config).unwrap();
     let config = config.replace(
         "default_backend = \"codex\"",
@@ -1350,4 +1389,24 @@ fn temp_root() -> PathBuf {
     ));
     fs::create_dir_all(&root).unwrap();
     root
+}
+
+fn remove_temp_root(root: PathBuf) {
+    for _ in 0..20 {
+        match fs::remove_dir_all(&root) {
+            Ok(()) => return,
+            Err(error)
+                if matches!(
+                    error.kind(),
+                    std::io::ErrorKind::DirectoryNotEmpty | std::io::ErrorKind::PermissionDenied
+                ) =>
+            {
+                thread::sleep(Duration::from_millis(25));
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return,
+            Err(error) => panic!("failed to remove temp root {}: {error}", root.display()),
+        }
+    }
+    fs::remove_dir_all(&root)
+        .unwrap_or_else(|error| panic!("failed to remove temp root {}: {error}", root.display()));
 }

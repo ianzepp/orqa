@@ -1,7 +1,7 @@
-//! PodWatcher — produces a stream of `Event`s by polling a Phase 05 pod.
+//! PodWatcher — produces a stream of `Event`s by polling a project-root pod.
 //!
 //! This is the core data source for the Operator Cockpit timeline.
-//! It uses only `PodRegistration` + the new `*_data_home` path helpers.
+//! It uses `PodRegistration` and pod-root `.orqa` paths.
 
 #![allow(dead_code)] // Phase 2 delivers the engine; some helpers are exercised more in Phase 3+
 
@@ -36,7 +36,7 @@ struct FinState {
     finished_run: Option<String>,
 }
 
-/// Watches a single Phase 05 pod and produces timeline events.
+/// Watches a single project-root pod and produces timeline events.
 pub struct PodWatcher {
     orqa: Orqa, // we keep a copy so the watcher is self-contained
     reg: PodRegistration,
@@ -49,7 +49,7 @@ pub struct PodWatcher {
 impl PodWatcher {
     /// Create a watcher for the given pod.
     ///
-    /// The caller must have already verified that this is a valid Phase 05 pod
+    /// The caller must have already verified that this is a valid pod root
     /// (i.e. `pod_root.join(".orqa/pod.toml")` exists).
     pub fn new(orqa: Orqa, reg: PodRegistration) -> Result<Self, String> {
         let mut watcher = Self {
@@ -66,7 +66,7 @@ impl PodWatcher {
     /// Re-scan the `fins/` directory and add any newly created fins.
     /// Existing fin state is preserved.
     pub fn refresh_fins(&mut self) -> Result<(), String> {
-        let fins_dir = self.orqa.pod_data_home(&self.reg).join("fins");
+        let fins_dir = self.reg.path.join(".orqa").join("fins");
         if !fins_dir.exists() {
             self.fins.clear();
             return Ok(());
@@ -139,7 +139,7 @@ impl PodWatcher {
             .ok_or_else(|| format!("unknown fin {fin}"))?;
         let mut out = Vec::new();
 
-        let fin_data = self.orqa.fin_data_home(&self.reg, fin);
+        let fin_data = self.reg.path.join(".orqa").join("fins").join(fin);
 
         // 1. Check run.lock existence (LockAcquired / LockReleased)
         let lock_path = fin_data.join("run.lock");

@@ -15,7 +15,7 @@ use crate::{
     config::{BackendCommand, BackendMode, backend_chat_command, backend_command, run_policy},
     hooks::run_hook_phase,
     mailbox::unread_count,
-    model::{FinRef, Orqa, PodRef},
+    model::{FinRef, Orqa, PodRef, load_registry},
     runs::{RunFiles, latest_run_started_at},
     runtime_home::ensure_fin_runtime_homes,
     status::print_json,
@@ -96,10 +96,8 @@ pub(crate) fn loop_pod(orqa: &Orqa, args: LoopRunArgs) -> Result<(), String> {
     if let Some(pod) = &args.pod {
         loop_single_pod(orqa, pod, &args)
     } else {
-        let pods_dir = orqa.home.join("pods");
-        let pods = list_dirs(&pods_dir)?;
-        for pod in pods {
-            if let Err(e) = loop_single_pod(orqa, &pod, &args) {
+        for pod in load_registry(orqa)?.keys() {
+            if let Err(e) = loop_single_pod(orqa, pod, &args) {
                 eprintln!("error in pod {}: {}", pod, e);
             }
         }
@@ -148,7 +146,7 @@ pub(crate) fn plan_pod(
     args: &[OsString],
 ) -> Result<WakePlan, String> {
     let pod = PodRef::new(pod)?;
-    let pod_home = orqa.effective_pod_home(&pod);
+    let pod_home = orqa.pod_data_home(&pod)?;
     if !pod_home.join("pod.toml").exists() {
         return Err(format!(
             "pod '{}' does not exist (run 'orqa pod create {}' to create it)",
@@ -179,10 +177,10 @@ fn plan_fin(
     force: bool,
     args: &[OsString],
 ) -> Result<FinWakePlan, String> {
-    let fin_home = orqa.effective_fin_home(fin);
+    let fin_home = orqa.fin_data_home(fin)?;
     let fin_sleeping = fin_home.join("sleep.lock").exists();
-    let unread_mail = unread_count(&orqa.effective_mail_home(fin))?;
-    let open_tasks = unread_count(&orqa.effective_task_home(fin))?;
+    let unread_mail = unread_count(&orqa.mail_home(fin)?)?;
+    let open_tasks = unread_count(&orqa.task_home(fin)?)?;
     let lock = FinLock::try_existing(orqa, fin)?;
     let pid = lock.as_ref().map(|lock| lock.pid);
     let running = lock.as_ref().is_some_and(FinLock::is_live);
@@ -503,7 +501,7 @@ pub(crate) fn exec_fin_logged(
     )?;
 
     let output = if capture_output {
-        let mut child = fin_process(orqa, fin, command)
+        let mut child = fin_process(orqa, fin, command)?
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -528,7 +526,7 @@ pub(crate) fn exec_fin_logged(
     } else {
         let stdout = run.stdout_file()?;
         let stderr = run.stderr_file()?;
-        let mut child = fin_process(orqa, fin, command)
+        let mut child = fin_process(orqa, fin, command)?
             .stdin(Stdio::null())
             .stdout(Stdio::from(stdout))
             .stderr(Stdio::from(stderr))
@@ -584,7 +582,7 @@ fn fin_chat_interactive(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> 
         &command.command,
         &command.args,
     )?;
-    let mut child = fin_process(orqa, fin, command).spawn().map_err(|error| {
+    let mut child = fin_process(orqa, fin, command)?.spawn().map_err(|error| {
         let _ = run.mark_spawn_failed(&error.to_string());
         format!(
             "failed to start interactive chat {:?}: {error}",
@@ -610,14 +608,17 @@ fn ensure_runtime_homes(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
     ensure_fin_runtime_homes(orqa, fin)
 }
 
-fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCommand {
+fn fin_process(
+    orqa: &Orqa,
+    fin: &FinRef,
+    command: &BackendCommand,
+) -> Result<ProcessCommand, String> {
     let mut process = ProcessCommand::new(&command.command);
 
-    // Phase 05-4: Use real pod root for cwd + HOME, but keep per-fin tool state isolated
-    let pod_root = orqa.effective_pod_root(&PodRef {
+    let pod_root = orqa.pod_root(&PodRef {
         slug: fin.pod.clone(),
-    });
-    let fin_home = orqa.effective_fin_home(fin);
+    })?;
+    let fin_home = orqa.fin_data_home(fin)?;
 
     process
         .current_dir(&pod_root)
@@ -633,7 +634,7 @@ fn fin_process(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> ProcessCo
     if let Some(path) = child_path_with_orqa_bin() {
         process.env("PATH", path);
     }
-    process
+    Ok(process)
 }
 
 fn child_path_with_orqa_bin() -> Option<OsString> {
@@ -671,7 +672,7 @@ pub(crate) struct FinLock {
 
 impl FinLock {
     pub(crate) fn try_existing(orqa: &Orqa, fin: &FinRef) -> Result<Option<Self>, String> {
-        let path = orqa.effective_lock_path(fin);
+        let path = orqa.lock_path(fin)?;
         if !path.exists() {
             return Ok(None);
         }
@@ -685,7 +686,7 @@ impl FinLock {
     }
 
     fn write(orqa: &Orqa, fin: &FinRef, pid: u32, command: &OsString) -> Result<Self, String> {
-        let path = orqa.effective_lock_path(fin);
+        let path = orqa.lock_path(fin)?;
         let parent = path
             .parent()
             .ok_or_else(|| format!("lock path has no parent: {}", path.display()))?;

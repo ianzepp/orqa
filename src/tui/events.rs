@@ -1,10 +1,9 @@
-//! Unified event types for the Operator Cockpit timeline (Phase 2+).
+//! Unified event types for the Operator Cockpit timeline.
 //!
 //! These events are produced by `PodWatcher` and will be consumed by the
-//! timeline renderer in later phases. All paths and data come from Phase 05
-//! `PodRegistration` + the `*_data_home` helpers.
+//! timeline renderer. All paths and data come from registered pod roots.
 
-#![allow(dead_code)] // Many variants and helpers are for Phase 3+ timeline rendering
+#![allow(dead_code)] // Many variants and helpers are for timeline rendering
 
 use std::path::PathBuf;
 

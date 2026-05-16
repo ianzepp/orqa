@@ -17,46 +17,19 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
     match command.command {
         FinSubcommand::List(args) => {
             let (pod_slug, pod_root) = resolve_pod_context(args.pod.clone(), orqa)?;
-            // For Phase 05-2 we use the new data-home path when we have a root from detection/env/CLI
-            // while still supporting the old layout for explicit old-style pods.
-            // In this phase we prioritize the new path if we have a root.
-            let fins_dir = if pod_root.join(".orqa").exists() {
-                // Treat as new-style pod root
-                let reg = crate::model::PodRegistration {
-                    slug: pod_slug.clone(),
-                    path: pod_root,
-                    enabled: true,
-                };
-                orqa.pod_data_home(&reg).join("fins")
-            } else {
-                // Fall back to legacy behavior (for transition)
-                let pod_ref = PodRef::new(&pod_slug)?;
-                orqa.pod_home(&pod_ref).join("fins")
-            };
+            let pod_ref = PodRef::new(&pod_slug)?;
+            let fins_dir = pod_root.join(".orqa").join("fins");
+            orqa.ensure_pod_exists(&pod_ref)?;
             print_dirs(&fins_dir)
         }
         FinSubcommand::Create(args) => {
             let (pod_arg, fin_slug) = args.resolve_refs()?;
             let (pod_slug, pod_root) = resolve_pod_context(pod_arg, orqa)?;
-
-            // If we have a real root (from detection or explicit new-style), use new paths
-            let (fin_home, _use_new_paths) = if pod_root.join(".orqa").exists() {
-                let reg = crate::model::PodRegistration {
-                    slug: pod_slug.clone(),
-                    path: pod_root.clone(),
-                    enabled: true,
-                };
-                (orqa.fin_data_home(&reg, &fin_slug), true)
-            } else {
-                let fin_ref = FinRef::new(&pod_slug, &fin_slug)?;
-                (orqa.fin_home(&fin_ref), false)
-            };
-
-            // For existence check, we still use the legacy PodRef for now (will be cleaned in later phases)
             let pod_ref = PodRef::new(&pod_slug)?;
             orqa.ensure_pod_exists(&pod_ref)?;
 
             let fin = FinRef::new(&pod_slug, &fin_slug)?;
+            let fin_home = pod_root.join(".orqa").join("fins").join(&fin_slug);
             ensure_fin_runtime_homes(orqa, &fin)?;
 
             let role = read_optional_markdown_source(args.role.as_deref(), DEFAULT_ROLE)?;
@@ -84,13 +57,13 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             FinRoleSubcommand::Get(args) => {
                 let fin = FinRef::new(&args.pod, &args.fin)?;
                 orqa.ensure_fin_exists(&fin)?;
-                print_file(&orqa.effective_fin_home(&fin).join("ROLE.md"))
+                print_file(&orqa.fin_data_home(&fin)?.join("ROLE.md"))
             }
             FinRoleSubcommand::Set(args) => {
                 let fin = FinRef::new(&args.pod, &args.fin)?;
                 orqa.ensure_fin_exists(&fin)?;
                 let role = read_markdown_source(&args.role)?;
-                let home = orqa.effective_fin_home(&fin);
+                let home = orqa.fin_data_home(&fin)?;
                 write_text(&home.join("ROLE.md"), &role)?;
                 write_text(&home.join("AGENTS.md"), &fin_agents_template(&fin, &role))?;
                 println!("{}", home.join("ROLE.md").display());
@@ -100,7 +73,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
         FinSubcommand::Home(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
             orqa.ensure_fin_exists(&fin)?;
-            println!("{}", orqa.effective_fin_home(&fin).display());
+            println!("{}", orqa.fin_data_home(&fin)?.display());
             Ok(())
         }
         FinSubcommand::Status(args) => {
@@ -175,7 +148,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
         }
         FinSubcommand::Sleep(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
-            write_sleep_marker(&orqa.effective_fin_home(&fin).join("sleep.lock"))?;
+            write_sleep_marker(&orqa.fin_sleep_path(&fin)?)?;
             println!("sleep {}", fin.label());
             Ok(())
         }
@@ -184,7 +157,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
                 return Err("fin wake requires --force".to_string());
             }
             let fin = FinRef::new(&args.pod, &args.fin)?;
-            remove_sleep_marker(&orqa.effective_fin_home(&fin).join("sleep.lock"))?;
+            remove_sleep_marker(&orqa.fin_sleep_path(&fin)?)?;
             println!("wake {}", fin.label());
             Ok(())
         }

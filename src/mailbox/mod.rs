@@ -24,17 +24,9 @@ pub(crate) use storage::unique_mail_name;
 pub(crate) use tasks::{priority_sort_value, quote_value};
 
 const OPS_POD: &str = "ops";
-const OPERATOR_FIN: &str = "operator";
-
 pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
     let from = resolve_sender(args.from.as_deref())?;
-    let requested_to = resolve_address(&args.to, Some(&from.pod))?;
-    let legacy_operator_bridge = is_legacy_operator_bridge(orqa, &requested_to)?;
-    let to = if legacy_operator_bridge {
-        resolve_address("operator@ops.orqa", None)?
-    } else {
-        requested_to.clone()
-    };
+    let to = resolve_address(&args.to, Some(&from.pod))?;
 
     if from.pod != to.pod && !is_operator_mail_bridge(&from.pod, &to.pod) {
         return Err(format!(
@@ -49,44 +41,29 @@ pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
         None => read_stdin()?,
     };
 
-    let from_fin = FinRef::new(&from.pod, &from.fin)?;
     let to_fin = FinRef::new(&to.pod, &to.fin)?;
     ensure_target_fin(orqa, &to_fin)?;
-    let mail_home = orqa.effective_mail_home(&to_fin);
+    let mail_home = orqa.mail_home(&to_fin)?;
     ensure_maildir(&mail_home)?;
 
-    let message = if legacy_operator_bridge {
-        format!(
-            "From: {}\nTo: {}\nOriginal-To: {}\nSource-Pod: {}\nSource-Fin: {}\nSubject: {}\n\n{}\n",
-            from.label(),
-            to.label(),
-            requested_to.label(),
-            from.pod,
-            from.fin,
-            args.subject,
-            body
-        )
-    } else {
-        format!(
-            "From: {}\nTo: {}\nSubject: {}\n\n{}\n",
-            from.label(),
-            to.label(),
-            args.subject,
-            body
-        )
-    };
+    let message = format!(
+        "From: {}\nTo: {}\nSubject: {}\n\n{}\n",
+        from.label(),
+        to.label(),
+        args.subject,
+        body
+    );
     let path = deliver_mail(&mail_home, &message)?;
 
     println!("{}", path.display());
     println!("queued wake for {}", to_fin.label());
 
-    let _ = from_fin;
     Ok(())
 }
 
 pub(crate) fn unread_mail(orqa: &Orqa, args: FinRefArgs) -> Result<(), String> {
     let fin = FinRef::new(&args.pod, &args.fin)?;
-    let new_dir = orqa.effective_mail_home(&fin).join("new");
+    let new_dir = orqa.mail_home(&fin)?.join("new");
 
     for path in sorted_files(&new_dir)? {
         println!("{}", path.display());
@@ -125,7 +102,7 @@ pub(crate) fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
 
     let to_fin = FinRef::new(&to.pod, &to.fin)?;
     ensure_target_fin(orqa, &to_fin)?;
-    let task_home = orqa.effective_task_home(&to_fin);
+    let task_home = orqa.task_home(&to_fin)?;
     ensure_maildir(&task_home)?;
 
     let body = match args.body {
@@ -148,29 +125,13 @@ fn is_operator_mail_bridge(from_pod: &str, to_pod: &str) -> bool {
     from_pod == OPS_POD || to_pod == OPS_POD
 }
 
-fn is_operator_alias(fin: &str) -> bool {
-    fin == OPERATOR_FIN
-}
-
-fn is_legacy_operator_bridge(
-    orqa: &Orqa,
-    address: &crate::model::MailAddress,
-) -> Result<bool, String> {
-    if !is_operator_alias(&address.fin) {
-        return Ok(false);
-    }
-
-    let local_operator = FinRef::new(&address.pod, &address.fin)?;
-    Ok(!orqa.fin_exists(&local_operator))
-}
-
 fn ensure_target_fin(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
     orqa.ensure_fin_exists(fin)
 }
 
 pub(crate) fn list_tasks(orqa: &Orqa, args: TaskListArgs) -> Result<(), String> {
     let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
-    let home = orqa.task_home(&fin);
+    let home = orqa.task_home(&fin)?;
     let filters = TaskFilters::new(&args)?;
     let mut tasks = collect_tasks(&home, args.all)?;
 
@@ -191,10 +152,10 @@ pub(crate) enum ItemKind {
 }
 
 impl ItemKind {
-    fn home(self, orqa: &Orqa, fin: &FinRef) -> PathBuf {
+    fn home(self, orqa: &Orqa, fin: &FinRef) -> Result<PathBuf, String> {
         match self {
-            Self::Mail => orqa.effective_mail_home(fin),
-            Self::Task => orqa.effective_task_home(fin),
+            Self::Mail => orqa.mail_home(fin),
+            Self::Task => orqa.task_home(fin),
         }
     }
 
@@ -208,7 +169,7 @@ impl ItemKind {
 
 pub(crate) fn list_items(orqa: &Orqa, args: MailListArgs, kind: ItemKind) -> Result<(), String> {
     let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
-    let home = kind.home(orqa, &fin);
+    let home = kind.home(orqa, &fin)?;
 
     for path in sorted_files(&home.join("new"))? {
         println!("new {} {}", message_id(&path)?, message_title(&path, kind)?);
@@ -225,7 +186,8 @@ pub(crate) fn list_items(orqa: &Orqa, args: MailListArgs, kind: ItemKind) -> Res
 
 pub(crate) fn read_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
     let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
-    let path = resolve_message_path(&kind.home(orqa, &fin), &args.message)?;
+    let home = kind.home(orqa, &fin)?;
+    let path = resolve_message_path(&home, &args.message)?;
     let message = fs::read_to_string(&path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
 
@@ -235,7 +197,7 @@ pub(crate) fn read_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> R
 
 pub(crate) fn done_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
     let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
-    let home = kind.home(orqa, &fin);
+    let home = kind.home(orqa, &fin)?;
     let path = resolve_message_path(&home, &args.message)?;
     let id = message_id(&path)?;
 
@@ -277,7 +239,8 @@ pub(crate) fn delete_item(
     kind: ItemKind,
 ) -> Result<(), String> {
     let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
-    let path = resolve_message_path(&kind.home(orqa, &fin), &args.message)?;
+    let home = kind.home(orqa, &fin)?;
+    let path = resolve_message_path(&home, &args.message)?;
 
     fs::remove_file(&path)
         .map_err(|error| format!("failed to delete item {}: {error}", path.display()))?;

@@ -23,8 +23,8 @@ pub(crate) fn pod_doctor(orqa: &Orqa, args: PodDoctorArgs) -> Result<(), String>
     orqa.ensure_pod_exists(&pod)?;
     let mut ok = true;
 
-    let pod_root = orqa.pod_root_for_slug(&pod.slug);
-    let pod_data = orqa.effective_pod_home(&pod);
+    let pod_root = orqa.pod_root_for_slug(&pod.slug)?;
+    let pod_data = orqa.pod_data_home(&pod)?;
 
     check_path("pod root", &pod_root, &mut ok);
     check_path("pod config", &pod_data.join("pod.toml"), &mut ok);
@@ -60,7 +60,7 @@ fn doctor_fins(orqa: &Orqa, pod: &PodRef, fin: Option<&str>) -> Result<Vec<Strin
             orqa.ensure_fin_exists(&f)?;
             Ok(vec![fin.to_string()])
         }
-        None => list_dirs(&orqa.pod_home(pod).join("fins")),
+        None => list_dirs(&orqa.pod_data_home(pod)?.join("fins")),
     }
 }
 
@@ -68,7 +68,7 @@ fn doctor_fin(orqa: &Orqa, fin: &FinRef, prompt: &str, timeout: u64) -> Result<b
     let mut ok = true;
     println!("fin {}", fin.label());
 
-    let fin_home = orqa.effective_fin_home(fin);
+    let fin_home = orqa.fin_data_home(fin)?;
 
     check_path("fin home", &fin_home, &mut ok);
     check_path("fin config", &fin_home.join("fin.toml"), &mut ok);
@@ -156,7 +156,7 @@ fn run_probe(
     args: &[OsString],
     timeout: u64,
 ) -> Result<ProbeOutcome, String> {
-    let mut child = match fin_process(orqa, fin, command, args)
+    let mut child = match fin_process(orqa, fin, command, args)?
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null())
@@ -189,14 +189,18 @@ fn run_probe(
     }
 }
 
-fn fin_process(orqa: &Orqa, fin: &FinRef, command: &OsString, args: &[OsString]) -> ProcessCommand {
+fn fin_process(
+    orqa: &Orqa,
+    fin: &FinRef,
+    command: &OsString,
+    args: &[OsString],
+) -> Result<ProcessCommand, String> {
     let mut process = ProcessCommand::new(command);
 
-    // Phase 05-4: real pod root for cwd + HOME
-    let pod_root = orqa.effective_pod_root(&PodRef {
+    let pod_root = orqa.pod_root(&PodRef {
         slug: fin.pod.clone(),
-    });
-    let fin_home = orqa.effective_fin_home(fin);
+    })?;
+    let fin_home = orqa.fin_data_home(fin)?;
 
     process
         .current_dir(&pod_root)
@@ -211,7 +215,7 @@ fn fin_process(orqa: &Orqa, fin: &FinRef, command: &OsString, args: &[OsString])
     if let Some(path) = child_path_with_orqa_bin() {
         process.env("PATH", path);
     }
-    process
+    Ok(process)
 }
 
 fn child_path_with_orqa_bin() -> Option<OsString> {

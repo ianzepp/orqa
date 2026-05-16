@@ -1,6 +1,6 @@
-//! Ratatui Operator Cockpit entry point (Phase 3+).
+//! Ratatui Operator Cockpit entry point.
 //!
-//! Real scrollable timeline with filters, powered by the Phase 2 event system.
+//! Real scrollable timeline with filters, powered by the event system.
 
 use std::io::{self, stdout};
 
@@ -17,7 +17,7 @@ use super::app::App;
 use super::loopctl::start_tui_loop_worker;
 use super::watcher::PodWatcher;
 
-/// Run the Operator Cockpit TUI for a detected Phase 05 pod.
+/// Run the Operator Cockpit TUI for a detected project-root pod.
 pub fn run_tui(pod_slug: &str, pod_root: &std::path::Path) -> Result<(), String> {
     if let Err(e) = enable_raw_mode() {
         return Err(format!("failed to enable raw mode for TUI: {e}"));

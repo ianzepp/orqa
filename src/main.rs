@@ -9,7 +9,6 @@ mod report;
 mod runs;
 mod runtime;
 mod runtime_home;
-// mod service;  // Service CLI tree removed. Background service logic to be rethought.
 mod status;
 mod tui;
 
@@ -104,8 +103,7 @@ fn main() -> ExitCode {
     }
 
     let Some(command) = cli.command else {
-        // Phase 1 TUI integration: if we are inside a detectable Phase 05 pod root,
-        // launch the Operator Cockpit TUI instead of the legacy text overview.
+        // If we are inside a detectable pod root, launch the Operator Cockpit TUI.
         match crate::model::resolve_pod_context(None, &orqa) {
             Ok((pod_slug, pod_root)) => {
                 if let Err(error) = crate::tui::run_tui(&pod_slug, &pod_root) {
@@ -115,9 +113,7 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             Err(_) => {
-                // No pod detected — fall back to the classic text overview
-                // (still useful for global status, legacy pods, and when the user
-                // is not inside any project).
+                // No pod detected; show global registered pod status.
                 if let Err(error) = overview(&orqa) {
                     eprintln!("orqa: {error}");
                     return ExitCode::FAILURE;

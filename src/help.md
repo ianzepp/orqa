@@ -20,31 +20,32 @@ backed by runtimes such as Claude, Codex, OpenClaw, Hermes, Pi, an Ollama-backed
 agent integration, or a custom command. Each fin has its own home directory,
 runtime state directories, mail inbox, and task queue.
 
-`ORQA_HOME` is the root for all pods. It defaults to `~/.orqa`.
+`ORQA_HOME` stores global registry and daemon state. Each pod lives in a project
+root with its own `.orqa/` data directory.
 
 ```text
-ORQA_HOME/
-  pods/
-    sample-pod/
-      AGENTS.md
-      CHARTER.md
-      pod.toml
-      fins/
-        planner/
-          AGENTS.md
-          ROLE.md
-          fin.toml
-          .codex/       # Codex state
-          .hermes/      # Hermes state
-          .pi/          # Pi config and sessions
-          mail/
-            cur/
-            new/
-            tmp/
-          tasks/
-            cur/
-            new/
-            tmp/
+my-project/
+  .orqa/
+    AGENTS.md
+    CHARTER.md
+    pod.toml
+    fins/
+      operator/
+      planner/
+        AGENTS.md
+        ROLE.md
+        fin.toml
+        .codex/       # Codex state
+        .hermes/      # Hermes state
+        .pi/          # Pi config and sessions
+        mail/
+          cur/
+          new/
+          tmp/
+        tasks/
+          cur/
+          new/
+          tmp/
 ```
 
 Pods and fins are referenced by slug. Slugs may contain lowercase letters,
@@ -141,8 +142,8 @@ orqa fin chat sample-pod planner
 `fin chat` attaches stdin, stdout, and stderr directly to the terminal while
 using the same fin environment and lock behavior as `fin exec`.
 
-Backend processes start in the fin home, so runtimes can discover the
-fin-level `AGENTS.md` and the pod-level `AGENTS.md` in parent directories.
+Backend processes start in the pod root. Runtime-specific homes stay isolated
+under the fin data directory.
 
 When Orqa launches a fin, it sets:
 
@@ -150,17 +151,17 @@ When Orqa launches a fin, it sets:
 ORQA_HOME=<home>
 ORQA_POD=<pod-slug>
 ORQA_FIN=<fin-slug>
-HOME=<home>/pods/<pod-slug>/fins/<fin-slug>
-CODEX_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.codex
-GROK_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.grok
-HERMES_HOME=<home>/pods/<pod-slug>/fins/<fin-slug>/.hermes
-PI_CODING_AGENT_DIR=<home>/pods/<pod-slug>/fins/<fin-slug>/.pi/agent
+HOME=<pod-root>
+CODEX_HOME=<pod-root>/.orqa/fins/<fin-slug>/.codex
+GROK_HOME=<pod-root>/.orqa/fins/<fin-slug>/.grok
+HERMES_HOME=<pod-root>/.orqa/fins/<fin-slug>/.hermes
+PI_CODING_AGENT_DIR=<pod-root>/.orqa/fins/<fin-slug>/.pi/agent
 ```
 
 An agent can use `ORQA_POD` and `ORQA_FIN` to call mail and task commands with
 short addresses. Orqa sets the standard `HOME` variable (plus classic
 tool-specific variables for compatibility) so every backend keeps its state
-isolated under the fin home. Backends can also reference `{fin_home}` from
+isolated under the fin data home. Backends can also reference `{fin_home}` from
 `exec_args` or `chat_args`.
 
 For Codex and Grok, Orqa links the user's existing `~/.codex/auth.json` or
@@ -184,10 +185,10 @@ orqa pod doctor sample-pod
 orqa pod doctor sample-pod --fin planner --timeout 60
 ```
 
-Each fin exec records a small run directory under the fin home:
+Each fin exec records a small run directory under the fin data home:
 
 ```text
-ORQA_HOME/pods/<pod>/fins/<fin>/runs/<run-id>/
+<pod-root>/.orqa/fins/<fin>/runs/<run-id>/
   stdout.log
   stderr.log
   events.jsonl
@@ -414,12 +415,13 @@ orqa pod hook enable ops pre-plan 10-sync-external-mail
 
 The first supported phase is `pre-plan`, which runs at the start of `orqa loop`
 before mail, tasks, debounce, or `exec_always` are evaluated. Hooks live under
-`ORQA_HOME/pods/<pod>/hooks/pre-plan/` as `<hook-id>.toml` plus an adjacent
+`<pod-root>/.orqa/hooks/pre-plan/` as `<hook-id>.toml` plus an adjacent
 script. Commands run from the phase directory in lexicographic filename order.
 Failed hooks are reported and the wake loop continues.
 
-Hook commands receive `ORQA_HOME`, `ORQA_POD`, `ORQA_POD_HOME`, `ORQA_HOOK`,
-`ORQA_HOOK_PHASE`, `ORQA_HOOK_HOME`, and `ORQA_HOOK_STATE`.
+Hook commands receive `ORQA_HOME`, `ORQA_POD`, `ORQA_POD_ROOT`,
+`ORQA_POD_HOME`, `ORQA_HOOK`, `ORQA_HOOK_PHASE`, `ORQA_HOOK_HOME`, and
+`ORQA_HOOK_STATE`. `ORQA_POD_HOME` points at `<pod-root>/.orqa`.
 
 ## Sleep And Wake
 
@@ -470,7 +472,7 @@ The old `orqa service` commands and `--forever` flag have been removed. Use the 
 Direct fin runs and loop-launched runs use a per-fin lock file:
 
 ```text
-ORQA_HOME/pods/<pod>/fins/<fin>/run.lock
+<pod-root>/.orqa/fins/<fin>/run.lock
 ```
 
 The lock records the child process PID. While that PID is alive, later wake
