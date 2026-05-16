@@ -3,7 +3,7 @@
 //! This is the core data source for the Operator Cockpit timeline.
 //! It uses `PodRegistration` and pod-root `.orqa` paths.
 
-#![allow(dead_code)] // Phase 2 delivers the engine; some helpers are exercised more in Phase 3+
+#![allow(dead_code)] // Some watcher helpers are exercised only by the live TUI.
 
 use std::collections::{HashMap, HashSet};
 use std::fs;
@@ -306,7 +306,7 @@ fn finished_run_exit_code(path: &Path) -> Option<Option<i32>> {
     .then_some(status.exit_code)
 }
 
-/// Extremely lightweight mail header parser for Phase 2.
+/// Extremely lightweight mail header parser.
 /// Looks for the first few lines containing "From:" and "Subject:".
 fn parse_mail_headers(path: &Path) -> (Option<String>, Option<String>) {
     let content = match fs::read_to_string(path) {

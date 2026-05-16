@@ -1,7 +1,7 @@
-//! Main application state and rendering for the Operator Cockpit (Phase 3+).
+//! Main application state and rendering for the Operator Cockpit.
 //!
 //! This module owns the live event buffer, filters, scroll state, and
-//! integrates the `PodWatcher` from Phase 2.
+//! integration with the `PodWatcher`.
 
 use std::{
     collections::{HashMap, HashSet},
@@ -17,7 +17,6 @@ use ratatui::{
     widgets::{Block, Borders, Clear, List, ListItem, ListState, Paragraph},
 };
 
-#[allow(unused_imports)]
 use crate::{
     mailbox::{deliver_mail, ensure_maildir},
     model::{FinRef, Orqa, PodRegistration},
@@ -43,10 +42,9 @@ pub struct FilterState {
     pub thread_query: Option<String>,
 }
 
-/// The main TUI application state for Phase 3.
+/// The main TUI application state.
 pub struct App {
     pub pod_slug: String,
-    #[allow(dead_code)]
     pub pod_root: std::path::PathBuf,
     pub orqa: Orqa,
     pub pod: PodRegistration,
@@ -61,7 +59,7 @@ pub struct App {
     pub active_since: HashMap<String, Instant>,
     pub max_events: usize,
 
-    /// The bottom composer (Phase 4)
+    /// The bottom message composer.
     pub composer: Composer,
 
     /// Current input mode (Normal = monitoring hotkeys, Input = composer owns keys)
@@ -118,22 +116,28 @@ impl App {
 
     /// Poll the watcher and append any new events.
     pub fn poll_watcher(&mut self) {
-        if let Some(watcher) = &mut self.watcher {
-            if let Ok(new_events) = watcher.poll() {
-                for ev in new_events {
-                    // Track fins we see
-                    if let Some(f) = ev.fin() {
-                        self.known_fins.insert(f.to_string());
-                    }
-                    self.apply_event_state(&ev);
-                    self.events.push(ev);
+        let Some(watcher) = &mut self.watcher else {
+            return;
+        };
+        let Ok(new_events) = watcher.poll() else {
+            return;
+        };
 
-                    // Bound the buffer
-                    if self.events.len() > self.max_events {
-                        self.events.remove(0);
-                    }
-                }
-            }
+        for event in new_events {
+            self.record_event(event);
+        }
+    }
+
+    fn record_event(&mut self, event: Event) {
+        if let Some(fin) = event.fin() {
+            self.known_fins.insert(fin.to_string());
+        }
+
+        self.apply_event_state(&event);
+        self.events.push(event);
+
+        while self.events.len() > self.max_events {
+            self.events.remove(0);
         }
     }
 
@@ -192,7 +196,6 @@ impl App {
         true
     }
 
-    #[allow(dead_code)]
     /// Apply a fin filter (cycle or set).
     pub fn set_fin_filter(&mut self, fin: Option<String>) {
         self.filters.fin_filter = fin;
@@ -214,7 +217,6 @@ impl App {
         self.scroll_to_bottom();
     }
 
-    /// Scroll handling
     pub fn scroll_up(&mut self, amount: usize) {
         self.follow = false;
         let selected = self.list_state.selected().unwrap_or(0);
@@ -231,7 +233,6 @@ impl App {
         let new_sel = (selected + amount).min(visible.saturating_sub(1));
         self.list_state.select(Some(new_sel));
 
-        // Resume follow if we reached the bottom
         if new_sel >= visible.saturating_sub(1) {
             self.follow = true;
         }

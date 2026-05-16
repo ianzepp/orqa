@@ -1,4 +1,4 @@
-//! Composer widget for the Operator Cockpit (Phase 4+).
+//! Composer widget for the Operator Cockpit.
 //!
 //! Handles the bottom input line, target fin selection, command history,
 //! and the actual "send mail + wake" flow.
@@ -14,8 +14,6 @@ use ratatui::{
 };
 
 use super::theme::Theme;
-
-// use super::events::Event; // not needed yet in composer
 
 /// State for the bottom composer.
 #[derive(Default)]
@@ -75,7 +73,6 @@ impl Composer {
         self.clear_status();
     }
 
-    #[allow(dead_code)]
     /// Delete the previous word (Ctrl+W behavior).
     pub fn delete_previous_word(&mut self) {
         if self.cursor == 0 {
