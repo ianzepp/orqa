@@ -16,7 +16,10 @@ pub(crate) use mail::mail;
 pub(crate) use task::task;
 
 use crate::{
-    cli::{InitArgs, OpsCommand, OpsSubcommand, PodCharterSubcommand, PodCommand, PodSubcommand},
+    cli::{
+        CommandContext, InitArgs, OpsCommand, OpsSubcommand, PodCharterSubcommand, PodCommand,
+        PodSubcommand,
+    },
     config::{
         DEFAULT_CHARTER, fin_agents_template, fin_config_template_with_backend,
         pod_agents_template, pod_config_template,
@@ -30,7 +33,11 @@ use crate::{
     status::{pod_status, print_json, print_pod_list_status, print_pod_status},
 };
 
-pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
+pub(crate) fn pod(
+    orqa: &Orqa,
+    context: &CommandContext,
+    command: PodCommand,
+) -> Result<(), String> {
     match command.command {
         PodSubcommand::List => pod::list_pods(orqa),
         PodSubcommand::Create(args) => {
@@ -43,14 +50,17 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
         }
         PodSubcommand::Charter(command) => match command.command {
             PodCharterSubcommand::Get(args) => {
-                let pod = PodRef::new(&args.slug)?;
+                let (slug, _) = context.resolve_pod(args.slug, orqa)?;
+                let pod = PodRef::new(&slug)?;
                 orqa.ensure_pod_exists(&pod)?;
                 print_file(&orqa.pod_data_home(&pod)?.join("CHARTER.md"))
             }
             PodCharterSubcommand::Set(args) => {
-                let pod = PodRef::new(&args.slug)?;
+                let (pod_arg, charter_arg) = args.resolve_refs()?;
+                let (slug, _) = context.resolve_pod(pod_arg, orqa)?;
+                let pod = PodRef::new(&slug)?;
                 orqa.ensure_pod_exists(&pod)?;
-                let charter = read_markdown_source(&args.charter)?;
+                let charter = read_markdown_source(&charter_arg)?;
                 let home = orqa.pod_data_home(&pod)?;
                 write_text(&home.join("CHARTER.md"), &charter)?;
                 write_text(
@@ -62,12 +72,14 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
             }
         },
         PodSubcommand::Home(args) => {
-            let pod = PodRef::new(&args.slug)?;
+            let (slug, _) = context.resolve_pod(args.slug, orqa)?;
+            let pod = PodRef::new(&slug)?;
             println!("{}", orqa.pod_root(&pod)?.display());
             Ok(())
         }
         PodSubcommand::Status(args) => {
-            let pod = PodRef::new(&args.pod)?;
+            let (slug, _) = context.resolve_pod(args.pod, orqa)?;
+            let pod = PodRef::new(&slug)?;
             orqa.ensure_pod_exists(&pod)?;
             let status = pod_status(orqa, &pod)?;
             if args.json {
@@ -77,30 +89,32 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
                 Ok(())
             }
         }
-        PodSubcommand::Doctor(args) => pod_doctor(orqa, args),
+        PodSubcommand::Doctor(args) => pod_doctor(orqa, context, args),
         PodSubcommand::Hook(command) => match command.command {
-            crate::cli::PodHookSubcommand::List(args) => list_hooks(orqa, args),
-            crate::cli::PodHookSubcommand::Add(args) => add_hook(orqa, args),
-            crate::cli::PodHookSubcommand::Enable(args) => enable_hook(orqa, args),
-            crate::cli::PodHookSubcommand::Disable(args) => disable_hook(orqa, args),
-            crate::cli::PodHookSubcommand::Remove(args) => remove_hook(orqa, args),
-            crate::cli::PodHookSubcommand::Run(args) => run_hooks(orqa, args),
+            crate::cli::PodHookSubcommand::List(args) => list_hooks(orqa, context, args),
+            crate::cli::PodHookSubcommand::Add(args) => add_hook(orqa, context, args),
+            crate::cli::PodHookSubcommand::Enable(args) => enable_hook(orqa, context, args),
+            crate::cli::PodHookSubcommand::Disable(args) => disable_hook(orqa, context, args),
+            crate::cli::PodHookSubcommand::Remove(args) => remove_hook(orqa, context, args),
+            crate::cli::PodHookSubcommand::Run(args) => run_hooks(orqa, context, args),
         },
         PodSubcommand::Tail(args) => {
-            let pod = PodRef::new(&args.pod)?;
-            if let Some(fin) = &args.fin {
+            let (slug, _) = context.resolve_pod(args.pod, orqa)?;
+            let pod = PodRef::new(&slug)?;
+            if let Some(fin) = &context.fin {
                 FinRef::new(&pod.slug, fin)?;
             }
             tail_pod(
                 orqa,
                 &pod.slug,
-                args.fin.as_deref(),
+                context.fin.as_deref(),
                 args.lines,
                 args.follow,
             )
         }
         PodSubcommand::Pause(args) => {
-            let pod = PodRef::new(&args.slug)?;
+            let (slug, _) = context.resolve_pod(args.slug, orqa)?;
+            let pod = PodRef::new(&slug)?;
             write_sleep_marker(&orqa.pod_sleep_path(&pod)?)?;
             println!("pause {}", pod.slug);
             Ok(())
@@ -109,7 +123,8 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
             if !args.force {
                 return Err("pod resume requires --force".to_string());
             }
-            let pod = PodRef::new(&args.slug)?;
+            let (slug, _) = context.resolve_pod(args.slug, orqa)?;
+            let pod = PodRef::new(&slug)?;
             remove_sleep_marker(&orqa.pod_sleep_path(&pod)?)?;
             println!("resume {}", pod.slug);
             Ok(())

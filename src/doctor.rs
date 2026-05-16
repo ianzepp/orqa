@@ -8,18 +8,23 @@ use std::{
 };
 
 use crate::{
-    cli::PodDoctorArgs,
+    cli::{CommandContext, PodDoctorArgs},
     commands::list_dirs,
     model::{FinRef, Orqa, PodRef},
     runtime::resolve_exec_command,
 };
 
-pub(crate) fn pod_doctor(orqa: &Orqa, args: PodDoctorArgs) -> Result<(), String> {
+pub(crate) fn pod_doctor(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: PodDoctorArgs,
+) -> Result<(), String> {
     if args.timeout == 0 {
         return Err("pod doctor timeout must be at least 1 second".to_string());
     }
 
-    let pod = PodRef::new(&args.pod)?;
+    let (slug, _) = context.resolve_pod(args.pod, orqa)?;
+    let pod = PodRef::new(&slug)?;
     orqa.ensure_pod_exists(&pod)?;
     let mut ok = true;
 
@@ -32,7 +37,7 @@ pub(crate) fn pod_doctor(orqa: &Orqa, args: PodDoctorArgs) -> Result<(), String>
     check_path("pod agents", &pod_data.join("AGENTS.md"), &mut ok);
     check_path("fins dir", &pod_data.join("fins"), &mut ok);
 
-    let fins = doctor_fins(orqa, &pod, args.fin.as_deref())?;
+    let fins = doctor_fins(orqa, &pod, context.fin.as_deref())?;
     if fins.is_empty() {
         println!("fail pod={} check=fins detail=no-fins", pod.slug);
         ok = false;

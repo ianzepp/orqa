@@ -18,7 +18,7 @@ use std::{env, process::ExitCode};
 use clap::{Arg, ArgAction, Command as ClapCommand, CommandFactory, FromArgMatches};
 
 #[allow(unused_imports)]
-use cli::{Cli, Command, InitArgs};
+use cli::{Cli, Command, CommandContext, InitArgs};
 use commands::{fin, loop_command, mail, ops, overview, pod, pod_init, task};
 use model::Orqa;
 
@@ -32,6 +32,7 @@ const TOP_LEVEL_HELP_TEMPLATE: &str =
 fn main() -> ExitCode {
     let matches = cli_command().get_matches();
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
+    let context = CommandContext::new(cli.pod.clone(), cli.fin.clone());
     let orqa = Orqa::new(cli.home);
 
     // Internal loop worker mode used by the TUI.
@@ -45,7 +46,7 @@ fn main() -> ExitCode {
 
     let Some(command) = cli.command else {
         // If we are inside a detectable pod root, launch the Operator Cockpit TUI.
-        match crate::model::resolve_pod_context(None, &orqa) {
+        match context.resolve_pod(None, &orqa) {
             Ok((pod_slug, pod_root)) => {
                 if let Err(error) = crate::tui::run_tui(&pod_slug, &pod_root) {
                     eprintln!("orqa tui: {error}");
@@ -64,7 +65,7 @@ fn main() -> ExitCode {
         }
     };
 
-    match run(&orqa, command) {
+    match run(&orqa, &context, command) {
         Ok(()) => ExitCode::SUCCESS,
         Err(error) => {
             eprintln!("orqa: {error}");
@@ -73,7 +74,7 @@ fn main() -> ExitCode {
     }
 }
 
-fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
+fn run(orqa: &Orqa, context: &CommandContext, command: Command) -> Result<(), String> {
     match command {
         Command::Doctor => doctor(orqa),
         Command::Guide => {
@@ -81,13 +82,13 @@ fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
             Ok(())
         }
         Command::Init(args) => pod_init(orqa, args),
-        Command::Pod(command) => pod(orqa, command),
-        Command::Fin(command) => fin(orqa, command),
-        Command::Mail(command) => mail(orqa, command),
-        Command::Task(command) => task(orqa, command),
+        Command::Pod(command) => pod(orqa, context, command),
+        Command::Fin(command) => fin(orqa, context, command),
+        Command::Mail(command) => mail(orqa, context, command),
+        Command::Task(command) => task(orqa, context, command),
         Command::Ops(command) => ops(orqa, command),
-        Command::Wake(args) => runtime::wake_current_pod(orqa, args),
-        Command::Loop(command) => loop_command(orqa, command),
+        Command::Wake(args) => runtime::wake_current_pod(orqa, context, args),
+        Command::Loop(command) => loop_command(orqa, context, command),
     }
 }
 

@@ -4,13 +4,14 @@ mod tasks;
 use std::{fs, path::PathBuf};
 
 use crate::{
+    cli::CommandContext,
     cli::{FinRefArgs, MailListArgs, MailMessageArgs, SendMailArgs, SendTaskArgs, TaskListArgs},
     model::{FinRef, Orqa},
 };
 
 pub(crate) use storage::{
     deliver_mail, ensure_maildir, mail_state, message_id, message_title, read_stdin,
-    remove_sleep_marker, resolve_address, resolve_fin, resolve_message_path, resolve_sender,
+    remove_sleep_marker, resolve_address, resolve_message_path, resolve_sender_context,
     sorted_files, unread_count, write_if_missing, write_sleep_marker,
 };
 pub(crate) use tasks::{
@@ -24,8 +25,16 @@ pub(crate) use storage::unique_mail_name;
 pub(crate) use tasks::{priority_sort_value, quote_value};
 
 const OPS_POD: &str = "ops";
-pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
-    let from = resolve_sender(args.from.as_deref())?;
+pub(crate) fn send_mail(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: SendMailArgs,
+) -> Result<(), String> {
+    let from = resolve_sender_context(
+        args.from.as_deref(),
+        context.pod.as_deref(),
+        context.fin.as_deref(),
+    )?;
     let to = resolve_address(&args.to, Some(&from.pod))?;
 
     if from.pod != to.pod && !is_operator_mail_bridge(&from.pod, &to.pod) {
@@ -61,8 +70,12 @@ pub(crate) fn send_mail(orqa: &Orqa, args: SendMailArgs) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn unread_mail(orqa: &Orqa, args: FinRefArgs) -> Result<(), String> {
-    let fin = FinRef::new(&args.pod, &args.fin)?;
+pub(crate) fn unread_mail(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: FinRefArgs,
+) -> Result<(), String> {
+    let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
     let new_dir = orqa.mail_home(&fin)?.join("new");
 
     for path in sorted_files(&new_dir)? {
@@ -72,24 +85,48 @@ pub(crate) fn unread_mail(orqa: &Orqa, args: FinRefArgs) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn list_mail(orqa: &Orqa, args: MailListArgs) -> Result<(), String> {
-    list_items(orqa, args, ItemKind::Mail)
+pub(crate) fn list_mail(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: MailListArgs,
+) -> Result<(), String> {
+    list_items(orqa, context, args, ItemKind::Mail)
 }
 
-pub(crate) fn read_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
-    read_item(orqa, args, ItemKind::Mail)
+pub(crate) fn read_mail(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: MailMessageArgs,
+) -> Result<(), String> {
+    read_item(orqa, context, args, ItemKind::Mail)
 }
 
-pub(crate) fn done_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
-    done_item(orqa, args, ItemKind::Mail)
+pub(crate) fn done_mail(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: MailMessageArgs,
+) -> Result<(), String> {
+    done_item(orqa, context, args, ItemKind::Mail)
 }
 
-pub(crate) fn delete_mail(orqa: &Orqa, args: MailMessageArgs) -> Result<(), String> {
-    delete_item(orqa, args, ItemKind::Mail)
+pub(crate) fn delete_mail(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: MailMessageArgs,
+) -> Result<(), String> {
+    delete_item(orqa, context, args, ItemKind::Mail)
 }
 
-pub(crate) fn send_task(orqa: &Orqa, args: SendTaskArgs) -> Result<(), String> {
-    let from = resolve_sender(args.from.as_deref())?;
+pub(crate) fn send_task(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: SendTaskArgs,
+) -> Result<(), String> {
+    let from = resolve_sender_context(
+        args.from.as_deref(),
+        context.pod.as_deref(),
+        context.fin.as_deref(),
+    )?;
     let to = resolve_address(&args.to, Some(&from.pod))?;
 
     if from.pod != to.pod && !is_operator_bridge(&from.pod) {
@@ -129,8 +166,12 @@ fn ensure_target_fin(orqa: &Orqa, fin: &FinRef) -> Result<(), String> {
     orqa.ensure_fin_exists(fin)
 }
 
-pub(crate) fn list_tasks(orqa: &Orqa, args: TaskListArgs) -> Result<(), String> {
-    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+pub(crate) fn list_tasks(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: TaskListArgs,
+) -> Result<(), String> {
+    let fin = context.resolve_fin(None, None, orqa)?;
     let home = orqa.task_home(&fin)?;
     let filters = TaskFilters::new(&args)?;
     let mut tasks = collect_tasks(&home, args.all)?;
@@ -167,8 +208,13 @@ impl ItemKind {
     }
 }
 
-pub(crate) fn list_items(orqa: &Orqa, args: MailListArgs, kind: ItemKind) -> Result<(), String> {
-    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+pub(crate) fn list_items(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: MailListArgs,
+    kind: ItemKind,
+) -> Result<(), String> {
+    let fin = context.resolve_fin(None, None, orqa)?;
     let home = kind.home(orqa, &fin)?;
 
     for path in sorted_files(&home.join("new"))? {
@@ -184,8 +230,13 @@ pub(crate) fn list_items(orqa: &Orqa, args: MailListArgs, kind: ItemKind) -> Res
     Ok(())
 }
 
-pub(crate) fn read_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
-    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+pub(crate) fn read_item(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: MailMessageArgs,
+    kind: ItemKind,
+) -> Result<(), String> {
+    let fin = context.resolve_fin(None, None, orqa)?;
     let home = kind.home(orqa, &fin)?;
     let path = resolve_message_path(&home, &args.message)?;
     let message = fs::read_to_string(&path)
@@ -195,8 +246,13 @@ pub(crate) fn read_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> R
     Ok(())
 }
 
-pub(crate) fn done_item(orqa: &Orqa, args: MailMessageArgs, kind: ItemKind) -> Result<(), String> {
-    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+pub(crate) fn done_item(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: MailMessageArgs,
+    kind: ItemKind,
+) -> Result<(), String> {
+    let fin = context.resolve_fin(None, None, orqa)?;
     let home = kind.home(orqa, &fin)?;
     let path = resolve_message_path(&home, &args.message)?;
     let id = message_id(&path)?;
@@ -235,10 +291,11 @@ fn update_task_done_status(path: &std::path::Path) -> Result<(), String> {
 
 pub(crate) fn delete_item(
     orqa: &Orqa,
+    context: &CommandContext,
     args: MailMessageArgs,
     kind: ItemKind,
 ) -> Result<(), String> {
-    let fin = resolve_fin(args.pod.as_deref(), args.fin.as_deref())?;
+    let fin = context.resolve_fin(None, None, orqa)?;
     let home = kind.home(orqa, &fin)?;
     let path = resolve_message_path(&home, &args.message)?;
 

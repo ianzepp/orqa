@@ -10,12 +10,12 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    cli::{ChatArgs, ExecArgs, SuperviseArgs, WakeArgs},
+    cli::{ChatArgs, CommandContext, ExecArgs, SuperviseArgs, WakeArgs},
     commands::list_dirs,
     config::{BackendCommand, BackendMode, backend_chat_command, backend_command, run_policy},
     hooks::run_hook_phase,
     mailbox::unread_count,
-    model::{FinRef, Orqa, PodRef, resolve_pod_context},
+    model::{FinRef, Orqa, PodRef},
     runs::{RunFiles, latest_run_started_at},
     runtime_home::ensure_fin_runtime_homes,
     status::print_json,
@@ -92,8 +92,12 @@ impl std::fmt::Display for WakeReason {
     }
 }
 
-pub(crate) fn wake_current_pod(orqa: &Orqa, args: WakeArgs) -> Result<(), String> {
-    let (pod, _) = resolve_pod_context(None, orqa)?;
+pub(crate) fn wake_current_pod(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: WakeArgs,
+) -> Result<(), String> {
+    let (pod, _) = context.resolve_pod(None, orqa)?;
     wake_pod(orqa, &pod, args.force, args.dry_run, args.json, &args.args)
 }
 
@@ -343,8 +347,12 @@ fn print_plan(plan: &WakePlan, json: bool) -> Result<(), String> {
     Ok(())
 }
 
-pub(crate) fn exec_fin(orqa: &Orqa, args: ExecArgs) -> Result<(), String> {
-    let fin = FinRef::new(&args.pod, &args.fin)?;
+pub(crate) fn exec_fin(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: ExecArgs,
+) -> Result<(), String> {
+    let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
     orqa.ensure_fin_exists(&fin)?;
     let command = resolve_exec_command(orqa, &fin, &args.args)?;
     exec_fin_foreground(orqa, &fin, &command)
@@ -360,8 +368,12 @@ pub(crate) fn spawn_fin_prompt(
     spawn_fin_background(orqa, fin, &command)
 }
 
-pub(crate) fn chat_fin(orqa: &Orqa, args: ChatArgs) -> Result<(), String> {
-    let fin = FinRef::new(&args.pod, &args.fin)?;
+pub(crate) fn chat_fin(
+    orqa: &Orqa,
+    context: &CommandContext,
+    args: ChatArgs,
+) -> Result<(), String> {
+    let fin = context.resolve_fin(args.pod, args.fin, orqa)?;
     orqa.ensure_fin_exists(&fin)?;
     let command = resolve_chat_command(orqa, &fin, &args.args)?;
     fin_chat_interactive(orqa, &fin, &command)

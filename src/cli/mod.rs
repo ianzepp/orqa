@@ -31,9 +31,59 @@ pub(crate) struct Cli {
     /// Override ORQA_HOME for this command.
     #[arg(long, global = true, value_name = "DIR")]
     pub(crate) home: Option<PathBuf>,
+    /// Explicit pod context for commands that operate inside a pod.
+    #[arg(long, global = true, value_name = "SLUG")]
+    pub(crate) pod: Option<String>,
+    /// Explicit fin context for commands that operate on one fin.
+    #[arg(long, global = true, value_name = "SLUG")]
+    pub(crate) fin: Option<String>,
 
     #[command(subcommand)]
     pub(crate) command: Option<Command>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct CommandContext {
+    pub(crate) pod: Option<String>,
+    pub(crate) fin: Option<String>,
+}
+
+impl CommandContext {
+    pub(crate) fn new(pod: Option<String>, fin: Option<String>) -> Self {
+        Self { pod, fin }
+    }
+
+    pub(crate) fn pod_arg(&self, command_pod: Option<String>) -> Option<String> {
+        command_pod.or_else(|| self.pod.clone())
+    }
+
+    pub(crate) fn fin_arg(&self, command_fin: Option<String>) -> Option<String> {
+        command_fin.or_else(|| self.fin.clone())
+    }
+
+    pub(crate) fn resolve_pod(
+        &self,
+        command_pod: Option<String>,
+        orqa: &crate::model::Orqa,
+    ) -> Result<(String, PathBuf), String> {
+        crate::model::resolve_pod_context(self.pod_arg(command_pod), orqa)
+    }
+
+    pub(crate) fn resolve_fin(
+        &self,
+        command_pod: Option<String>,
+        command_fin: Option<String>,
+        orqa: &crate::model::Orqa,
+    ) -> Result<crate::model::FinRef, String> {
+        let (pod, _) = self.resolve_pod(command_pod, orqa)?;
+        let fin = self
+            .fin_arg(command_fin)
+            .or_else(|| std::env::var("ORQA_FIN").ok())
+            .ok_or_else(|| {
+                "missing fin: pass --fin, set ORQA_FIN, or provide a fin argument".to_string()
+            })?;
+        crate::model::FinRef::new(&pod, &fin)
+    }
 }
 
 #[derive(Debug, Subcommand)]

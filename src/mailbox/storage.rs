@@ -49,21 +49,6 @@ pub(crate) fn sorted_files(dir: &Path) -> Result<Vec<PathBuf>, String> {
     Ok(paths)
 }
 
-pub(crate) fn resolve_fin(pod: Option<&str>, fin: Option<&str>) -> Result<FinRef, String> {
-    let pod = match pod {
-        Some(pod) => pod.to_string(),
-        None => env::var("ORQA_POD")
-            .map_err(|_| "missing pod; use --pod or run with ORQA_POD set".to_string())?,
-    };
-    let fin = match fin {
-        Some(fin) => fin.to_string(),
-        None => env::var("ORQA_FIN")
-            .map_err(|_| "missing fin; use --fin or run with ORQA_FIN set".to_string())?,
-    };
-
-    FinRef::new(&pod, &fin)
-}
-
 pub(crate) fn resolve_message_path(mail_home: &Path, message: &str) -> Result<PathBuf, String> {
     let path = PathBuf::from(message);
     if path.exists() {
@@ -138,21 +123,26 @@ pub(crate) fn read_stdin() -> Result<String, String> {
     Ok(body)
 }
 
-pub(crate) fn resolve_sender(from: Option<&str>) -> Result<MailAddress, String> {
+pub(crate) fn resolve_sender_context(
+    from: Option<&str>,
+    pod: Option<&str>,
+    fin: Option<&str>,
+) -> Result<MailAddress, String> {
     match from {
-        Some(from) => {
-            let pod = env::var("ORQA_POD").ok();
-            resolve_address(from, pod.as_deref())
-        }
+        Some(from) => resolve_address(from, pod),
         None => {
-            let pod = env::var("ORQA_POD").map_err(|_| {
-                "missing sender; use --from fin@pod.orqa or run with ORQA_POD and ORQA_FIN set"
-                    .to_string()
-            })?;
-            let fin = env::var("ORQA_FIN").map_err(|_| {
-                "missing sender; use --from fin@pod.orqa or run with ORQA_POD and ORQA_FIN set"
-                    .to_string()
-            })?;
+            let pod = pod
+                .map(str::to_string)
+                .or_else(|| env::var("ORQA_POD").ok())
+                .ok_or_else(|| {
+                    "missing sender; use --from fin@pod.orqa or pass --pod and --fin".to_string()
+                })?;
+            let fin = fin
+                .map(str::to_string)
+                .or_else(|| env::var("ORQA_FIN").ok())
+                .ok_or_else(|| {
+                    "missing sender; use --from fin@pod.orqa or pass --pod and --fin".to_string()
+                })?;
 
             resolve_address(&fin, Some(&pod))
         }
@@ -227,7 +217,7 @@ use std::{
 
 use crate::{
     mailbox::ItemKind,
-    model::{FinRef, MailAddress, validate_slug},
+    model::{MailAddress, validate_slug},
 };
 
 static MAIL_COUNTER: AtomicUsize = AtomicUsize::new(0);

@@ -4,23 +4,11 @@ use super::fin::FinRefArgs;
 
 #[derive(Debug, Args)]
 pub(crate) struct MailMessageArgs {
-    /// Pod slug. Defaults to ORQA_POD.
-    #[arg(long)]
-    pub(crate) pod: Option<String>,
-    /// Fin slug. Defaults to ORQA_FIN.
-    #[arg(long)]
-    pub(crate) fin: Option<String>,
     /// Message id, filename, or path.
     pub(crate) message: String,
 }
 #[derive(Debug, Args)]
 pub(crate) struct MailListArgs {
-    /// Pod slug. Defaults to ORQA_POD.
-    #[arg(long)]
-    pub(crate) pod: Option<String>,
-    /// Fin slug. Defaults to ORQA_FIN.
-    #[arg(long)]
-    pub(crate) fin: Option<String>,
     /// Include done items from cur.
     #[arg(long)]
     pub(crate) all: bool,

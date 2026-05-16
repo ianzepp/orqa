@@ -3,11 +3,8 @@ use std::{ffi::OsString, path::PathBuf};
 
 #[derive(Debug, Args)]
 pub(crate) struct PodTailArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Restrict output to one fin.
-    #[arg(long)]
-    pub(crate) fin: Option<String>,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
     /// Number of lines per stream.
     #[arg(long, default_value_t = 80)]
     pub(crate) lines: usize,
@@ -18,26 +15,23 @@ pub(crate) struct PodTailArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct PodResumeArgs {
-    /// Pod slug.
-    pub(crate) slug: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) slug: Option<String>,
     /// Required to clear pause state.
     #[arg(long)]
     pub(crate) force: bool,
 }
 #[derive(Debug, Args)]
 pub(crate) struct PodHookListArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct PodHookAddArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Hook phase. Currently only pre-plan is supported.
-    pub(crate) phase: String,
-    /// Hook id, commonly prefixed for sort order, such as 10-sync-mail.
-    pub(crate) hook: String,
+    /// Either <phase> <hook>, or explicit <pod> <phase> <hook>.
+    #[arg(value_name = "POD_OR_PHASE", num_args = 2..=3)]
+    pub(crate) refs: Vec<String>,
     /// Hook timeout, such as 30s, 5m, or 1h.
     #[arg(long, default_value = "30s")]
     pub(crate) timeout: String,
@@ -46,27 +40,55 @@ pub(crate) struct PodHookAddArgs {
     pub(crate) command: Vec<OsString>,
 }
 
+impl PodHookAddArgs {
+    pub(crate) fn resolve_refs(&self) -> Result<(Option<String>, String, String), String> {
+        match self.refs.as_slice() {
+            [phase, hook] => Ok((None, phase.clone(), hook.clone())),
+            [pod, phase, hook] => Ok((Some(pod.clone()), phase.clone(), hook.clone())),
+            _ => Err("usage: orqa pod hook add [pod] <phase> <hook> -- <command>".to_string()),
+        }
+    }
+}
+
 #[derive(Debug, Args)]
 pub(crate) struct PodHookRefArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Hook phase. Currently only pre-plan is supported.
-    pub(crate) phase: String,
-    /// Hook id.
-    pub(crate) hook: String,
+    /// Either <phase> <hook>, or explicit <pod> <phase> <hook>.
+    #[arg(value_name = "POD_OR_PHASE", num_args = 2..=3)]
+    pub(crate) refs: Vec<String>,
+}
+
+impl PodHookRefArgs {
+    pub(crate) fn resolve_refs(&self) -> Result<(Option<String>, String, String), String> {
+        match self.refs.as_slice() {
+            [phase, hook] => Ok((None, phase.clone(), hook.clone())),
+            [pod, phase, hook] => Ok((Some(pod.clone()), phase.clone(), hook.clone())),
+            _ => {
+                Err("usage: orqa pod hook <enable|disable|remove> [pod] <phase> <hook>".to_string())
+            }
+        }
+    }
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct PodHookRunArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Hook phase. Currently only pre-plan is supported.
-    pub(crate) phase: String,
+    /// Either <phase>, or explicit <pod> <phase>.
+    #[arg(value_name = "POD_OR_PHASE", num_args = 1..=2)]
+    pub(crate) refs: Vec<String>,
+}
+
+impl PodHookRunArgs {
+    pub(crate) fn resolve_refs(&self) -> Result<(Option<String>, String), String> {
+        match self.refs.as_slice() {
+            [phase] => Ok((None, phase.clone())),
+            [pod, phase] => Ok((Some(pod.clone()), phase.clone())),
+            _ => Err("usage: orqa pod hook run [pod] <phase>".to_string()),
+        }
+    }
 }
 #[derive(Debug, Args)]
 pub(crate) struct PodStatusArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
     /// Emit machine-readable JSON.
     #[arg(long)]
     pub(crate) json: bool,
@@ -74,11 +96,8 @@ pub(crate) struct PodStatusArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct PodDoctorArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Restrict checks to one fin.
-    #[arg(long)]
-    pub(crate) fin: Option<String>,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
     /// Probe prompt passed to each fin backend.
     #[arg(long, default_value = "Reply with exactly: orqa-ok")]
     pub(crate) prompt: String,
@@ -88,8 +107,8 @@ pub(crate) struct PodDoctorArgs {
 }
 #[derive(Debug, Args)]
 pub(crate) struct SlugArgs {
-    /// Pod slug.
-    pub(crate) slug: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) slug: Option<String>,
 }
 
 #[derive(Debug, Args)]
@@ -119,11 +138,19 @@ pub(crate) struct InitArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct PodCharterSetArgs {
-    /// Pod slug.
-    pub(crate) slug: String,
-    /// Pod charter text, @file path, or - for stdin.
-    #[arg(value_name = "PROMPT|@FILE|-")]
-    pub(crate) charter: String,
+    /// Either <charter>, or explicit <pod> <charter>.
+    #[arg(value_name = "POD_OR_PROMPT", num_args = 1..=2)]
+    pub(crate) refs: Vec<String>,
+}
+
+impl PodCharterSetArgs {
+    pub(crate) fn resolve_refs(&self) -> Result<(Option<String>, String), String> {
+        match self.refs.as_slice() {
+            [charter] => Ok((None, charter.clone())),
+            [pod, charter] => Ok((Some(pod.clone()), charter.clone())),
+            _ => Err("usage: orqa pod charter set [pod] <charter>".to_string()),
+        }
+    }
 }
 #[derive(Debug, Args)]
 pub(crate) struct PodCharterCommand {

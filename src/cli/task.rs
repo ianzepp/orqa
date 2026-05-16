@@ -5,12 +5,6 @@ use super::mail::MailMessageArgs;
 
 #[derive(Debug, Args)]
 pub(crate) struct TaskListArgs {
-    /// Pod slug. Defaults to ORQA_POD.
-    #[arg(long)]
-    pub(crate) pod: Option<String>,
-    /// Fin slug. Defaults to ORQA_FIN.
-    #[arg(long)]
-    pub(crate) fin: Option<String>,
     /// Include done items from cur.
     #[arg(long)]
     pub(crate) all: bool,

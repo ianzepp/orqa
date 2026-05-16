@@ -1,7 +1,9 @@
 use std::{env, fs};
 
+use clap::Parser;
+
 use crate::{
-    cli::TaskListArgs,
+    cli::{Cli, Command, FinSubcommand, MailSubcommand, TaskListArgs},
     config::{fin_agents_template, fin_config_template, pod_agents_template, pod_config_template},
     mailbox::{
         TaskFilters, canonical_task_body, deliver_mail, ensure_maildir, mark_task_done, message_id,
@@ -25,6 +27,50 @@ fn cli_command_help_is_compact_and_direct() {
     assert!(help.contains("  -v, --version     Print version"));
     assert!(help.contains("Commands:"));
     assert!(help.contains("guide   Print the operational guide"));
+}
+
+#[test]
+fn parses_global_pod_and_fin_flags_at_subcommand_depth() {
+    let cli = Cli::try_parse_from([
+        "orqa",
+        "mail",
+        "list",
+        "--pod",
+        "sample-pod",
+        "--fin",
+        "builder",
+    ])
+    .unwrap();
+
+    assert_eq!(cli.pod.as_deref(), Some("sample-pod"));
+    assert_eq!(cli.fin.as_deref(), Some("builder"));
+    assert!(matches!(
+        cli.command,
+        Some(Command::Mail(command))
+            if matches!(command.command, MailSubcommand::List(_))
+    ));
+}
+
+#[test]
+fn fin_commands_can_omit_positional_context_when_global_flags_are_present() {
+    let cli = Cli::try_parse_from([
+        "orqa",
+        "--pod",
+        "sample-pod",
+        "--fin",
+        "builder",
+        "fin",
+        "status",
+    ])
+    .unwrap();
+
+    assert_eq!(cli.pod.as_deref(), Some("sample-pod"));
+    assert_eq!(cli.fin.as_deref(), Some("builder"));
+    assert!(matches!(
+        cli.command,
+        Some(Command::Fin(command))
+            if matches!(command.command, FinSubcommand::Status(_))
+    ));
 }
 
 #[test]
@@ -151,8 +197,6 @@ fn parses_yaml_task_front_matter_values() {
 #[test]
 fn parses_task_field_filters() {
     let args = TaskListArgs {
-        pod: None,
-        fin: None,
         all: false,
         status: Some("open".to_string()),
         priority: Some("high".to_string()),

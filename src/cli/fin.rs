@@ -3,10 +3,10 @@ use std::ffi::OsString;
 
 #[derive(Debug, Args)]
 pub(crate) struct ExecArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
+    /// Fin slug inside the pod. Defaults to global --fin or ORQA_FIN.
+    pub(crate) fin: Option<String>,
     /// Arguments used to build the backend prompt.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
@@ -14,10 +14,10 @@ pub(crate) struct ExecArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct ChatArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
+    /// Fin slug inside the pod. Defaults to global --fin or ORQA_FIN.
+    pub(crate) fin: Option<String>,
     /// Arguments appended to the configured chat command.
     #[arg(last = true)]
     pub(crate) args: Vec<OsString>,
@@ -41,10 +41,10 @@ pub(crate) struct SuperviseArgs {
 }
 #[derive(Debug, Args)]
 pub(crate) struct FinRunsArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
+    /// Fin slug inside the pod. Defaults to global --fin or ORQA_FIN.
+    pub(crate) fin: Option<String>,
     /// Emit machine-readable JSON.
     #[arg(long)]
     pub(crate) json: bool,
@@ -52,10 +52,10 @@ pub(crate) struct FinRunsArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct FinRunReadArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
+    /// Fin slug inside the pod. Defaults to global --fin or ORQA_FIN.
+    pub(crate) fin: Option<String>,
     /// Run id. Defaults to latest.
     pub(crate) run: Option<String>,
     /// Emit machine-readable JSON.
@@ -65,10 +65,10 @@ pub(crate) struct FinRunReadArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct FinTailArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
+    /// Fin slug inside the pod. Defaults to global --fin or ORQA_FIN.
+    pub(crate) fin: Option<String>,
     /// Run id. Defaults to latest.
     pub(crate) run: Option<String>,
     /// Number of lines per stream.
@@ -81,10 +81,10 @@ pub(crate) struct FinTailArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct FinResumeArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
+    /// Fin slug inside the pod. Defaults to global --fin or ORQA_FIN.
+    pub(crate) fin: Option<String>,
     /// Required to clear pause state.
     #[arg(long)]
     pub(crate) force: bool,
@@ -120,29 +120,36 @@ impl FinCreateArgs {
 
 #[derive(Debug, Args)]
 pub(crate) struct FinRoleSetArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
-    /// Fin role text, @file path, or - for stdin.
-    #[arg(value_name = "PROMPT|@FILE|-")]
-    pub(crate) role: String,
+    /// Either <role>, <fin> <role>, or explicit <pod> <fin> <role>.
+    #[arg(value_name = "POD_OR_FIN_OR_PROMPT", num_args = 1..=3)]
+    pub(crate) refs: Vec<String>,
+}
+
+impl FinRoleSetArgs {
+    pub(crate) fn resolve_refs(&self) -> Result<(Option<String>, Option<String>, String), String> {
+        match self.refs.as_slice() {
+            [role] => Ok((None, None, role.clone())),
+            [fin, role] => Ok((None, Some(fin.clone()), role.clone())),
+            [pod, fin, role] => Ok((Some(pod.clone()), Some(fin.clone()), role.clone())),
+            _ => Err("usage: orqa fin role set [pod] [fin] <role>".to_string()),
+        }
+    }
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct FinRefArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
+    /// Fin slug inside the pod. Defaults to global --fin or ORQA_FIN.
+    pub(crate) fin: Option<String>,
 }
 
 #[derive(Debug, Args)]
 pub(crate) struct FinStatusArgs {
-    /// Pod slug.
-    pub(crate) pod: String,
-    /// Fin slug inside the pod.
-    pub(crate) fin: String,
+    /// Pod slug. Defaults to global --pod or ORQA_POD.
+    pub(crate) pod: Option<String>,
+    /// Fin slug inside the pod. Defaults to global --fin or ORQA_FIN.
+    pub(crate) fin: Option<String>,
     /// Emit machine-readable JSON.
     #[arg(long)]
     pub(crate) json: bool,

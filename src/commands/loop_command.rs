@@ -1,11 +1,19 @@
-use crate::{cli::LoopCommand, model::Orqa, model::resolve_pod_context, runtime::wake_pod};
+use crate::{
+    cli::{CommandContext, LoopCommand},
+    model::Orqa,
+    runtime::wake_pod,
+};
 
-pub(crate) fn loop_command(orqa: &Orqa, command: LoopCommand) -> Result<(), String> {
+pub(crate) fn loop_command(
+    orqa: &Orqa,
+    context: &CommandContext,
+    command: LoopCommand,
+) -> Result<(), String> {
     if command.interval == 0 {
         return Err("loop interval must be at least 1 second".to_string());
     }
 
-    let (pod, _) = resolve_pod_context(None, orqa)?;
+    let (pod, _) = context.resolve_pod(None, orqa)?;
     loop {
         wake_pod(orqa, &pod, command.force, false, false, &command.args)?;
         std::thread::sleep(std::time::Duration::from_secs(command.interval));
