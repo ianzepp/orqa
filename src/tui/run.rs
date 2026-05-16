@@ -221,7 +221,7 @@ fn handle_normal_key(app: &mut App, key: KeyEvent) -> LoopAction {
 
 fn handle_mail_key(app: &mut App, key: KeyEvent) {
     if key.code == KeyCode::Tab && app.mail_mode != MailMode::Compose {
-        app.toggle_surface();
+        app.show_timeline_surface();
         return;
     }
 
@@ -234,7 +234,7 @@ fn handle_mail_key(app: &mut App, key: KeyEvent) {
 
 fn handle_mail_index_key(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Esc | KeyCode::Char('q') => app.toggle_surface(),
+        KeyCode::Esc | KeyCode::Char('q') => app.show_timeline_surface(),
         KeyCode::Down | KeyCode::Char('j') => app.mail_cursor_down(),
         KeyCode::Up | KeyCode::Char('k') => app.mail_cursor_up(),
         KeyCode::Char('g') | KeyCode::Home => app.mail_cursor_top(),

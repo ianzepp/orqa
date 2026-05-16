@@ -333,15 +333,26 @@ impl App {
     }
 
     pub fn toggle_surface(&mut self) {
-        self.surface = match self.surface {
-            Surface::Timeline => {
-                self.refresh_operator_mail();
-                Surface::Mail
-            }
-            Surface::Mail => Surface::Timeline,
-        };
+        match self.surface {
+            Surface::Timeline => self.show_mail_surface(),
+            Surface::Mail => self.show_timeline_surface(),
+        }
+    }
+
+    pub fn show_mail_surface(&mut self) {
+        self.refresh_operator_mail();
+        self.surface = Surface::Mail;
         self.mail_mode = MailMode::Index;
         self.mail_compose = None;
+    }
+
+    pub fn show_timeline_surface(&mut self) {
+        self.surface = Surface::Timeline;
+        self.mode = InputMode::Normal;
+        self.mail_mode = MailMode::Index;
+        self.mail_compose = None;
+        self.follow = true;
+        self.scroll_to_bottom();
     }
 
     pub fn toggle_command_palette(&mut self) {
