@@ -11,7 +11,7 @@ mod pod;
 mod task;
 
 pub(crate) use fin::fin;
-pub(crate) use loop_command::{is_process_running, loop_command};
+pub(crate) use loop_command::{is_process_running, loop_command, service};
 pub(crate) use mail::mail;
 pub(crate) use task::task;
 
@@ -117,7 +117,7 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
         }
         PodSubcommand::Sleep(args) => {
             let pod = PodRef::new(&args.slug)?;
-            write_sleep_marker(&orqa.pod_sleep_path(&pod))?;
+            write_sleep_marker(&orqa.effective_pod_home(&pod).join("sleep.lock"))?;
             println!("sleep {}", pod.slug);
             Ok(())
         }
@@ -126,7 +126,7 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
                 return Err("pod wake requires --force".to_string());
             }
             let pod = PodRef::new(&args.slug)?;
-            remove_sleep_marker(&orqa.pod_sleep_path(&pod))?;
+            remove_sleep_marker(&orqa.effective_pod_home(&pod).join("sleep.lock"))?;
             println!("wake {}", pod.slug);
             Ok(())
         }

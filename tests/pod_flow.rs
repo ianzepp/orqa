@@ -1219,6 +1219,7 @@ fn orqa_output_failing<const N: usize>(root: &Path, args: [&str; N]) -> String {
 
 fn command<const N: usize>(root: &Path, args: [&str; N]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_orqa"));
+    command.current_dir(root);
     command.arg("--home").arg(root).args(args);
     command
 }
@@ -1343,8 +1344,10 @@ fn temp_root() -> PathBuf {
         .unwrap()
         .as_nanos();
     let counter = TEMP_COUNTER.fetch_add(1, Ordering::Relaxed);
-    env::temp_dir().join(format!(
+    let root = env::temp_dir().join(format!(
         "orqa-pod-flow-test-{}-{suffix}-{counter}",
         std::process::id(),
-    ))
+    ));
+    fs::create_dir_all(&root).unwrap();
+    root
 }

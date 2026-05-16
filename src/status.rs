@@ -36,9 +36,9 @@ pub(crate) struct FinStatus {
 }
 
 pub(crate) fn pod_status(orqa: &Orqa, pod: &PodRef) -> Result<PodStatus, String> {
-    let home = orqa.pod_root_for_slug(&pod.slug); // real pod root for new-style
-    let data_dir = home.join(".orqa");
-    let fins_dir = data_dir.join("fins");
+    let root = orqa.pod_root_for_slug(&pod.slug);
+    let data_home = orqa.effective_pod_home(pod);
+    let fins_dir = data_home.join("fins");
 
     let mut fins = Vec::new();
     for fin in list_dirs(&fins_dir)? {
@@ -53,8 +53,8 @@ pub(crate) fn pod_status(orqa: &Orqa, pod: &PodRef) -> Result<PodStatus, String>
     let open_tasks = fins.iter().map(|fin| fin.open_tasks).sum();
     Ok(PodStatus {
         pod: pod.slug.clone(),
-        sleeping: orqa.pod_sleep_path(pod).exists(),
-        home,
+        sleeping: data_home.join("sleep.lock").exists(),
+        home: root,
         fin_count: fins.len(),
         wakeable,
         running,
@@ -71,7 +71,7 @@ pub(crate) fn fin_status(orqa: &Orqa, fin: &FinRef) -> Result<FinStatus, String>
     Ok(FinStatus {
         fin: fin.label(),
         home: orqa.effective_fin_home(fin),
-        sleeping: orqa.fin_sleep_path(fin).exists(), // still works via old path helper for now
+        sleeping: orqa.effective_fin_home(fin).join("sleep.lock").exists(),
         running,
         pid,
         unread_mail: unread_count(&orqa.effective_fin_home(fin).join("mail"))?,

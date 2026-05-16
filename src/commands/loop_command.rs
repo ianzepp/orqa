@@ -1,16 +1,43 @@
 use crate::{
-    cli::{LoopCommand, LoopStartArgs, LoopSubcommand},
+    cli::{
+        LoopCommand, LoopRunArgs, LoopStartArgs, LoopSubcommand, ServiceCommand, ServiceSubcommand,
+    },
     model::Orqa,
     runtime::{loop_pod, plan},
 };
 
 pub(crate) fn loop_command(orqa: &Orqa, command: LoopCommand) -> Result<(), String> {
     match command.command {
-        LoopSubcommand::Run(args) => loop_pod(orqa, args),
-        LoopSubcommand::Plan(args) => plan(orqa, args),
-        LoopSubcommand::Start(args) => loop_start(orqa, args),
-        LoopSubcommand::Stop => loop_stop(orqa),
-        LoopSubcommand::Status => loop_status(orqa),
+        Some(LoopSubcommand::Run(args)) => loop_pod(orqa, args),
+        Some(LoopSubcommand::Plan(args)) => plan(orqa, args),
+        Some(LoopSubcommand::Start(args)) => loop_start(orqa, args),
+        Some(LoopSubcommand::Stop) => loop_stop(orqa),
+        Some(LoopSubcommand::Status) => loop_status(orqa),
+        None => loop_pod(
+            orqa,
+            LoopRunArgs {
+                pod: command.pod,
+                force: command.force,
+                dry_run: command.dry_run,
+                json: command.json,
+                args: command.args,
+            },
+        ),
+    }
+}
+
+pub(crate) fn service(orqa: &Orqa, command: ServiceCommand) -> Result<(), String> {
+    match command.command {
+        ServiceSubcommand::Run(args) => loop_pod(
+            orqa,
+            LoopRunArgs {
+                pod: None,
+                force: args.force,
+                dry_run: false,
+                json: false,
+                args: args.args,
+            },
+        ),
     }
 }
 

@@ -2,10 +2,23 @@ use clap::{Args, Subcommand};
 use std::ffi::OsString;
 
 #[derive(Debug, Args)]
-#[command(subcommand_required = true, arg_required_else_help = true)]
 pub(crate) struct LoopCommand {
+    /// Pod slug. If omitted, loops all pods.
+    pub(crate) pod: Option<String>,
+    /// Ignore pod and fin sleep markers for this scan.
+    #[arg(long)]
+    pub(crate) force: bool,
+    /// Print wake decisions without running fins.
+    #[arg(long)]
+    pub(crate) dry_run: bool,
+    /// Emit machine-readable JSON.
+    #[arg(long)]
+    pub(crate) json: bool,
+    /// Arguments used to build the backend prompt.
+    #[arg(last = true)]
+    pub(crate) args: Vec<OsString>,
     #[command(subcommand)]
-    pub(crate) command: LoopSubcommand,
+    pub(crate) command: Option<LoopSubcommand>,
 }
 
 #[derive(Debug, Subcommand)]

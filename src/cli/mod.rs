@@ -62,6 +62,10 @@ pub(crate) enum Command {
     Ops(OpsCommand),
     /// Manage the wake loop (run, plan, start, stop, status).
     Loop(LoopCommand),
+    /// Show the wake plan for a pod without running fins.
+    Plan(LoopPlanArgs),
+    /// Backward-compatible service runner.
+    Service(ServiceCommand),
 }
 
 #[derive(Debug, Args)]
@@ -110,6 +114,19 @@ pub(crate) enum FinSubcommand {
 pub(crate) struct OpsCommand {
     #[command(subcommand)]
     pub(crate) command: OpsSubcommand,
+}
+
+#[derive(Debug, Args)]
+#[command(subcommand_required = true, arg_required_else_help = true)]
+pub(crate) struct ServiceCommand {
+    #[command(subcommand)]
+    pub(crate) command: ServiceSubcommand,
+}
+
+#[derive(Debug, Subcommand)]
+pub(crate) enum ServiceSubcommand {
+    /// Run the wake service loop.
+    Run(LoopStartArgs),
 }
 
 #[derive(Debug, Subcommand)]

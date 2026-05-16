@@ -24,7 +24,7 @@ pub(crate) fn pod_doctor(orqa: &Orqa, args: PodDoctorArgs) -> Result<(), String>
     let mut ok = true;
 
     let pod_root = orqa.pod_root_for_slug(&pod.slug);
-    let pod_data = pod_root.join(".orqa");
+    let pod_data = orqa.effective_pod_home(&pod);
 
     check_path("pod root", &pod_root, &mut ok);
     check_path("pod config", &pod_data.join("pod.toml"), &mut ok);

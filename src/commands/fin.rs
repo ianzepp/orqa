@@ -20,7 +20,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             // For Phase 05-2 we use the new data-home path when we have a root from detection/env/CLI
             // while still supporting the old layout for explicit old-style pods.
             // In this phase we prioritize the new path if we have a root.
-            let fins_dir = if pod_root.exists() {
+            let fins_dir = if pod_root.join(".orqa").exists() {
                 // Treat as new-style pod root
                 let reg = crate::model::PodRegistration {
                     slug: pod_slug.clone(),
@@ -84,13 +84,13 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             FinRoleSubcommand::Get(args) => {
                 let fin = FinRef::new(&args.pod, &args.fin)?;
                 orqa.ensure_fin_exists(&fin)?;
-                print_file(&orqa.fin_home(&fin).join("ROLE.md"))
+                print_file(&orqa.effective_fin_home(&fin).join("ROLE.md"))
             }
             FinRoleSubcommand::Set(args) => {
                 let fin = FinRef::new(&args.pod, &args.fin)?;
                 orqa.ensure_fin_exists(&fin)?;
                 let role = read_markdown_source(&args.role)?;
-                let home = orqa.fin_home(&fin);
+                let home = orqa.effective_fin_home(&fin);
                 write_text(&home.join("ROLE.md"), &role)?;
                 write_text(&home.join("AGENTS.md"), &fin_agents_template(&fin, &role))?;
                 println!("{}", home.join("ROLE.md").display());
@@ -100,7 +100,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
         FinSubcommand::Home(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
             orqa.ensure_fin_exists(&fin)?;
-            println!("{}", orqa.fin_home(&fin).display());
+            println!("{}", orqa.effective_fin_home(&fin).display());
             Ok(())
         }
         FinSubcommand::Status(args) => {
@@ -175,7 +175,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
         }
         FinSubcommand::Sleep(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
-            write_sleep_marker(&orqa.fin_sleep_path(&fin))?;
+            write_sleep_marker(&orqa.effective_fin_home(&fin).join("sleep.lock"))?;
             println!("sleep {}", fin.label());
             Ok(())
         }
@@ -184,7 +184,7 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
                 return Err("fin wake requires --force".to_string());
             }
             let fin = FinRef::new(&args.pod, &args.fin)?;
-            remove_sleep_marker(&orqa.fin_sleep_path(&fin))?;
+            remove_sleep_marker(&orqa.effective_fin_home(&fin).join("sleep.lock"))?;
             println!("wake {}", fin.label());
             Ok(())
         }

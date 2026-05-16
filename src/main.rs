@@ -23,7 +23,7 @@ use clap::{CommandFactory, FromArgMatches};
 
 #[allow(unused_imports)]
 use cli::{Cli, Command, InitArgs};
-use commands::{fin, loop_command, mail, ops, overview, pod, pod_init, task};
+use commands::{fin, loop_command, mail, ops, overview, pod, pod_init, service, task};
 use model::Orqa;
 use runtime::loop_pod;
 
@@ -150,6 +150,8 @@ fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
         Command::Task(command) => task(orqa, command),
         Command::Ops(command) => ops(orqa, command),
         Command::Loop(command) => loop_command(orqa, command),
+        Command::Plan(args) => runtime::plan(orqa, args),
+        Command::Service(command) => service(orqa, command),
     }
 }
 

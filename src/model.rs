@@ -440,7 +440,7 @@ pub(crate) fn detect_pod_context() -> Option<(String, PathBuf)> {
 /// If nothing is found, returns an error with a helpful message.
 pub(crate) fn resolve_pod_context(
     cli_pod: Option<String>,
-    _orqa: &Orqa, // reserved for future registry lookup
+    orqa: &Orqa,
 ) -> Result<(String, PathBuf), String> {
     // 1. Explicit CLI arg
     if let Some(slug) = cli_pod {
@@ -456,7 +456,7 @@ pub(crate) fn resolve_pod_context(
         // If explicit slug but no local match, we can't know the root yet.
         // Return a synthetic root under the old location so old code paths still work
         // during transition. Real registry lookup comes in Phase 05-3.
-        let root = default_home().join("pods").join(&slug);
+        let root = orqa.pod_root_for_slug(&slug);
         return Ok((slug, root));
     }
 
@@ -467,7 +467,7 @@ pub(crate) fn resolve_pod_context(
                 return Ok((slug, root));
             }
         }
-        let root = default_home().join("pods").join(&slug);
+        let root = orqa.pod_root_for_slug(&slug);
         return Ok((slug, root));
     }
 
@@ -477,7 +477,7 @@ pub(crate) fn resolve_pod_context(
     }
 
     Err(
-        "no pod specified and no pod detected in current directory tree. \
+        "missing pod: no pod specified and no pod detected in current directory tree. \
          Pass a pod slug, set ORQA_POD, or cd into a pod root that contains .orqa/pod.toml"
             .to_string(),
     )
