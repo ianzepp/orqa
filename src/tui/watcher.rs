@@ -275,18 +275,16 @@ impl PodWatcher {
 
         state.log_offsets.insert(key, new_len);
 
-        let mut events = Vec::new();
-        for line in new_part.lines() {
-            if !line.is_empty() {
-                events.push(Event::LogLine {
-                    fin: fin.to_string(),
-                    stream,
-                    line: line.to_string(),
-                });
-            }
+        let text = new_part.trim_end_matches(['\r', '\n']);
+        if text.is_empty() {
+            return Ok(Vec::new());
         }
 
-        Ok(events)
+        Ok(vec![Event::LogLine {
+            fin: fin.to_string(),
+            stream,
+            line: text.to_string(),
+        }])
     }
 }
 
