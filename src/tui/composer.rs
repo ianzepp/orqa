@@ -195,15 +195,12 @@ impl Composer {
 
     /// Render the composer line. Spans include background so the row is solid when used
     /// over a pre-filled bg or standalone.
-    pub fn render(&self, frame: &mut Frame, area: Rect, pod_slug: &str, theme: &Theme) {
-        let prompt_style = Style::default().fg(theme.accent);
+    pub fn render(&self, frame: &mut Frame, area: Rect, theme: &Theme) {
         let input_style = Style::default().fg(theme.text);
         let cursor_style = Style::default()
             .fg(theme.cursor)
             .add_modifier(Modifier::SLOW_BLINK);
         let status_style = Style::default().fg(theme.ok);
-
-        let prompt = format!("operator@{} → {} > ", pod_slug, self.target_fin);
 
         let status = if let Some((ref s, ts)) = self.status {
             // Show status for ~2.5 seconds
@@ -220,7 +217,7 @@ impl Composer {
         let after_cursor = &self.input[self.cursor..];
 
         let line = Line::from(vec![
-            Span::styled(prompt, prompt_style),
+            Span::raw(" "),
             Span::styled(before_cursor, input_style),
             Span::styled("│", cursor_style),
             Span::styled(after_cursor, input_style),

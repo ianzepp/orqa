@@ -24,7 +24,7 @@ pub(super) fn render(app: &App, frame: &mut Frame, area: Rect) {
         ]);
         frame.render_widget(Paragraph::new(text), inner);
     } else {
-        app.composer.render(frame, inner, &app.pod_slug, &app.theme);
+        app.composer.render(frame, inner, &app.theme);
     }
 }
 
