@@ -31,15 +31,7 @@ pub(super) fn render_status(app: &App, frame: &mut Frame, area: Rect) {
         .iter()
         .filter(|message| message.state == "new")
         .count();
-    let label = match app.mail_mode {
-        MailMode::Index => "-- Mail: operator inbox",
-        MailMode::Pager => "-- Mail: message",
-        MailMode::Compose => "-- Mail: compose",
-    };
-    let line = format!(
-        " {label} [Msgs:{} New:{unread}] --",
-        app.operator_mail.len()
-    );
+    let line = mail_status_line(app, unread);
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(line, fg(app.theme.text)))),
         inner,
@@ -49,7 +41,9 @@ pub(super) fn render_status(app: &App, frame: &mut Frame, area: Rect) {
 pub(super) fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
     let help = match app.mail_mode {
         MailMode::Index => "m:mail  r:reply  Enter:open  j/k:move  Tab:timeline",
-        MailMode::Pager => "i/q:inbox  r:reply  Tab:timeline",
+        MailMode::Pager => {
+            "j/k:scroll  PgUp/PgDn:page  g/G:top/bottom  r:reply  i:inbox  Tab:timeline"
+        }
         MailMode::Compose => "Ctrl+Y:send  Tab:next  Shift+Tab:prev  Esc:abort",
     };
     frame.render_widget(
@@ -83,8 +77,8 @@ fn render_index(app: &mut App, frame: &mut Frame, area: Rect) {
     );
 }
 
-fn render_pager(app: &App, frame: &mut Frame, area: Rect) {
-    let Some(message) = app.selected_mail() else {
+fn render_pager(app: &mut App, frame: &mut Frame, area: Rect) {
+    let Some(message) = app.selected_mail().cloned() else {
         frame.render_widget(Paragraph::new("No message selected"), area);
         return;
     };
@@ -104,14 +98,65 @@ fn render_pager(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(headers), chunks[0]);
 
     let body_width = usize::from(chunks[1].width).max(1);
-    frame.render_widget(
-        Paragraph::new(render_mail_body(
-            &message.body,
-            body_width,
-            fg(app.theme.text),
-        )),
-        chunks[1],
+    let body_height = usize::from(chunks[1].height).max(1);
+    let (visible_lines, scroll) = visible_mail_lines(
+        render_mail_body(&message.body, body_width, fg(app.theme.text)),
+        app.mail_scroll,
+        body_height,
     );
+    app.mail_scroll = scroll;
+
+    frame.render_widget(Paragraph::new(visible_lines), chunks[1]);
+}
+
+fn mail_status_line(app: &App, unread: usize) -> String {
+    let message_count = app.operator_mail.len();
+    let selected = if message_count == 0 {
+        0
+    } else {
+        app.mail_cursor.min(message_count - 1) + 1
+    };
+
+    match app.mail_mode {
+        MailMode::Index => {
+            format!(" -- Mail: operator inbox [Msg:{selected}/{message_count} New:{unread}] --")
+        }
+        MailMode::Pager => {
+            let line = app.mail_scroll.saturating_add(1);
+            format!(
+                " -- Mail: message [Msg:{selected}/{message_count} New:{unread} Line:{line}] --"
+            )
+        }
+        MailMode::Compose => {
+            let to = app
+                .mail_compose
+                .as_ref()
+                .map(|compose| compose.to.as_str())
+                .unwrap_or("");
+            format!(" -- Mail: compose [To:{to}] --")
+        }
+    }
+}
+
+fn visible_mail_lines(
+    lines: Vec<Line<'static>>,
+    scroll: usize,
+    height: usize,
+) -> (Vec<Line<'static>>, usize) {
+    let height = height.max(1);
+    let max_scroll = lines.len().saturating_sub(height);
+    let scroll = scroll.min(max_scroll);
+    let visible = lines
+        .into_iter()
+        .skip(scroll)
+        .take(height)
+        .collect::<Vec<_>>();
+
+    if visible.is_empty() {
+        (vec![Line::raw("")], 0)
+    } else {
+        (visible, scroll)
+    }
 }
 
 fn render_compose(app: &App, frame: &mut Frame, area: Rect) {

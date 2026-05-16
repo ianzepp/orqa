@@ -248,7 +248,13 @@ fn handle_mail_index_key(app: &mut App, key: KeyEvent) {
 
 fn handle_mail_pager_key(app: &mut App, key: KeyEvent) {
     match key.code {
-        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('i') => app.mail_mode = MailMode::Index,
+        KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('i') => app.close_mail_pager(),
+        KeyCode::Down | KeyCode::Char('j') => app.mail_scroll_down(1),
+        KeyCode::Up | KeyCode::Char('k') => app.mail_scroll_up(1),
+        KeyCode::PageDown | KeyCode::Char(' ') => app.mail_scroll_down(12),
+        KeyCode::PageUp => app.mail_scroll_up(12),
+        KeyCode::Char('g') | KeyCode::Home => app.mail_scroll_top(),
+        KeyCode::Char('G') | KeyCode::End => app.mail_scroll_bottom(),
         KeyCode::Char('r') => app.start_mail_reply(),
         _ => {}
     }

@@ -111,6 +111,7 @@ pub struct App {
     pub mail_mode: MailMode,
     pub operator_mail: Vec<OperatorMail>,
     pub mail_cursor: usize,
+    pub mail_scroll: usize,
     pub mail_compose: Option<MailComposeState>,
 }
 
@@ -153,6 +154,7 @@ impl App {
             mail_mode: MailMode::Index,
             operator_mail: Vec::new(),
             mail_cursor: 0,
+            mail_scroll: 0,
             mail_compose: None,
         };
         app.refresh_operator_mail();
@@ -343,6 +345,7 @@ impl App {
         self.refresh_operator_mail();
         self.surface = Surface::Mail;
         self.mail_mode = MailMode::Index;
+        self.mail_scroll = 0;
         self.mail_compose = None;
     }
 
@@ -350,6 +353,7 @@ impl App {
         self.surface = Surface::Timeline;
         self.mode = InputMode::Normal;
         self.mail_mode = MailMode::Index;
+        self.mail_scroll = 0;
         self.mail_compose = None;
         self.follow = true;
         self.scroll_to_bottom();
@@ -458,6 +462,7 @@ impl App {
             return;
         }
         self.mark_selected_mail_read();
+        self.mail_scroll = 0;
         self.mail_mode = MailMode::Pager;
     }
 
@@ -469,6 +474,7 @@ impl App {
             field: MailComposeField::To,
             reply_to: None,
         });
+        self.mail_scroll = 0;
         self.mail_mode = MailMode::Compose;
     }
 
@@ -483,12 +489,35 @@ impl App {
             field: MailComposeField::Body,
             reply_to: Some(message.id.clone()),
         });
+        self.mail_scroll = 0;
         self.mail_mode = MailMode::Compose;
     }
 
     pub fn abort_mail_compose(&mut self) {
         self.mail_compose = None;
+        self.mail_scroll = 0;
         self.mail_mode = MailMode::Index;
+    }
+
+    pub fn close_mail_pager(&mut self) {
+        self.mail_scroll = 0;
+        self.mail_mode = MailMode::Index;
+    }
+
+    pub fn mail_scroll_up(&mut self, amount: usize) {
+        self.mail_scroll = self.mail_scroll.saturating_sub(amount);
+    }
+
+    pub fn mail_scroll_down(&mut self, amount: usize) {
+        self.mail_scroll = self.mail_scroll.saturating_add(amount);
+    }
+
+    pub fn mail_scroll_top(&mut self) {
+        self.mail_scroll = 0;
+    }
+
+    pub fn mail_scroll_bottom(&mut self) {
+        self.mail_scroll = usize::MAX;
     }
 
     pub fn advance_mail_compose_field(&mut self) {
@@ -593,6 +622,7 @@ impl App {
         };
         self.record_operator_action(action);
         self.mail_mode = MailMode::Index;
+        self.mail_scroll = 0;
         self.refresh_operator_mail();
         Ok(())
     }
