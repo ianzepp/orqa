@@ -452,7 +452,8 @@ orqa pod resume sample-pod --force
 orqa fin resume sample-pod planner --force
 ```
 
-Run one scan while ignoring pause markers without removing them:
+Run one scan while ignoring pause markers and debounce without removing pause
+state:
 
 ```sh
 orqa wake --force

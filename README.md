@@ -410,8 +410,8 @@ orqa pod resume sample-pod --force
 orqa fin resume sample-pod planner --force
 ```
 
-Use `wake --force` to run one wake turn while ignoring pause markers without
-removing them:
+Use `wake --force` to run one wake turn while ignoring pause markers and
+debounce without removing pause state:
 
 ```sh
 orqa wake --force

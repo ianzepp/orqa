@@ -203,7 +203,7 @@ fn plan_fin(
         (WakeDecision::WouldSkip, WakeReason::FinSleeping, None)
     } else if running {
         (WakeDecision::WouldSkip, WakeReason::AlreadyRunning, None)
-    } else if let Some(debounce) = policy.debounce {
+    } else if let Some(debounce) = policy.debounce.filter(|_| !force) {
         if has_work(unread_mail, open_tasks) && last_run_age.is_some_and(|age| age < debounce) {
             (
                 WakeDecision::WouldSkip,

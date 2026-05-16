@@ -547,6 +547,10 @@ fn wake_dry_run_debounces_recent_runs_even_with_queued_work() {
     assert!(plan.contains("reason=debounced"));
     assert!(plan.contains("debounce=1h"));
 
+    let forced_plan = orqa_output_in_pod(&root, "test-pod", ["wake", "--dry-run", "--force"]);
+    assert!(forced_plan.contains("decision=would-wake"));
+    assert!(forced_plan.contains("reason=mail"));
+
     remove_temp_root(root);
 }
 
