@@ -11,7 +11,7 @@ mod pod;
 mod task;
 
 pub(crate) use fin::fin;
-pub(crate) use loop_command::{is_process_running, loop_command, service};
+pub(crate) use loop_command::{is_process_running, loop_command};
 pub(crate) use mail::mail;
 pub(crate) use task::task;
 
@@ -99,19 +99,19 @@ pub(crate) fn pod(orqa: &Orqa, command: PodCommand) -> Result<(), String> {
                 args.follow,
             )
         }
-        PodSubcommand::Sleep(args) => {
+        PodSubcommand::Pause(args) => {
             let pod = PodRef::new(&args.slug)?;
             write_sleep_marker(&orqa.pod_sleep_path(&pod)?)?;
-            println!("sleep {}", pod.slug);
+            println!("pause {}", pod.slug);
             Ok(())
         }
-        PodSubcommand::Wake(args) => {
+        PodSubcommand::Resume(args) => {
             if !args.force {
-                return Err("pod wake requires --force".to_string());
+                return Err("pod resume requires --force".to_string());
             }
             let pod = PodRef::new(&args.slug)?;
             remove_sleep_marker(&orqa.pod_sleep_path(&pod)?)?;
-            println!("wake {}", pod.slug);
+            println!("resume {}", pod.slug);
             Ok(())
         }
     }
@@ -209,7 +209,7 @@ fn create_pod_in_dir(
     println!("Initialized pod '{}' in {}", slug, root.display());
     println!("Next steps:");
     println!("  orqa fin create planner");
-    println!("  orqa loop");
+    println!("  orqa wake --dry-run");
 
     Ok(())
 }
@@ -423,23 +423,6 @@ pub(crate) fn ops(orqa: &Orqa, command: OpsCommand) -> Result<(), String> {
 
 pub(crate) fn overview(orqa: &Orqa) -> Result<(), String> {
     println!("orqa — {}", orqa.home.display());
-
-    // Loop daemon status
-    let pid_path = orqa.home.join("loop.pid");
-    if pid_path.exists() {
-        if is_process_running(&pid_path) {
-            if let Ok(pid) = std::fs::read_to_string(&pid_path) {
-                println!("loop: running (pid {})", pid.trim());
-            } else {
-                println!("loop: running");
-            }
-        } else {
-            println!("loop: not running (stale pidfile)");
-            let _ = std::fs::remove_file(&pid_path);
-        }
-    } else {
-        println!("loop: not running");
-    }
 
     // Pods and wake signals
     let pods = crate::model::load_registry(orqa)?;

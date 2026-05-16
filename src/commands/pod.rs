@@ -1,4 +1,4 @@
-//! Pod command handlers (create, list, charter, status, doctor, hooks, tail, sleep/wake, init).
+//! Pod command handlers (create, list, charter, status, doctor, hooks, tail, pause/resume, init).
 
 use crate::model::{Orqa, PodRef, load_registry};
 use crate::status::{pod_status, print_pod_list_status};

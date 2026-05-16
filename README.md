@@ -22,9 +22,8 @@ When a fin runs, Orqa sets its working directory and `HOME` to the real pod
 root. This means the agent operates directly inside your project files while
 still keeping per-fin state isolated.
 
-`ORQA_HOME` (defaults to `~/.orqa`) only stores the global registry
-(`config.toml`) and cross-pod data (e.g. the operator pod). Individual pods
-live in whatever directories you choose.
+`ORQA_HOME` (defaults to `~/.orqa`) stores the registry (`config.toml`) that
+maps pod slugs to their roots. Pod data lives in each pod root under `.orqa/`.
 
 **Recommended onboarding:** `cd my-project && orqa init`
 
@@ -251,8 +250,8 @@ into the corresponding fin directory (`.codex/auth.json` or `.grok/auth.json`)
 if the fin does not already have one. This lets Codex and Grok reuse your
 existing login while keeping other state isolated under the fin home.
 
-The config files are seeded by `pod create` and `fin create`. `orqa fin exec`
-and `orqa loop` use them to choose and launch each fin's backend.
+The config files are seeded by `pod create` and `fin create`. `orqa fin exec`,
+`orqa wake`, and `orqa loop` use them to choose and launch each fin's backend.
 
 ## Quick Start
 
@@ -297,17 +296,17 @@ orqa mail send \
 orqa mail list --pod ops --fin operator
 ```
 
-Run one wake scan for the pod:
+Run one wake turn for the current pod:
 
 ```sh
-orqa loop sample-pod
+cd /path/to/sample-pod
+orqa wake
 ```
 
 Preview wake decisions without launching fins:
 
 ```sh
-orqa plan sample-pod
-orqa loop --dry-run sample-pod
+orqa wake --dry-run
 ```
 
 Run a fin directly through the configured backend:
@@ -335,13 +334,12 @@ src/
   doctor.rs           pod readiness and backend connectivity checks
   mailbox/
     mod.rs            mail and task command behavior
-    storage.rs        Maildir storage, addresses, ids, and sleep markers
+    storage.rs        Maildir storage, addresses, ids, and pause markers
     tasks.rs          task front matter, filtering, sorting, and formatting
   model.rs            Orqa paths plus pod, fin, and address types
   runs.rs             run records, logs, latest pointers, and tailing
   runtime.rs          wake loop, process spawning, and run locks
   runtime_home.rs     fin-local runtime home setup
-  service.rs          launchd/systemd service management
   status.rs           pod and fin status summaries
   main_test.rs        unit tests loaded from src/main.rs
 tests/
@@ -414,31 +412,31 @@ The lock records the child process PID. If the lock exists and the PID is still
 alive, another wake scan skips that fin. If the PID is gone, `orqa` treats the
 lock as stale, removes it, and the fin can run again.
 
-Pods and fins can also be put to sleep manually:
+Pods and fins can also be paused manually:
 
 ```sh
-orqa pod sleep sample-pod
-orqa fin sleep sample-pod planner
+orqa pod pause sample-pod
+orqa fin pause sample-pod planner
 ```
 
-Sleeping pods and fins are skipped by the wake loop. Clear sleep state with an
-explicit forced wake:
+Paused pods and fins are skipped by `orqa wake` and `orqa loop`. Clear pause
+state with an explicit forced resume:
 
 ```sh
-orqa pod wake sample-pod --force
-orqa fin wake sample-pod planner --force
+orqa pod resume sample-pod --force
+orqa fin resume sample-pod planner --force
 ```
 
-Use `loop --force` to run one wake scan while ignoring sleep markers without
+Use `wake --force` to run one wake turn while ignoring pause markers without
 removing them:
 
 ```sh
-orqa loop --force sample-pod
+orqa wake --force
 ```
 
 ## Status, Runs, And Tail
 
-Runtime status commands summarize wake signals, sleep state, live locks, and
+Runtime status commands summarize wake signals, pause state, live locks, and
 the latest recorded run:
 
 ```sh
@@ -508,8 +506,8 @@ is delivered to:
 <sample-pod-root>/.orqa/fins/builder/mail/new/
 ```
 
-Unread messages in `mail/new` are wake signals. `orqa loop sample-pod` scans
-fin inboxes and prints fins that should run:
+Unread messages in `mail/new` are wake signals. `orqa wake` scans the current
+pod's fin inboxes and prints fins that should run:
 
 ```text
 wake sample-pod/builder pid=12345 unread_mail=1 open_tasks=0
@@ -662,7 +660,8 @@ This moves the task from `tasks/new` to `tasks/cur` and clears that wake signal.
 ## Commands
 
 All commands accept the global `--home <DIR>` option to override `ORQA_HOME`.
-With no command, `orqa` prints a live status overview (loop daemon, pods, wake signals, and totals) plus a hint to run `--help`.
+With no command, `orqa` prints a live status overview (pods, wake signals, and
+totals) plus a hint to run `--help`.
 
 ### Top Level
 
@@ -677,9 +676,8 @@ Commands:
   mail    Mail helpers for pod-local fin messages
   task    Task helpers for pod-local work items
   ops     Human operator surface for cross-pod monitoring
-  loop    Run the wake loop for a pod
-  plan    Show the wake plan for a pod without running fins
-  service Manage the background wake-loop service
+  wake    Run one wake cycle for the current pod
+  loop    Run a repeated wake loop for the current pod
 ```
 
 `orqa doctor` prints basic runtime information, including the active
@@ -706,8 +704,8 @@ orqa pod hook disable <slug> pre-plan <hook-id>
 orqa pod hook remove <slug> pre-plan <hook-id>
 orqa pod hook run <slug> pre-plan
 orqa pod tail <slug> [--fin <fin>] [--lines <n>] [--follow]
-orqa pod sleep <slug>
-orqa pod wake <slug> --force
+orqa pod pause <slug>
+orqa pod resume <slug> --force
 ```
 
 **Recommended:** Use `orqa init` when working inside a project directory.
@@ -721,12 +719,12 @@ or from stdin with `-`. The pod-level `AGENTS.md` injects that charter and tells
 backend runtimes how to use Orqa mail, tasks, status, and fin discovery. `pod
 charter set` replaces both `CHARTER.md` and the generated pod `AGENTS.md`.
 
-`pod list` prints one status line per pod with fin count, sleep state,
+`pod list` prints one status line per pod with fin count, pause state,
 wakeable/running counts, unread mail, and open tasks. `pod doctor` checks
 required pod and fin files, resolves each fin's backend command, and runs a
 short backend probe to verify connectivity. `pod hook` manages shell hooks under
-`hooks/<phase>/` for lifecycle work around the wake loop. `pod sleep` writes a
-pod-level sleep marker, and `pod wake` requires `--force` before it removes that
+`hooks/<phase>/` for lifecycle work around the wake loop. `pod pause` writes a
+pod-level pause marker, and `pod resume` requires `--force` before it removes that
 marker.
 
 ### Fin Commands
@@ -743,8 +741,8 @@ orqa fin runs <pod> <fin>
 orqa fin run-status <pod> <fin> [run-id|latest]
 orqa fin run-log <pod> <fin> [run-id|latest]
 orqa fin tail <pod> <fin> [run-id|latest] [--lines <n>] [--follow]
-orqa fin sleep <pod> <fin>
-orqa fin wake <pod> <fin> --force
+orqa fin pause <pod> <fin>
+orqa fin resume <pod> <fin> --force
 orqa fin exec <pod> <fin> [-- <args>...]
 orqa fin chat <pod> <fin> [-- <args>...]
 ```
@@ -764,7 +762,7 @@ orqa fin exec sample-pod planner -- "work on the next task"
 orqa fin chat sample-pod planner
 ```
 
-`fin wake` requires `--force` before it removes a fin-level sleep marker.
+`fin resume` requires `--force` before it removes a fin-level pause marker.
 
 ### Mail Commands
 
@@ -852,21 +850,21 @@ orqa ops report [--since <when>]
 `orqa ops` is an alias for `orqa ops report`. The `ops` namespace is reserved
 for human/operator visibility and control commands.
 
-`ops report` prints a Markdown evidence bundle for the operator: all pods and
-fins, task records, mail records, file paths, statuses, and clipped context.
-`--since` accepts Unix seconds or relative durations such as `30m`, `2h`, or
-`1d`.
+`ops report` prints a Markdown evidence bundle for the current pod: fins, task
+records, mail records, file paths, statuses, and clipped context. `--since`
+accepts Unix seconds or relative durations such as `30m`, `2h`, or `1d`.
 
-### Wake Loop
+### Wake
 
 ```text
-orqa loop [--force] <pod> [-- <args>...]
+orqa wake [--dry-run] [--force] [--json] [-- <args>...]
 ```
 
-`orqa loop` scans a pod for fins with unread mail or open tasks. Wakeable fins
-are launched through their configured backend. The run policy in `pod.toml` and
-`fin.toml` can debounce repeated runs or wake idle fins periodically with
-`exec_always`.
+`orqa wake` runs one wake turn for the current pod. It scans fins with unread
+mail or open tasks and launches eligible fins through their configured backend.
+`--dry-run` prints the wake plan without launching fins. The run policy in
+`pod.toml` and `fin.toml` can debounce repeated runs or wake idle fins
+periodically with `exec_always`.
 
 ### Pod Hooks
 
@@ -881,10 +879,10 @@ orqa pod hook run <pod> pre-plan
 
 Hooks are pod-local shell commands stored under
 `<pod-root>/.orqa/hooks/<phase>/`. The first supported phase is `pre-plan`,
-which runs at the start of `orqa loop` before Orqa checks mail, tasks, debounce,
-or `exec_always`. This is intended for cheap local synchronization, such as
-syncing an external inbox to disk and delivering new messages into the operator
-fin before wake planning.
+which runs at the start of `orqa wake` and each `orqa loop` turn before Orqa
+checks mail, tasks, debounce, or `exec_always`. This is intended for cheap
+local synchronization, such as syncing an external inbox to disk and delivering
+new messages into the operator fin before wake planning.
 
 `pod hook add` writes `<hook-id>.toml` and an adjacent `<hook-id>.sh` script
 stub. Hook TOML is intentionally small:
@@ -907,49 +905,25 @@ directory (`<pod-root>/.orqa`). The state directory is
 `<pod-root>/.orqa/hooks/state/<hook-id>/`.
 
 ```sh
-orqa loop sample-pod
-orqa loop sample-pod -- "handle your open Orqa mail and tasks"
-orqa loop --force sample-pod
+orqa wake
+orqa wake -- "handle your open Orqa mail and tasks"
+orqa wake --force
 ```
 
-For each wakeable fin, `orqa loop` creates `run.lock` with the spawned process
+For each wakeable fin, `orqa wake` creates `run.lock` with the spawned process
 PID. Later scans skip that fin while the PID is alive. Stale locks are removed
-when the PID no longer exists. Sleeping pods and fins are skipped unless
+when the PID no longer exists. Paused pods and fins are skipped unless
 `--force` is used.
 
 ### Running the Wake Loop
 
-`orqa loop run` performs one wake cycle across one or all pods:
+`orqa loop` repeatedly wakes the current pod in the foreground until it is
+interrupted:
 
 ```sh
-orqa loop run sample-pod
-orqa loop run -- "handle your open Orqa mail and tasks"
-orqa loop run                    # all pods
+orqa loop --interval 60
+orqa loop --interval 60 -- "handle your open Orqa mail and tasks"
 ```
-
-To run the wake loop continuously as a background daemon:
-
-```sh
-orqa loop start --interval 60 -- "handle your open Orqa mail and tasks"
-orqa loop status
-orqa loop stop
-```
-
-`orqa loop start` launches a managed background process that repeatedly scans all pods. It writes a pidfile at `ORQA_HOME/loop.pid`. Use `stop` and `status` to control it.
-
-For foreground continuous running (useful in tmux or for debugging):
-
-```sh
-orqa loop run --forever -- "handle your open Orqa mail and tasks"
-```
-
-The old `orqa service` commands (`install`, `uninstall`, `start`, `stop`, `status`, `run`) have been removed. Use the `loop` subcommands above instead.
-
-Use `service start`, `service stop`, and `service status` to control the
-installed service through `launchctl` or `systemctl --user`. Use
-`service uninstall` to stop the service and remove its generated service file.
-Use `service run` to run the same foreground loop directly when debugging a
-service definition or watching scan output in a terminal.
 
 ## Status
 

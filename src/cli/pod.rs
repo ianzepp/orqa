@@ -17,10 +17,10 @@ pub(crate) struct PodTailArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct PodWakeArgs {
+pub(crate) struct PodResumeArgs {
     /// Pod slug.
     pub(crate) slug: String,
-    /// Required to clear sleep state.
+    /// Required to clear pause state.
     #[arg(long)]
     pub(crate) force: bool,
 }
@@ -187,8 +187,8 @@ pub(crate) enum PodSubcommand {
     Hook(PodHookCommand),
     /// Print recent run output for fins in a pod.
     Tail(PodTailArgs),
-    /// Pause all wake-loop runs for a pod.
-    Sleep(SlugArgs),
-    /// Clear a pod sleep marker.
-    Wake(PodWakeArgs),
+    /// Pause wake runs for a pod.
+    Pause(SlugArgs),
+    /// Resume wake eligibility for a pod.
+    Resume(PodResumeArgs),
 }

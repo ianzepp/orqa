@@ -17,5 +17,5 @@ fn help_command_prints_embedded_operational_guide() {
     assert!(stdout.contains("# Orqa Operational Guide"));
     assert!(stdout.contains("## Mail"));
     assert!(stdout.contains("## Tasks"));
-    assert!(stdout.contains("orqa loop run sample-pod"));
+    assert!(stdout.contains("orqa wake --dry-run"));
 }

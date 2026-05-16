@@ -284,7 +284,7 @@ fn fin_exec_adds_orqa_binary_directory_to_child_path() {
 }
 
 #[test]
-fn loop_uses_generated_pod_config_backend_for_wakeable_fin() {
+fn wake_uses_generated_pod_config_backend_for_wakeable_fin() {
     let root = temp_root();
 
     create_pod(&root, "test-pod");
@@ -322,7 +322,7 @@ exec_args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{
             "wake",
         ],
     );
-    orqa(&root, ["loop", "test-pod", "--", "from-loop"]);
+    orqa_in_pod(&root, "test-pod", ["wake", "--", "from-wake"]);
 
     let marker = fin_home(&root, "test-pod", "amy").join("ran.txt");
     for _ in 0..20 {
@@ -334,14 +334,14 @@ exec_args = ["-c", "printf '%s' 'pod={{pod}} fin={{fin}} prompt={{prompt}}' > {{
 
     assert_eq!(
         fs::read_to_string(&marker).unwrap(),
-        "pod=test-pod fin=amy prompt=from-loop"
+        "pod=test-pod fin=amy prompt=from-wake"
     );
 
     remove_temp_root(root);
 }
 
 #[test]
-fn plan_and_dry_run_explain_wake_decisions_without_running() {
+fn wake_dry_run_explains_wake_decisions_without_running() {
     let root = temp_root();
 
     create_pod(&root, "test-pod");
@@ -360,11 +360,11 @@ fn plan_and_dry_run_explain_wake_decisions_without_running() {
         ],
     );
 
-    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    let plan = orqa_output_in_pod(&root, "test-pod", ["wake", "--dry-run"]);
     assert!(plan.contains("decision=would-wake"));
     assert!(plan.contains("reason=mail"));
 
-    let dry_run = orqa_output(&root, ["loop", "--dry-run", "test-pod"]);
+    let dry_run = orqa_output_in_pod(&root, "test-pod", ["wake", "--dry-run"]);
     assert!(dry_run.contains("decision=would-wake"));
     assert!(!fin_home(&root, "test-pod", "amy").join("ran.txt").exists());
 
@@ -441,7 +441,7 @@ printf '%s|%s|%s|%s|%s' "$ORQA_HOME" "$ORQA_POD" "$ORQA_HOOK" "$ORQA_HOOK_PHASE"
 }
 
 #[test]
-fn loop_runs_pre_plan_hooks_and_continues_after_hook_failure() {
+fn wake_runs_pre_plan_hooks_and_continues_after_hook_failure() {
     let root = temp_root();
 
     create_pod(&root, "test-pod");
@@ -478,7 +478,7 @@ fn loop_runs_pre_plan_hooks_and_continues_after_hook_failure() {
         ],
     );
 
-    let output = orqa_output(&root, ["loop", "test-pod", "--", "from-loop"]);
+    let output = orqa_output_in_pod(&root, "test-pod", ["wake", "--", "from-wake"]);
     assert!(output.contains("hook test-pod pre-plan/10-fail status=failed exit=7"));
     assert!(output.contains("wake test-pod/amy"));
 
@@ -491,14 +491,14 @@ fn loop_runs_pre_plan_hooks_and_continues_after_hook_failure() {
     }
     assert_eq!(
         fs::read_to_string(&marker).unwrap(),
-        "pod=test-pod fin=amy prompt=from-loop"
+        "pod=test-pod fin=amy prompt=from-wake"
     );
 
     remove_temp_root(root);
 }
 
 #[test]
-fn plan_ignores_backend_errors_until_fin_is_wakeable() {
+fn wake_dry_run_ignores_backend_errors_until_fin_is_wakeable() {
     let root = temp_root();
 
     create_pod(&root, "test-pod");
@@ -515,7 +515,7 @@ exec_always = "0"
     )
     .unwrap();
 
-    let idle = orqa_output(&root, ["plan", "test-pod"]);
+    let idle = orqa_output_in_pod(&root, "test-pod", ["wake", "--dry-run"]);
     assert!(idle.contains("decision=would-skip"));
     assert!(idle.contains("reason=no-action"));
 
@@ -531,7 +531,7 @@ exec_always = "0"
             "wake",
         ],
     );
-    let wakeable = orqa_output(&root, ["plan", "test-pod"]);
+    let wakeable = orqa_output_in_pod(&root, "test-pod", ["wake", "--dry-run"]);
     assert!(wakeable.contains("decision=would-skip"));
     assert!(wakeable.contains("reason=backend-error"));
 
@@ -539,7 +539,7 @@ exec_always = "0"
 }
 
 #[test]
-fn plan_debounces_recent_runs_even_with_queued_work() {
+fn wake_dry_run_debounces_recent_runs_even_with_queued_work() {
     let root = temp_root();
 
     create_pod(&root, "test-pod");
@@ -561,7 +561,7 @@ fn plan_debounces_recent_runs_even_with_queued_work() {
         ],
     );
 
-    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    let plan = orqa_output_in_pod(&root, "test-pod", ["wake", "--dry-run"]);
     assert!(plan.contains("decision=would-skip"));
     assert!(plan.contains("reason=debounced"));
     assert!(plan.contains("debounce=1h"));
@@ -592,7 +592,7 @@ fn zero_debounce_allows_queued_work_after_recent_runs() {
         ],
     );
 
-    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    let plan = orqa_output_in_pod(&root, "test-pod", ["wake", "--dry-run"]);
     assert!(plan.contains("decision=would-wake"));
     assert!(plan.contains("reason=mail"));
 
@@ -600,7 +600,7 @@ fn zero_debounce_allows_queued_work_after_recent_runs() {
 }
 
 #[test]
-fn plan_wakes_idle_fin_when_exec_always_is_due() {
+fn wake_dry_run_wakes_idle_fin_when_exec_always_is_due() {
     let root = temp_root();
 
     create_pod(&root, "test-pod");
@@ -608,7 +608,7 @@ fn plan_wakes_idle_fin_when_exec_always_is_due() {
     set_echo_backend(&root, "test-pod");
     set_pod_run_policy(&root, "test-pod", "exec_always = \"3h\"\n");
 
-    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    let plan = orqa_output_in_pod(&root, "test-pod", ["wake", "--dry-run"]);
     assert!(plan.contains("decision=would-wake"));
     assert!(plan.contains("reason=exec-always"));
     assert!(plan.contains("exec_always=3h"));
@@ -625,7 +625,7 @@ fn zero_exec_always_does_not_wake_idle_fin() {
     set_echo_backend(&root, "test-pod");
     set_pod_run_policy(&root, "test-pod", "exec_always = \"0\"\n");
 
-    let plan = orqa_output(&root, ["plan", "test-pod"]);
+    let plan = orqa_output_in_pod(&root, "test-pod", ["wake", "--dry-run"]);
     assert!(plan.contains("decision=would-skip"));
     assert!(plan.contains("reason=no-action"));
 
@@ -975,7 +975,7 @@ fn pod_list_prints_sorted_status_and_fin_list_prints_sorted_slugs() {
     create_pod(&root, "alpha-pod");
     orqa(&root, ["fin", "create", "alpha-pod", "zoe"]);
     orqa(&root, ["fin", "create", "alpha-pod", "amy"]);
-    orqa(&root, ["pod", "sleep", "zeta-pod"]);
+    orqa(&root, ["pod", "pause", "zeta-pod"]);
 
     let pods = orqa_output(&root, ["pod", "list"]);
     let lines = pods.lines().collect::<Vec<_>>();
@@ -1026,7 +1026,7 @@ fn fin_list_without_pod_context_explains_missing_pod() {
 }
 
 #[test]
-fn service_run_scans_all_pods() {
+fn foreground_loop_repeats_current_pod_wakes() {
     let root = temp_root();
 
     for pod in ["alpha-pod", "beta-pod"] {
@@ -1047,9 +1047,10 @@ fn service_run_scans_all_pods() {
         );
     }
 
-    let mut child = command(
+    let mut child = command_in_pod(
         &root,
-        ["service", "run", "--interval", "1", "--", "from-service"],
+        "alpha-pod",
+        ["loop", "--interval", "1", "--", "from-loop"],
     )
     .spawn()
     .unwrap();
@@ -1057,7 +1058,7 @@ fn service_run_scans_all_pods() {
     let alpha_marker = fin_home(&root, "alpha-pod", "amy").join("ran.txt");
     let beta_marker = fin_home(&root, "beta-pod", "amy").join("ran.txt");
     for _ in 0..40 {
-        if alpha_marker.exists() && beta_marker.exists() {
+        if alpha_marker.exists() {
             break;
         }
         thread::sleep(Duration::from_millis(25));
@@ -1066,12 +1067,9 @@ fn service_run_scans_all_pods() {
 
     assert_eq!(
         fs::read_to_string(&alpha_marker).unwrap(),
-        "pod=alpha-pod fin=amy prompt=from-service"
+        "pod=alpha-pod fin=amy prompt=from-loop"
     );
-    assert_eq!(
-        fs::read_to_string(&beta_marker).unwrap(),
-        "pod=beta-pod fin=amy prompt=from-service"
-    );
+    assert!(!beta_marker.exists());
 
     remove_temp_root(root);
 }
@@ -1225,6 +1223,27 @@ fn orqa_output<const N: usize>(root: &Path, args: [&str; N]) -> String {
     String::from_utf8(output.stdout).unwrap()
 }
 
+fn orqa_in_pod<const N: usize>(root: &Path, pod: &str, args: [&str; N]) {
+    let output = command_in_pod(root, pod, args).output().unwrap();
+    assert!(
+        output.status.success(),
+        "orqa failed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+}
+
+fn orqa_output_in_pod<const N: usize>(root: &Path, pod: &str, args: [&str; N]) -> String {
+    let output = command_in_pod(root, pod, args).output().unwrap();
+    assert!(
+        output.status.success(),
+        "orqa failed: {}\n{}",
+        String::from_utf8_lossy(&output.stdout),
+        String::from_utf8_lossy(&output.stderr)
+    );
+    String::from_utf8(output.stdout).unwrap()
+}
+
 fn orqa_output_failing<const N: usize>(root: &Path, args: [&str; N]) -> String {
     let output = command(root, args).output().unwrap();
     assert!(
@@ -1243,6 +1262,12 @@ fn command<const N: usize>(root: &Path, args: [&str; N]) -> Command {
     let mut command = Command::new(env!("CARGO_BIN_EXE_orqa"));
     command.current_dir(root);
     command.arg("--home").arg(root).args(args);
+    command
+}
+
+fn command_in_pod<const N: usize>(root: &Path, pod: &str, args: [&str; N]) -> Command {
+    let mut command = command(root, args);
+    command.current_dir(pod_root(root, pod));
     command
 }
 

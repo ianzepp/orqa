@@ -5,18 +5,16 @@ mod pod;
 mod task;
 
 pub(crate) use fin::{
-    ChatArgs, ExecArgs, FinCreateArgs, FinListArgs, FinRefArgs, FinRoleSetArgs, FinRunReadArgs,
-    FinRunsArgs, FinStatusArgs, FinTailArgs, FinWakeArgs, SuperviseArgs,
+    ChatArgs, ExecArgs, FinCreateArgs, FinListArgs, FinRefArgs, FinResumeArgs, FinRoleSetArgs,
+    FinRunReadArgs, FinRunsArgs, FinStatusArgs, FinTailArgs, SuperviseArgs,
 };
-pub(crate) use loop_command::{
-    LoopCommand, LoopPlanArgs, LoopRunArgs, LoopStartArgs, LoopSubcommand,
-};
+pub(crate) use loop_command::{LoopCommand, WakeArgs};
 pub(crate) use mail::{MailCommand, MailListArgs, MailMessageArgs, MailSubcommand, SendMailArgs};
 #[allow(unused_imports)]
 pub(crate) use pod::{
     InitArgs, PodCharterCommand, PodCharterSetArgs, PodCharterSubcommand, PodCommand,
     PodCreateArgs, PodDoctorArgs, PodHookAddArgs, PodHookCommand, PodHookListArgs, PodHookRefArgs,
-    PodHookRunArgs, PodHookSubcommand, PodStatusArgs, PodSubcommand, PodTailArgs, PodWakeArgs,
+    PodHookRunArgs, PodHookSubcommand, PodResumeArgs, PodStatusArgs, PodSubcommand, PodTailArgs,
     SlugArgs,
 };
 pub(crate) use task::{SendTaskArgs, TaskCommand, TaskListArgs, TaskSubcommand};
@@ -25,7 +23,7 @@ pub(crate) use task::{SendTaskArgs, TaskCommand, TaskListArgs, TaskSubcommand};
 #[command(
     name = "orqa",
     version,
-    about = "Fan out work to background fins",
+    about = "Fan out work to fins",
     long_about = None,
     disable_help_subcommand(true)
 )]
@@ -60,12 +58,10 @@ pub(crate) enum Command {
     Task(TaskCommand),
     /// Human operator surface for cross-pod monitoring.
     Ops(OpsCommand),
-    /// Manage the wake loop (run, plan, start, stop, status).
+    /// Run one wake cycle for the current pod.
+    Wake(WakeArgs),
+    /// Run a repeated wake loop for the current pod.
     Loop(LoopCommand),
-    /// Show the wake plan for a pod without running fins.
-    Plan(LoopPlanArgs),
-    /// Backward-compatible service runner.
-    Service(ServiceCommand),
 }
 
 #[derive(Debug, Args)]
@@ -96,10 +92,10 @@ pub(crate) enum FinSubcommand {
     RunLog(FinRunReadArgs),
     /// Print recent run output for a fin.
     Tail(FinTailArgs),
-    /// Pause wake-loop runs for a fin.
-    Sleep(FinRefArgs),
-    /// Clear a fin sleep marker.
-    Wake(FinWakeArgs),
+    /// Pause wake runs for a fin.
+    Pause(FinRefArgs),
+    /// Resume wake eligibility for a fin.
+    Resume(FinResumeArgs),
     /// Execute a one-shot fin backend command.
     Exec(ExecArgs),
     /// Start an interactive fin backend chat.
@@ -114,19 +110,6 @@ pub(crate) enum FinSubcommand {
 pub(crate) struct OpsCommand {
     #[command(subcommand)]
     pub(crate) command: OpsSubcommand,
-}
-
-#[derive(Debug, Args)]
-#[command(subcommand_required = true, arg_required_else_help = true)]
-pub(crate) struct ServiceCommand {
-    #[command(subcommand)]
-    pub(crate) command: ServiceSubcommand,
-}
-
-#[derive(Debug, Subcommand)]
-pub(crate) enum ServiceSubcommand {
-    /// Run the wake service loop.
-    Run(LoopStartArgs),
 }
 
 #[derive(Debug, Subcommand)]

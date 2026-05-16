@@ -22,9 +22,9 @@ use clap::{CommandFactory, FromArgMatches};
 
 #[allow(unused_imports)]
 use cli::{Cli, Command, InitArgs};
-use commands::{fin, loop_command, mail, ops, overview, pod, pod_init, service, task};
+use commands::{fin, loop_command, mail, ops, overview, pod, pod_init, task};
 use model::Orqa;
-use runtime::loop_pod;
+use runtime::wake_pod;
 
 #[cfg(test)]
 #[path = "main_test.rs"]
@@ -40,24 +40,32 @@ fn main() -> ExitCode {
     let cli = Cli::from_arg_matches(&matches).unwrap_or_else(|error| error.exit());
     let orqa = Orqa::new(cli.home);
 
-    // Daemon mode (launched by `orqa loop start`)
-    if env::var("ORQA_DAEMON").is_ok() {
+    // Internal loop worker mode used by the TUI.
+    if env::var("ORQA_LOOP_WORKER").is_ok() {
         let interval: u64 = env::var("ORQA_INTERVAL")
             .ok()
             .and_then(|s| s.parse().ok())
             .unwrap_or(60);
         let force = env::var("ORQA_FORCE").map(|v| v == "1").unwrap_or(false);
 
-        let pid_path = env::var_os("ORQA_DAEMON_PID_PATH")
+        let pid_path = env::var_os("ORQA_LOOP_WORKER_PID_PATH")
             .map(std::path::PathBuf::from)
-            .unwrap_or_else(|| orqa.home.join("loop.pid"));
+            .unwrap_or_else(|| orqa.home.join("tui-loop.pid"));
         let my_pid = std::process::id();
-        let daemon_pod = env::var("ORQA_DAEMON_POD").ok();
+        let worker_pod = match env::var("ORQA_LOOP_WORKER_POD") {
+            Ok(pod) => pod,
+            Err(_) => match crate::model::resolve_pod_context(None, &orqa) {
+                Ok((pod, _)) => pod,
+                Err(error) => {
+                    eprintln!("loop worker error: {error}");
+                    return ExitCode::FAILURE;
+                }
+            },
+        };
 
         loop {
-            // Reconstruct prompt args from the env var set by `orqa loop start -- "..."`.
-            // On any deserialization problem, fall back to empty args and log a warning
-            // so the daemon continues running (best-effort).
+            // Reconstruct prompt args for the worker. On any deserialization
+            // problem, fall back to empty args and keep the worker alive.
             let prompt_args: Vec<OsString> = env::var("ORQA_LOOP_ARGS")
                 .ok()
                 .and_then(|json| {
@@ -72,26 +80,19 @@ fn main() -> ExitCode {
                     vec![]
                 });
 
-            let run_args = cli::LoopRunArgs {
-                pod: daemon_pod.clone(),
-                force,
-                dry_run: false,
-                json: false,
-                args: prompt_args,
-            };
-            if let Err(e) = loop_pod(&orqa, run_args) {
-                eprintln!("daemon loop error: {}", e);
+            if let Err(e) = wake_pod(&orqa, &worker_pod, force, false, false, &prompt_args) {
+                eprintln!("loop worker error: {}", e);
             }
 
             // Liveness check: if the pidfile no longer points to us, shut down gracefully
             if !pid_path.exists() {
-                eprintln!("Pidfile removed — shutting down loop daemon.");
+                eprintln!("pidfile removed; shutting down loop worker.");
                 break;
             }
 
             if let Ok(content) = std::fs::read_to_string(&pid_path) {
                 if content.trim().parse::<u32>().unwrap_or(0) != my_pid {
-                    eprintln!("Another process took over the pidfile — shutting down.");
+                    eprintln!("another process took over the pidfile; shutting down.");
                     break;
                 }
             }
@@ -145,9 +146,8 @@ fn run(orqa: &Orqa, command: Command) -> Result<(), String> {
         Command::Mail(command) => mail(orqa, command),
         Command::Task(command) => task(orqa, command),
         Command::Ops(command) => ops(orqa, command),
+        Command::Wake(args) => runtime::wake_current_pod(orqa, args),
         Command::Loop(command) => loop_command(orqa, command),
-        Command::Plan(args) => runtime::plan(orqa, args),
-        Command::Service(command) => service(orqa, command),
     }
 }
 

@@ -80,12 +80,12 @@ pub(crate) struct FinTailArgs {
 }
 
 #[derive(Debug, Args)]
-pub(crate) struct FinWakeArgs {
+pub(crate) struct FinResumeArgs {
     /// Pod slug.
     pub(crate) pod: String,
     /// Fin slug inside the pod.
     pub(crate) fin: String,
-    /// Required to clear sleep state.
+    /// Required to clear pause state.
     #[arg(long)]
     pub(crate) force: bool,
 }

@@ -146,19 +146,19 @@ pub(crate) fn fin(orqa: &Orqa, command: FinCommand) -> Result<(), String> {
             orqa.ensure_fin_exists(&fin)?;
             tail_fin(orqa, &fin, args.run.as_deref(), args.lines, args.follow)
         }
-        FinSubcommand::Sleep(args) => {
+        FinSubcommand::Pause(args) => {
             let fin = FinRef::new(&args.pod, &args.fin)?;
             write_sleep_marker(&orqa.fin_sleep_path(&fin)?)?;
-            println!("sleep {}", fin.label());
+            println!("pause {}", fin.label());
             Ok(())
         }
-        FinSubcommand::Wake(args) => {
+        FinSubcommand::Resume(args) => {
             if !args.force {
-                return Err("fin wake requires --force".to_string());
+                return Err("fin resume requires --force".to_string());
             }
             let fin = FinRef::new(&args.pod, &args.fin)?;
             remove_sleep_marker(&orqa.fin_sleep_path(&fin)?)?;
-            println!("wake {}", fin.label());
+            println!("resume {}", fin.label());
             Ok(())
         }
         FinSubcommand::Exec(args) => exec_fin(orqa, args),

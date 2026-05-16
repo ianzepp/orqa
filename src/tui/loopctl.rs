@@ -63,9 +63,9 @@ pub(crate) fn start_tui_loop_worker(
         .try_clone()
         .map_err(|error| format!("failed to clone TUI loop log handle: {error}"))?;
     let child = ProcessCommand::new(exe)
-        .env("ORQA_DAEMON", "1")
-        .env("ORQA_DAEMON_POD", &reg.slug)
-        .env("ORQA_DAEMON_PID_PATH", &pid_path)
+        .env("ORQA_LOOP_WORKER", "1")
+        .env("ORQA_LOOP_WORKER_POD", &reg.slug)
+        .env("ORQA_LOOP_WORKER_PID_PATH", &pid_path)
         .env("ORQA_INTERVAL", TUI_LOOP_INTERVAL.as_secs().to_string())
         .env("ORQA_FORCE", "0")
         .arg("--home")

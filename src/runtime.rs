@@ -10,12 +10,12 @@ use std::{
 use serde::Serialize;
 
 use crate::{
-    cli::{ChatArgs, ExecArgs, LoopPlanArgs, LoopRunArgs, SuperviseArgs},
+    cli::{ChatArgs, ExecArgs, SuperviseArgs, WakeArgs},
     commands::list_dirs,
     config::{BackendCommand, BackendMode, backend_chat_command, backend_command, run_policy},
     hooks::run_hook_phase,
     mailbox::unread_count,
-    model::{FinRef, Orqa, PodRef, load_registry},
+    model::{FinRef, Orqa, PodRef, resolve_pod_context},
     runs::{RunFiles, latest_run_started_at},
     runtime_home::ensure_fin_runtime_homes,
     status::print_json,
@@ -92,27 +92,26 @@ impl std::fmt::Display for WakeReason {
     }
 }
 
-pub(crate) fn loop_pod(orqa: &Orqa, args: LoopRunArgs) -> Result<(), String> {
-    if let Some(pod) = &args.pod {
-        loop_single_pod(orqa, pod, &args)
-    } else {
-        for pod in load_registry(orqa)?.keys() {
-            if let Err(e) = loop_single_pod(orqa, pod, &args) {
-                eprintln!("error in pod {}: {}", pod, e);
-            }
-        }
-        Ok(())
-    }
+pub(crate) fn wake_current_pod(orqa: &Orqa, args: WakeArgs) -> Result<(), String> {
+    let (pod, _) = resolve_pod_context(None, orqa)?;
+    wake_pod(orqa, &pod, args.force, args.dry_run, args.json, &args.args)
 }
 
-fn loop_single_pod(orqa: &Orqa, pod: &str, args: &LoopRunArgs) -> Result<(), String> {
+pub(crate) fn wake_pod(
+    orqa: &Orqa,
+    pod: &str,
+    force: bool,
+    dry_run: bool,
+    json: bool,
+    args: &[OsString],
+) -> Result<(), String> {
     let pod_ref = PodRef::new(pod)?;
-    if !args.dry_run {
+    if !dry_run {
         run_hook_phase(orqa, &pod_ref, "pre-plan")?;
     }
-    let plan = plan_pod(orqa, pod, args.force, &args.args)?;
-    if args.dry_run {
-        return print_plan(&plan, args.json);
+    let plan = plan_pod(orqa, pod, force, args)?;
+    if dry_run {
+        return print_plan(&plan, json);
     }
 
     for fin in &plan.fins {
@@ -127,16 +126,11 @@ fn loop_single_pod(orqa: &Orqa, pod: &str, args: &LoopRunArgs) -> Result<(), Str
         }
 
         let fin_ref = FinRef::new(&plan.pod, &fin.fin)?;
-        let command = resolve_exec_command(orqa, &fin_ref, &args.args)?;
+        let command = resolve_exec_command(orqa, &fin_ref, args)?;
         spawn_supervised_wake(orqa, &fin_ref, &command, fin)?;
     }
 
     Ok(())
-}
-
-pub(crate) fn plan(orqa: &Orqa, args: LoopPlanArgs) -> Result<(), String> {
-    let plan = plan_pod(orqa, &args.pod, args.force, &[])?;
-    print_plan(&plan, args.json)
 }
 
 pub(crate) fn plan_pod(
