@@ -17,7 +17,7 @@ use ratatui::{
     layout::{Constraint, Direction, Layout, Rect},
     style::{Modifier, Style},
     text::{Line, Span},
-    widgets::{Block, Borders, Cell, Paragraph, Row, Table},
+    widgets::{Cell, Paragraph, Row, Table},
 };
 
 use crate::{
@@ -262,18 +262,22 @@ fn render_top(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnapsh
         .direction(Direction::Vertical)
         .constraints([
             Constraint::Length(1),
-            Constraint::Length(3),
+            Constraint::Length(1),
+            Constraint::Length(1),
             Constraint::Min(8),
-            Constraint::Length(8),
+            Constraint::Length(1),
+            Constraint::Length(7),
             Constraint::Length(1),
         ])
         .split(area);
 
     render_header(frame, vertical[0], theme, snapshot, orqa);
     render_summary(frame, vertical[1], theme, snapshot);
-    render_fins(frame, vertical[2], theme, snapshot);
-    render_pods(frame, vertical[3], theme, snapshot);
-    render_footer(frame, vertical[4], theme);
+    render_section_label(frame, vertical[2], theme, "fins");
+    render_fins(frame, vertical[3], theme, snapshot);
+    render_section_label(frame, vertical[4], theme, "pods");
+    render_pods(frame, vertical[5], theme, snapshot);
+    render_footer(frame, vertical[6], theme);
 }
 
 fn render_header(
@@ -311,29 +315,42 @@ fn render_header(
 
 fn render_summary(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnapshot) {
     let (fins, running, paused, wakeable, mail, tasks) = snapshot.totals();
+    let bg = theme.header_bg;
     let text = if let Some(error) = &snapshot.error {
-        vec![Line::from(vec![
-            Span::styled(" registry error ", Style::default().fg(theme.error)),
-            Span::styled(error.clone(), Style::default().fg(theme.text)),
-        ])]
+        Line::from(vec![
+            Span::styled(" registry error ", Style::default().fg(theme.error).bg(bg)),
+            Span::styled(error.clone(), Style::default().fg(theme.text).bg(bg)),
+        ])
     } else {
-        vec![Line::from(vec![
-            metric("pods", snapshot.pods.len(), theme.text),
-            metric("fins", fins, theme.text),
-            metric("running", running, theme.ok),
-            metric("paused", paused, theme.warn),
-            metric("wakeable", wakeable, theme.accent),
-            metric("mail", mail, theme.mail),
-            metric("tasks", tasks, theme.event),
-        ])]
+        Line::from(vec![
+            metric("pods", snapshot.pods.len(), theme.text, bg),
+            metric("fins", fins, theme.text, bg),
+            metric("running", running, theme.ok, bg),
+            metric("paused", paused, theme.warn, bg),
+            metric("wakeable", wakeable, theme.accent, bg),
+            metric("mail", mail, theme.mail, bg),
+            metric("tasks", tasks, theme.event, bg),
+        ])
     };
+    let width = area.width as usize;
+    let padding = width.saturating_sub(line_width(text.spans.as_slice()));
+    let mut spans = text.spans;
+    spans.push(Span::styled(" ".repeat(padding), Style::default().bg(bg)));
 
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
+}
+
+fn render_section_label(frame: &mut Frame, area: Rect, theme: &Theme, label: &'static str) {
     frame.render_widget(
-        Paragraph::new(text).block(
-            Block::default()
-                .borders(Borders::ALL)
-                .style(Style::default().fg(theme.muted)),
-        ),
+        Paragraph::new(Line::from(vec![
+            Span::raw(" "),
+            Span::styled(
+                label,
+                Style::default()
+                    .fg(theme.accent)
+                    .add_modifier(Modifier::BOLD),
+            ),
+        ])),
         area,
     );
 }
@@ -356,11 +373,11 @@ fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
                     "idle"
                 };
                 let style = if fin.running {
-                    Style::default().fg(theme.ok)
+                    Style::default().fg(theme.ok).bg(theme.panel_bg)
                 } else if fin.sleeping {
                     Style::default().fg(theme.warn)
                 } else if fin.wakeable {
-                    Style::default().fg(theme.accent)
+                    Style::default().fg(theme.accent).bg(theme.operator_bg)
                 } else {
                     Style::default().fg(theme.text)
                 };
@@ -400,13 +417,7 @@ fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
             "Pod", "Fin", "Status", "Age", "PID", "Stdout", "Stderr", "Mail", "Tasks",
         ],
         theme,
-    ))
-    .block(
-        Block::default()
-            .title(" Fins ")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(theme.muted)),
-    );
+    ));
 
     frame.render_widget(table, area);
 }
@@ -437,6 +448,15 @@ fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
                 } else {
                     "idle"
                 };
+                let style = if pod.sleeping {
+                    Style::default().fg(theme.warn)
+                } else if pod.running > 0 {
+                    Style::default().fg(theme.ok).bg(theme.panel_bg)
+                } else if pod.wakeable > 0 {
+                    Style::default().fg(theme.accent).bg(theme.operator_bg)
+                } else {
+                    Style::default().fg(theme.text)
+                };
                 Row::new(vec![
                     Cell::from(pod.pod.clone()),
                     Cell::from(status),
@@ -447,6 +467,7 @@ fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
                     Cell::from(pod.unread_mail.to_string()),
                     Cell::from(pod.open_tasks.to_string()),
                 ])
+                .style(style)
             })
             .collect()
     };
@@ -469,13 +490,7 @@ fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
             "Pod", "Status", "Fins", "Running", "Paused", "Wakeable", "Mail", "Tasks",
         ],
         theme,
-    ))
-    .block(
-        Block::default()
-            .title(" Pods ")
-            .borders(Borders::ALL)
-            .style(Style::default().fg(theme.muted)),
-    );
+    ));
 
     frame.render_widget(table, area);
 }
@@ -496,15 +511,24 @@ fn render_footer(frame: &mut Frame, area: Rect, theme: &Theme) {
 fn header_row<const N: usize>(labels: [&'static str; N], theme: &Theme) -> Row<'static> {
     Row::new(labels.map(Cell::from)).style(
         Style::default()
-            .fg(theme.accent)
+            .fg(theme.text)
+            .bg(theme.bar_bg)
             .add_modifier(Modifier::BOLD),
     )
 }
 
-fn metric(label: &'static str, value: usize, color: ratatui::style::Color) -> Span<'static> {
+fn metric(
+    label: &'static str,
+    value: usize,
+    color: ratatui::style::Color,
+    bg: ratatui::style::Color,
+) -> Span<'static> {
     Span::styled(
         format!(" {label} {value} "),
-        Style::default().fg(color).add_modifier(Modifier::BOLD),
+        Style::default()
+            .fg(color)
+            .bg(bg)
+            .add_modifier(Modifier::BOLD),
     )
 }
 

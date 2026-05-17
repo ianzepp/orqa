@@ -1,6 +1,6 @@
 use super::{
-    print_file, read_markdown_source, read_optional_markdown_source,
-    validate_backend_name, write_text,
+    print_file, read_markdown_source, read_optional_markdown_source, validate_backend_name,
+    write_text,
 };
 use crate::{
     cli::{CommandContext, FinCommand, FinRoleSubcommand, FinSubcommand},
