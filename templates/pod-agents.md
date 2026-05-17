@@ -28,17 +28,22 @@ If your runtime starts in the pod home, read your fin-specific instructions at
 
 - List pods: `orqa pod list`
 - List fins in this pod: `orqa fin list`
-- Show this fin status: `orqa fin status "$ORQA_POD" "$ORQA_FIN"`
-- Show the pod status: `orqa pod status "$ORQA_POD"`
+- Show this fin status: `orqa fin status "$ORQA_FIN"` or just `orqa fin status`
+- Show another fin status: `orqa fin status <fin>`
+- Show the pod status: `orqa pod status`
 
 ## Mail
 
 Use mail for lightweight communication with another fin.
 
 - List unread mail: `orqa mail list`
+- List done and unread mail: `orqa mail list --all`
 - Read a message: `orqa mail read <message-id>`
 - Mark a message done: `orqa mail done <message-id>`
 - Send mail to another fin: `orqa mail send --to <fin> --subject <subject> <body>`
+
+`orqa mail list` has no `--status` filter. Use `orqa mail list` for unread
+mail and `orqa mail list --all` when you need to include done mail from `cur`.
 
 If you are outside an Orqa-launched process, use full addresses such as
 `<fin>@<pod>.orqa`.
@@ -73,8 +78,6 @@ make task bodies specific enough for another fin to act without guessing.
 - Prefer mail for conversation and tasks for commitments.
 - Escalate operator-owned blockers by mailing `operator@$ORQA_POD.orqa`; Orqa
   routes that mail to `operator@ops.orqa`.
-- If you have queued work but `orqa plan "$ORQA_POD"` reports `reason=debounced`,
-  wait for the configured debounce interval instead of forcing another run.
 - Mark mail and tasks done when handled.
 - Before starting new work, check `orqa mail list` and `orqa task list`.
 - Use `orqa fin list` before addressing another fin by slug if you are unsure
