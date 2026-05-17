@@ -222,6 +222,75 @@ fn pod_create_template_flag_seeds_predefined_fin_roles() {
     );
     assert!(fin_home(&root, "new-co", "ceo").join("mail/new").exists());
     assert!(fin_home(&root, "new-co", "cto").join(".codex").exists());
+    assert!(
+        fs::read_to_string(fin_home(&root, "new-co", "ceo").join("fin.toml"))
+            .unwrap()
+            .contains("name = \"executive\"")
+    );
+
+    remove_temp_root(root);
+}
+
+#[test]
+fn template_sync_adds_updates_and_prunes_template_owned_fins() {
+    let root = temp_root();
+    orqa(&root, ["template", "create", "team"]);
+    orqa(
+        &root,
+        [
+            "template",
+            "fin",
+            "create",
+            "team",
+            "planner",
+            "--role",
+            "Plan the first slice.",
+        ],
+    );
+
+    let target = pod_root(&root, "sample");
+    fs::create_dir_all(&target).unwrap();
+    orqa(
+        &root,
+        [
+            "pod",
+            "create",
+            "sample",
+            "--path",
+            target.to_str().unwrap(),
+            "--template",
+            "team",
+        ],
+    );
+    orqa(&root, ["--pod", "sample", "fin", "create", "manual"]);
+
+    fs::remove_dir_all(root.join("templates/team/fins/planner")).unwrap();
+    fs::create_dir_all(root.join("templates/team/fins/steward")).unwrap();
+    fs::write(
+        root.join("templates/team/fins/steward/ROLE.md"),
+        "Decide what work should happen next.\n",
+    )
+    .unwrap();
+
+    let plan = orqa_output(
+        &root,
+        ["--pod", "sample", "template", "sync", "team", "--dry-run"],
+    );
+    assert!(plan.contains("ADD fin steward"));
+    assert!(plan.contains("DELETE fin planner"));
+    assert!(!plan.contains("DELETE fin manual"));
+    assert!(fin_home(&root, "sample", "planner").exists());
+    assert!(!fin_home(&root, "sample", "steward").exists());
+
+    let applied = orqa_output(&root, ["--pod", "sample", "template", "sync", "team"]);
+    assert!(applied.contains("ADD fin steward"));
+    assert!(applied.contains("DELETE fin planner"));
+    assert!(!fin_home(&root, "sample", "planner").exists());
+    assert!(fin_home(&root, "sample", "manual").exists());
+    assert_eq!(
+        fs::read_to_string(fin_home(&root, "sample", "steward").join("ROLE.md")).unwrap(),
+        "Decide what work should happen next.\n"
+    );
 
     remove_temp_root(root);
 }

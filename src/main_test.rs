@@ -168,6 +168,24 @@ fn parses_template_authoring_commands() {
         Some(Command::Template(command))
             if matches!(&command.command, TemplateSubcommand::Fin(_))
     ));
+
+    let sync = Cli::try_parse_from([
+        "orqa",
+        "--pod",
+        "launch-team",
+        "template",
+        "sync",
+        "executive",
+        "--dry-run",
+    ])
+    .unwrap();
+    assert_eq!(sync.context_pod.as_deref(), Some("launch-team"));
+    assert!(matches!(
+        sync.command,
+        Some(Command::Template(command))
+            if matches!(&command.command, TemplateSubcommand::Sync(args)
+                if args.template == "executive" && args.dry_run)
+    ));
 }
 
 #[test]

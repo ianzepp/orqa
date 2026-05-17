@@ -272,8 +272,9 @@ fn seed_template_fins(
     fins: Vec<template::TemplateFin>,
 ) -> Result<(), String> {
     for fin in fins {
-        let role_arg = format!("@{}", fin.role_path.display());
-        fin::create_fin_in_pod(orqa, pod_slug, pod_root, &fin.slug, Some(&role_arg), None)?;
+        let role = fs::read_to_string(&fin.role_path)
+            .map_err(|error| format!("failed to read {}: {error}", fin.role_path.display()))?;
+        template::create_fin_from_template(orqa, pod_slug, pod_root, template, &fin.slug, &role)?;
     }
 
     println!("Seeded pod '{}' from template '{}'", pod_slug, template);

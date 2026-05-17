@@ -179,9 +179,30 @@ pub(crate) fn fin_config_template(fin: &FinRef) -> String {
 }
 
 pub(crate) fn fin_config_template_with_backend(fin: &FinRef, backend: Option<&str>) -> String {
+    fin_config_template_with_backend_and_template(fin, backend, None)
+}
+
+pub(crate) fn fin_config_template_with_backend_and_template(
+    fin: &FinRef,
+    backend: Option<&str>,
+    template: Option<&str>,
+) -> String {
     let backend_line = backend
         .map(|backend| format!("backend = \"{}\"", escape_toml_string(backend)))
         .unwrap_or_else(|| "# backend = \"codex\"".to_string());
+    let template_block = template
+        .map(|template| {
+            format!(
+                r#"
+[template]
+name = "{}"
+fin = "{}"
+"#,
+                escape_toml_string(template),
+                escape_toml_string(&fin.fin)
+            )
+        })
+        .unwrap_or_default();
 
     format!(
         r#"# Orqa fin configuration.
@@ -202,9 +223,10 @@ slug = "{slug}"
 # in pod.toml.
 [backend]
 model = "gpt-5.3-codex"
-"#,
+{template_block}"#,
         slug = fin.fin,
-        backend_line = backend_line
+        backend_line = backend_line,
+        template_block = template_block
     )
 }
 

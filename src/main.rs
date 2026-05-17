@@ -97,7 +97,7 @@ fn run(orqa: &Orqa, context: &CommandContext, command: Command) -> Result<(), St
         Command::Fin(command) => fin(orqa, context, command),
         Command::Mail(command) => mail(orqa, context, command),
         Command::Task(command) => task(orqa, context, command),
-        Command::Template(command) => template(orqa, command),
+        Command::Template(command) => template(orqa, context, command),
         Command::Ops(command) => ops(orqa, command),
         Command::Wake(args) => runtime::wake_current_pod(orqa, context, args),
         Command::Loop(command) => loop_command(orqa, context, command),

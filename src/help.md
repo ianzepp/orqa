@@ -88,18 +88,22 @@ orqa template fin create executive cto --role "Own technical architecture and de
 orqa template fin list executive
 orqa template list
 orqa pod create launch-team --path /path/to/project --template executive
+orqa --pod launch-team template sync executive --dry-run
+orqa --pod launch-team template sync executive
 ```
 
 Templates live under `ORQA_HOME/templates/<template-slug>/` and may use either
 `fins/<fin>/ROLE.md` or `.orqa/fins/<fin>/ROLE.md`. Orqa creates a normal pod,
 seeds `operator`, then creates each template fin with the predefined role and
-standard fin directories.
+standard fin directories. Template-generated fins record their template origin
+in `fin.toml` so later syncs can distinguish them from manually created fins.
 
 Template command summary:
 
 ```text
 orqa template list
 orqa template create <template>
+orqa template sync <template> [--dry-run]
 orqa template fin list <template>
 orqa template fin create <template> <fin> --role <prompt|@file|->
 orqa pod create <slug> --template <template> [--path <dir>] [--charter <prompt|@file|->]
@@ -109,6 +113,12 @@ orqa pod create <slug> --template <template> [--path <dir>] [--charter <prompt|@
 create a real pod and does not create runtime-ready fins. Add template fins
 explicitly with `template fin create`, then materialize them through regular
 `pod create --template`.
+
+`template sync` applies a template to the selected pod. It always prints the
+plan, adds missing template fins, updates template-owned role and AGENTS files,
+adopts same-named existing fins by recording template origin, and deletes only
+fins whose `fin.toml` says they came from that template. Use `--dry-run` to
+preview those changes without writing files.
 
 Manage the durable pod charter and fin role files:
 

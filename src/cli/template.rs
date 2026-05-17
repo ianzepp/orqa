@@ -12,6 +12,8 @@ pub(crate) enum TemplateSubcommand {
     List,
     /// Create an empty pod template.
     Create(TemplateCreateArgs),
+    /// Sync a template into a pod.
+    Sync(TemplateSyncArgs),
     /// Manage fins inside a pod template.
     Fin(TemplateFinCommand),
 }
@@ -20,6 +22,15 @@ pub(crate) enum TemplateSubcommand {
 pub(crate) struct TemplateCreateArgs {
     /// Template slug under ORQA_HOME/templates.
     pub(crate) template: String,
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct TemplateSyncArgs {
+    /// Template slug under ORQA_HOME/templates.
+    pub(crate) template: String,
+    /// Show the sync plan without changing the pod.
+    #[arg(long)]
+    pub(crate) dry_run: bool,
 }
 
 #[derive(Debug, Args)]
