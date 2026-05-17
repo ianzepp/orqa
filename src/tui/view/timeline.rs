@@ -1,6 +1,7 @@
 use ratatui::{
     Frame,
     layout::Rect,
+    style::Modifier,
     text::{Line, Span},
     widgets::{List, ListItem, Paragraph},
 };
@@ -66,17 +67,50 @@ fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {
             let prefix = vec![fin_tag(fin, fg(app.theme.accent)), Span::raw(" ")];
             let prefix_width = fin_tag_width(fin) + 1;
             if *stream == LogStream::Stdout {
-                let content_width = usize::from(width).saturating_sub(prefix_width).max(1);
-                let rendered_line = match grok_streaming_json_to_markdown(line) {
-                    Some(rendered) if rendered.trim().is_empty() => return Vec::new(),
-                    Some(rendered) => rendered,
-                    None => line.to_string(),
-                };
-                prefixed_lines(
-                    prefix,
-                    prefix_width,
-                    render_markdown(&rendered_line, content_width, fg(color), &app.theme),
-                )
+                // Preferred path: use structured segments so we can give thoughts
+                // a distinct muted/italic treatment with their own prefix.
+                if let Some(segments) = grok_streaming_to_segments(line) {
+                    if segments.is_empty() {
+                        return Vec::new();
+                    }
+                    let mut out_lines = Vec::new();
+                    for seg in segments {
+                        match seg {
+                            GrokSegment::Thought(text) => {
+                                out_lines.extend(render_grok_thought(fin, &text, width, app));
+                            }
+                            GrokSegment::Response(text) => {
+                                if text.trim().is_empty() {
+                                    continue;
+                                }
+                                let content_width = usize::from(width)
+                                    .saturating_sub(prefix_width)
+                                    .max(1);
+                                let md = render_markdown(
+                                    &text,
+                                    content_width,
+                                    fg(color),
+                                    &app.theme,
+                                );
+                                out_lines.extend(prefixed_lines(prefix.clone(), prefix_width, md));
+                            }
+                        }
+                    }
+                    out_lines
+                } else {
+                    // Fallback for non-Grok stdout or parse failure: old behavior.
+                    let content_width = usize::from(width).saturating_sub(prefix_width).max(1);
+                    let rendered_line = grok_streaming_json_to_markdown(line)
+                        .unwrap_or_else(|| line.to_string());
+                    if rendered_line.trim().is_empty() {
+                        return Vec::new();
+                    }
+                    prefixed_lines(
+                        prefix,
+                        prefix_width,
+                        render_markdown(&rendered_line, content_width, fg(color), &app.theme),
+                    )
+                }
             } else if *stream == LogStream::Event {
                 let rendered_line = match backend_event_json_to_summary(line) {
                     Some(rendered) if rendered.trim().is_empty() => return Vec::new(),
@@ -154,6 +188,50 @@ fn fin_tag_width(fin: &str) -> usize {
     fin.chars().count() + 2
 }
 
+/// Render a thought block with a distinct muted+italic prefix.
+///
+/// First line gets `* {fin} thought: ` (per the current simple convention).
+/// Continuation lines are indented only (no repeated marker) so wrapped
+/// thoughts don't look like IRC spam.
+fn render_grok_thought(
+    fin: &str,
+    text: &str,
+    width: u16,
+    app: &App,
+) -> Vec<Line<'static>> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        return vec![];
+    }
+
+    let style = fg(app.theme.muted).add_modifier(Modifier::ITALIC);
+
+    let header = format!("* {} thought: ", fin);
+    let header_width = header.chars().count();
+
+    // Leave some room; fall back to a reasonable minimum.
+    let content_width = usize::from(width).saturating_sub(header_width).max(20);
+
+    let chunks = wrap_text(trimmed, content_width);
+    if chunks.is_empty() {
+        return vec![];
+    }
+
+    let mut lines = vec![Line::from(vec![
+        Span::styled(header, style),
+        Span::styled(chunks[0].clone(), style),
+    ])];
+
+    for chunk in chunks.into_iter().skip(1) {
+        let indent = " ".repeat(header_width);
+        lines.push(Line::from(vec![
+            Span::styled(indent, style),
+            Span::styled(chunk, style),
+        ]));
+    }
+    lines
+}
+
 fn prefixed_wrapped_lines(
     prefix: Vec<Span<'static>>,
     prefix_width: usize,
@@ -181,9 +259,22 @@ fn prefixed_wrapped_lines(
     lines
 }
 
-pub(super) fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
-    let mut rendered = String::new();
-    let mut thought = String::new();
+/// Structured output from a Grok streaming-json run.
+///
+/// This is the foundation for differentiated rendering of internal reasoning
+/// ("thoughts") vs final user-facing responses in the timeline.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) enum GrokSegment {
+    /// Internal chain-of-thought / reasoning from the model.
+    Thought(String),
+    /// Final response text intended for the human.
+    Response(String),
+}
+
+pub(super) fn grok_streaming_to_segments(raw: &str) -> Option<Vec<GrokSegment>> {
+    let mut segments: Vec<GrokSegment> = Vec::new();
+    let mut current_thought = String::new();
+    let mut current_response = String::new();
     let mut saw_stream_event = false;
 
     for raw_line in raw.lines() {
@@ -200,36 +291,100 @@ pub(super) fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
 
         match kind {
             "text" => {
-                flush_thought(&mut rendered, &mut thought);
+                // Flush any pending thought before starting/continuing a response.
+                if !current_thought.is_empty() {
+                    let normalized = normalize_streamed_text(&current_thought);
+                    if !normalized.is_empty() {
+                        segments.push(GrokSegment::Thought(normalized));
+                    }
+                    current_thought.clear();
+                }
                 if let Some(data) = value.get("data").and_then(Value::as_str) {
-                    rendered.push_str(data);
+                    current_response.push_str(data);
                 }
             }
             "thought" => {
+                // If we were accumulating a response, flush it first so ordering is preserved.
+                if !current_response.is_empty() {
+                    segments.push(GrokSegment::Response(std::mem::take(&mut current_response)));
+                }
                 if let Some(data) = streaming_event_detail(&value) {
-                    thought.push_str(&data);
+                    current_thought.push_str(&data);
                 }
             }
-            "end" => flush_thought(&mut rendered, &mut thought),
+            "end" => {
+                if !current_thought.is_empty() {
+                    let normalized = normalize_streamed_text(&current_thought);
+                    if !normalized.is_empty() {
+                        segments.push(GrokSegment::Thought(normalized));
+                    }
+                    current_thought.clear();
+                }
+                if !current_response.is_empty() {
+                    segments.push(GrokSegment::Response(std::mem::take(&mut current_response)));
+                }
+            }
             other => {
-                flush_thought(&mut rendered, &mut thought);
-                if !rendered.is_empty() && !rendered.ends_with('\n') {
-                    rendered.push('\n');
+                // Flush anything pending, then record the unknown event as response content.
+                if !current_thought.is_empty() {
+                    let normalized = normalize_streamed_text(&current_thought);
+                    if !normalized.is_empty() {
+                        segments.push(GrokSegment::Thought(normalized));
+                    }
+                    current_thought.clear();
                 }
-                rendered.push('`');
-                rendered.push_str(other);
-                rendered.push('`');
+                if !current_response.is_empty() {
+                    segments.push(GrokSegment::Response(std::mem::take(&mut current_response)));
+                }
+
+                let mut s = format!("`{}`", other);
                 if let Some(data) = streaming_event_detail(&value) {
-                    rendered.push(' ');
-                    rendered.push_str(&data);
+                    s.push(' ');
+                    s.push_str(&data);
                 }
-                rendered.push('\n');
+                s.push('\n');
+                segments.push(GrokSegment::Response(s));
             }
         }
     }
 
-    flush_thought(&mut rendered, &mut thought);
-    saw_stream_event.then_some(rendered)
+    // Final flush of whatever is left
+    if !current_thought.is_empty() {
+        let normalized = normalize_streamed_text(&current_thought);
+        if !normalized.is_empty() {
+            segments.push(GrokSegment::Thought(normalized));
+        }
+    }
+    if !current_response.is_empty() {
+        segments.push(GrokSegment::Response(current_response));
+    }
+
+    saw_stream_event.then_some(segments)
+}
+
+/// Legacy string renderer kept for the chat history surface and existing tests.
+/// It reconstructs the previous `> thinking: ...` + response format from segments.
+pub(super) fn grok_streaming_json_to_markdown(raw: &str) -> Option<String> {
+    let segments = grok_streaming_to_segments(raw)?;
+    let mut rendered = String::new();
+
+    for seg in segments {
+        match seg {
+            GrokSegment::Thought(t) => {
+                if !rendered.is_empty() && !rendered.ends_with("\n\n") {
+                    rendered.push_str("\n\n");
+                }
+                rendered.push_str("> thinking: ");
+                rendered.push_str(&t);
+                rendered.push_str("\n\n");
+            }
+            GrokSegment::Response(t) => {
+                rendered.push_str(&t);
+            }
+        }
+    }
+
+    Some(rendered)
 }
 
 pub(super) fn backend_event_json_to_summary(raw: &str) -> Option<String> {
@@ -276,22 +431,6 @@ pub(super) fn backend_event_json_to_summary(raw: &str) -> Option<String> {
     }
 
     saw_backend_event.then_some(rendered.join("\n"))
-}
-
-fn flush_thought(rendered: &mut String, thought: &mut String) {
-    let thought_text = normalize_streamed_text(thought);
-    if thought_text.is_empty() {
-        thought.clear();
-        return;
-    }
-
-    if !rendered.is_empty() && !rendered.ends_with("\n\n") {
-        rendered.push_str("\n\n");
-    }
-    rendered.push_str("> thinking: ");
-    rendered.push_str(&thought_text);
-    rendered.push_str("\n\n");
-    thought.clear();
 }
 
 fn normalize_streamed_text(text: &str) -> String {
