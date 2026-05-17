@@ -1,4 +1,6 @@
-use super::top::{TopFin, TopPod, fin_status_symbol, pod_status_symbol};
+use std::time::{Duration, Instant};
+
+use super::top::{TopFin, TopPod, fin_status_symbol, next_loop_label, pod_status_symbol};
 
 fn fin(running: bool, sleeping: bool, wakeable: bool) -> TopFin {
     TopFin {
@@ -44,5 +46,20 @@ fn top_status_symbols_are_compact() {
     assert_eq!(
         pod_status_symbol(&pod(false, 0, 0, Some("bad".to_string()))),
         "E"
+    );
+}
+
+#[test]
+fn top_next_loop_label_counts_down_from_last_wake() {
+    let now = Instant::now();
+
+    assert_eq!(next_loop_label(now, now), "next: 60s");
+    assert_eq!(
+        next_loop_label(now, now + Duration::from_secs(18)),
+        "next: 42s"
+    );
+    assert_eq!(
+        next_loop_label(now, now + Duration::from_secs(61)),
+        "next: 0s"
     );
 }

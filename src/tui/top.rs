@@ -600,10 +600,11 @@ fn render_pods(
 }
 
 fn render_footer(frame: &mut Frame, area: Rect, theme: &Theme, state: &TopState) {
-    let right = if state.message.is_empty() {
-        " ".to_string()
+    let next = next_loop_label(state.last_wake, Instant::now());
+    let right = if state.message.is_empty() || state.message == "loop tick" {
+        format!(" {next}")
     } else {
-        format!(" {}", state.message)
+        format!(" {}  {next}", state.message)
     };
     let left = vec![
         Span::raw(" "),
@@ -692,6 +693,12 @@ pub(super) fn pod_status_symbol(pod: &TopPod) -> &'static str {
     } else {
         "-"
     }
+}
+
+pub(super) fn next_loop_label(last_wake: Instant, now: Instant) -> String {
+    let elapsed = now.saturating_duration_since(last_wake);
+    let remaining = TOP_LOOP_INTERVAL.saturating_sub(elapsed).as_secs();
+    format!("next: {remaining}s")
 }
 
 fn running_duration(orqa: &Orqa, pod: &str, fin: &str) -> u64 {
