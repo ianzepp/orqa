@@ -95,6 +95,21 @@ Templates live under `ORQA_HOME/templates/<template-slug>/` and may use either
 seeds `operator`, then creates each template fin with the predefined role and
 standard fin directories.
 
+Template command summary:
+
+```text
+orqa template list
+orqa template create <template>
+orqa template fin list <template>
+orqa template fin create <template> <fin> --role <prompt|@file|->
+orqa pod create <slug> --template <template> [--path <dir>] [--charter <prompt|@file|->]
+```
+
+`template create` initializes only the reusable template directory. It does not
+create a real pod and does not create runtime-ready fins. Add template fins
+explicitly with `template fin create`, then materialize them through regular
+`pod create --template`.
+
 Manage the durable pod charter and fin role files:
 
 ```sh

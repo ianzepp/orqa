@@ -705,21 +705,24 @@ Usage: orqa [OPTIONS] [COMMAND]
 
 Options:
       --home <DIR>  Override ORQA_HOME for this command
+      --pod <SLUG>  Explicit pod context for commands that operate inside a pod
+      --fin <SLUG>  Explicit fin context for commands that operate on one fin
   -v, --version     Print version
   -h, --help        Print help
 
 Commands:
-  doctor  Show runtime diagnostics
-  guide   Print the operational guide
-  init    Initialize a pod in this directory
-  pod     Manage pods
-  fin     Manage fins
-  mail    Send and read fin mail
-  task    Assign and track fin tasks
-  ops     Monitor pods
-  wake    Run one wake cycle
-  loop    Run wake cycles repeatedly
-  help    Print this message or the help of the given subcommand(s)
+  doctor    Show runtime diagnostics
+  guide     Print the operational guide
+  init      Initialize a pod in this directory
+  pod       Manage pods
+  fin       Manage fins
+  mail      Send and read fin mail
+  task      Assign and track fin tasks
+  template  Manage pod templates
+  ops       Monitor pods
+  wake      Run one wake cycle
+  loop      Run wake cycles repeatedly
+  help      Print this message or the help of the given subcommand(s)
 ```
 
 `orqa doctor` prints basic runtime information, including the active
@@ -732,7 +735,7 @@ who need the runtime overview without install or development notes.
 
 ```text
 orqa init [slug] [--path <dir>] [--charter <...>]
-orqa pod create <slug> [--path <dir>] [--charter <prompt|@file|->]
+orqa pod create <slug> [--path <dir>] [--charter <prompt|@file|->] [--template <template>]
 orqa pod list
 orqa pod home
 orqa pod charter get
@@ -758,11 +761,14 @@ directory tree. Pod slugs are positional only when creating or initializing a po
 
 `pod create` creates `.orqa/`, `pod.toml`, `AGENTS.md`, and the seeded operator
 fin inside the target pod root, then registers that root in global config. If
-`--path` is omitted, the current directory is the pod root. The charter is the
-shared goal and operating context for the pod; pass it inline, from `@file.md`,
-or from stdin with `-`. The pod-level `AGENTS.md` injects that charter and tells
-backend runtimes how to use Orqa mail, tasks, status, and fin discovery. `pod
-charter set` replaces both `CHARTER.md` and the generated pod `AGENTS.md`.
+`--template <template>` is passed, Orqa validates `ORQA_HOME/templates/<template>`
+before creating the pod, then seeds each template fin after the pod is
+registered. If `--path` is omitted, the current directory is the pod root. The
+charter is the shared goal and operating context for the pod; pass it inline,
+from `@file.md`, or from stdin with `-`. The pod-level `AGENTS.md` injects that
+charter and tells backend runtimes how to use Orqa mail, tasks, status, and fin
+discovery. `pod charter set` replaces both `CHARTER.md` and the generated pod
+`AGENTS.md`.
 
 `pod list` prints one status line per pod with fin count, pause state,
 wakeable/running counts, unread mail, and open tasks. `pod doctor` checks
@@ -771,6 +777,23 @@ short backend probe to verify connectivity. `pod hook` manages shell hooks under
 `hooks/<phase>/` for lifecycle work around the wake loop. `pod pause` writes a
 pod-level pause marker, and `pod resume` requires `--force` before it removes that
 marker.
+
+### Template Commands
+
+```text
+orqa template list
+orqa template create <template>
+orqa template fin list <template>
+orqa template fin create <template> <fin> --role <prompt|@file|->
+orqa pod create <slug> --template <template> [--path <dir>] [--charter <prompt|@file|->]
+```
+
+`template create` initializes `ORQA_HOME/templates/<template>/fins/` without
+creating any real pod or fin runtime state. `template fin create` adds a fin
+definition to that template by writing `fins/<fin>/ROLE.md`; pass the role
+inline, from `@file.md`, or from stdin with `-`. `template fin list` prints the
+fin slugs defined by a template. To materialize the template, use the regular
+pod command with `--template`.
 
 ### Fin Commands
 
