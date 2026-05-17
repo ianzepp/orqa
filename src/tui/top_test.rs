@@ -1,7 +1,8 @@
 use std::time::{Duration, Instant};
 
 use super::top::{
-    TopFin, TopPod, fin_status_symbol, initial_last_wake, next_loop_label, pod_status_symbol,
+    TopFin, TopPod, fin_status_symbol, initial_last_wake, next_loop_label, pod_header,
+    pod_status_symbol, pod_window,
 };
 
 fn fin(running: bool, sleeping: bool, wakeable: bool) -> TopFin {
@@ -71,4 +72,21 @@ fn top_first_loop_starts_after_ten_seconds() {
     let now = Instant::now();
 
     assert_eq!(next_loop_label(initial_last_wake(now), now), "next: 10s");
+}
+
+#[test]
+fn pod_window_keeps_selected_pod_visible() {
+    assert_eq!(pod_window(0, 0, 6), (0, 0));
+    assert_eq!(pod_window(4, 0, 6), (0, 4));
+    assert_eq!(pod_window(10, 0, 6), (0, 6));
+    assert_eq!(pod_window(10, 5, 6), (2, 8));
+    assert_eq!(pod_window(10, 9, 6), (4, 10));
+}
+
+#[test]
+fn pod_header_shows_range_when_pods_are_hidden() {
+    assert_eq!(pod_header(0, 0, 0), "Pod");
+    assert_eq!(pod_header(0, 4, 4), "Pod");
+    assert_eq!(pod_header(0, 6, 7), "Pod 1-6/7");
+    assert_eq!(pod_header(4, 10, 10), "Pod 5-10/10");
 }

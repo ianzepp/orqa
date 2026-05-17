@@ -530,6 +530,9 @@ fn render_pods(
     snapshot: &TopSnapshot,
     state: &TopState,
 ) {
+    let visible_rows = usize::from(area.height.saturating_sub(1)).max(1);
+    let (start, end) = pod_window(snapshot.pods.len(), state.selected_pod, visible_rows);
+
     let rows: Vec<Row<'_>> = if snapshot.pods.is_empty() {
         vec![Row::new(vec![padded_cell("No pods registered")])]
     } else {
@@ -537,6 +540,8 @@ fn render_pods(
             .pods
             .iter()
             .enumerate()
+            .skip(start)
+            .take(end.saturating_sub(start))
             .map(|(index, pod)| {
                 if let Some(error) = &pod.error {
                     let style = if index == state.selected_pod {
@@ -592,10 +597,24 @@ fn render_pods(
             Constraint::Length(6),
         ],
     )
-    .header(header_row(
-        ["Pod", "S", "Fins", "Run", "P", "W", "Mail", "Tasks"],
-        theme,
-    ));
+    .header(
+        Row::new(vec![
+            padded_cell(pod_header(start, end, snapshot.pods.len())),
+            padded_cell("S"),
+            padded_cell("Fins"),
+            padded_cell("Run"),
+            padded_cell("P"),
+            padded_cell("W"),
+            padded_cell("Mail"),
+            padded_cell("Tasks"),
+        ])
+        .style(
+            Style::default()
+                .fg(theme.text)
+                .bg(theme.bar_bg)
+                .add_modifier(Modifier::BOLD),
+        ),
+    );
 
     frame.render_widget(table, area);
 }
@@ -705,6 +724,26 @@ pub(super) fn next_loop_label(last_wake: Instant, now: Instant) -> String {
 pub(super) fn initial_last_wake(now: Instant) -> Instant {
     let elapsed_at_start = TOP_LOOP_INTERVAL.saturating_sub(TOP_INITIAL_LOOP_DELAY);
     now.checked_sub(elapsed_at_start).unwrap_or(now)
+}
+
+pub(super) fn pod_window(total: usize, selected: usize, visible_rows: usize) -> (usize, usize) {
+    if total == 0 {
+        return (0, 0);
+    }
+    let visible_rows = visible_rows.max(1).min(total);
+    let selected = selected.min(total - 1);
+    let half = visible_rows / 2;
+    let max_start = total.saturating_sub(visible_rows);
+    let start = selected.saturating_sub(half).min(max_start);
+    (start, start + visible_rows)
+}
+
+pub(super) fn pod_header(start: usize, end: usize, total: usize) -> String {
+    if total == 0 || (start == 0 && end >= total) {
+        "Pod".to_string()
+    } else {
+        format!("Pod {}-{}/{}", start + 1, end, total)
+    }
 }
 
 fn running_duration(orqa: &Orqa, pod: &str, fin: &str) -> u64 {
