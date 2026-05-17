@@ -21,19 +21,19 @@ pub(super) fn render_command_palette(app: &App, frame: &mut Frame, area: Rect) {
     let key = bold(app.theme.accent);
     let text = fg(app.theme.text);
     let rows = vec![
-        key_row(" ?", " full help & key reference", key, text),
-        key_row(" i", " chat with target", key, text),
-        key_row(" c", " open chat history", key, text),
-        key_row(" m", " open mail", key, text),
-        key_row(" Ctrl+T", " choose target fin", key, text),
-        key_row(" F", " cycle timeline fin filter", key, text),
-        key_row(" o", " toggle operator filter", key, text),
-        key_row(" /", " toggle thread filter", key, text),
-        key_row(" H", " cycle theme", key, text),
-        key_row(" P", " pause/resume pod wake loop", key, text),
-        key_row(" PgUp/PgDn", " scroll timeline", key, text),
-        key_row(" Esc", " close palette or leave chat", key, text),
-        key_row(" q", " quit", key, text),
+        key_row(" ?", "full help & key reference", key, text),
+        key_row(" i", "chat with target", key, text),
+        key_row(" c", "open chat history", key, text),
+        key_row(" m", "open mail", key, text),
+        key_row(" Ctrl+T", "choose target fin", key, text),
+        key_row(" F", "cycle timeline fin filter", key, text),
+        key_row(" o", "toggle operator filter", key, text),
+        key_row(" /", "toggle thread filter", key, text),
+        key_row(" H", "cycle theme", key, text),
+        key_row(" P", "pause/resume pod wake loop", key, text),
+        key_row(" PgUp/PgDn", "scroll timeline", key, text),
+        key_row(" Esc", "close palette or leave chat", key, text),
+        key_row(" q", "quit", key, text),
         Line::from(Span::styled(
             " Ctrl+. closes this palette  •  ? for the full guide",
             fg(app.theme.muted),
@@ -154,6 +154,7 @@ fn key_row(
 ) -> Line<'static> {
     Line::from(vec![
         Span::styled(key, key_style),
+        Span::styled("   ", text), // visual padding between hotkey and description
         Span::styled(description, text),
     ])
 }
