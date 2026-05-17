@@ -11,6 +11,8 @@ pub mod loopctl;
 pub mod run;
 pub mod theme;
 pub mod top;
+#[cfg(test)]
+mod top_test;
 mod view;
 pub mod watcher;
 

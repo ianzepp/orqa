@@ -33,31 +33,31 @@ use crate::{
 const TOP_LOOP_INTERVAL: Duration = Duration::from_secs(DEFAULT_GLOBAL_LOOP_INTERVAL);
 
 #[derive(Clone, Debug)]
-struct TopFin {
-    pod: String,
-    fin: String,
-    running: bool,
-    sleeping: bool,
-    wakeable: bool,
-    duration_secs: u64,
-    pid: Option<u32>,
-    stdout_bytes: u64,
-    stderr_bytes: u64,
-    unread_mail: usize,
-    open_tasks: usize,
+pub(super) struct TopFin {
+    pub(super) pod: String,
+    pub(super) fin: String,
+    pub(super) running: bool,
+    pub(super) sleeping: bool,
+    pub(super) wakeable: bool,
+    pub(super) duration_secs: u64,
+    pub(super) pid: Option<u32>,
+    pub(super) stdout_bytes: u64,
+    pub(super) stderr_bytes: u64,
+    pub(super) unread_mail: usize,
+    pub(super) open_tasks: usize,
 }
 
 #[derive(Clone, Debug)]
-struct TopPod {
-    pod: String,
-    sleeping: bool,
-    fins: usize,
-    running: usize,
-    paused: usize,
-    wakeable: usize,
-    unread_mail: usize,
-    open_tasks: usize,
-    error: Option<String>,
+pub(super) struct TopPod {
+    pub(super) pod: String,
+    pub(super) sleeping: bool,
+    pub(super) fins: usize,
+    pub(super) running: usize,
+    pub(super) paused: usize,
+    pub(super) wakeable: usize,
+    pub(super) unread_mail: usize,
+    pub(super) open_tasks: usize,
+    pub(super) error: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -472,15 +472,6 @@ fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
             .fins
             .iter()
             .map(|fin| {
-                let status = if fin.running {
-                    "running"
-                } else if fin.sleeping {
-                    "paused"
-                } else if fin.wakeable {
-                    "wakeable"
-                } else {
-                    "idle"
-                };
                 let style = if fin.running {
                     Style::default().fg(theme.ok).bg(theme.panel_bg)
                 } else if fin.sleeping {
@@ -494,7 +485,7 @@ fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
                 Row::new(vec![
                     padded_cell(fin.pod.clone()),
                     padded_cell(fin.fin.clone()),
-                    padded_cell(status),
+                    padded_cell(fin_status_symbol(fin)),
                     padded_cell(format_duration(fin.duration_secs)),
                     padded_cell(fin.pid.map_or("-".to_string(), |pid| pid.to_string())),
                     padded_cell(format_bytes(fin.stdout_bytes)),
@@ -510,20 +501,20 @@ fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
     let table = Table::new(
         rows,
         [
-            Constraint::Length(16),
-            Constraint::Length(16),
-            Constraint::Length(12),
-            Constraint::Length(10),
-            Constraint::Length(10),
-            Constraint::Length(12),
-            Constraint::Length(12),
-            Constraint::Length(8),
-            Constraint::Length(9),
+            Constraint::Length(19),
+            Constraint::Length(11),
+            Constraint::Length(2),
+            Constraint::Length(5),
+            Constraint::Length(6),
+            Constraint::Length(7),
+            Constraint::Length(7),
+            Constraint::Length(5),
+            Constraint::Length(6),
         ],
     )
     .header(header_row(
         [
-            "Pod", "Fin", "Status", "Age", "PID", "Stdout", "Stderr", "Mail", "Tasks",
+            "Pod", "Fin", "S", "Age", "PID", "Out", "Err", "Mail", "Tasks",
         ],
         theme,
     ));
@@ -560,15 +551,6 @@ fn render_pods(
                     .style(style);
                 }
 
-                let status = if pod.sleeping {
-                    "paused"
-                } else if pod.running > 0 {
-                    "running"
-                } else if pod.wakeable > 0 {
-                    "wakeable"
-                } else {
-                    "idle"
-                };
                 let mut style = if pod.sleeping {
                     Style::default().fg(theme.warn)
                 } else if pod.running > 0 {
@@ -583,7 +565,7 @@ fn render_pods(
                 }
                 Row::new(vec![
                     padded_cell(pod.pod.clone()),
-                    padded_cell(status),
+                    padded_cell(pod_status_symbol(pod)),
                     padded_cell(pod.fins.to_string()),
                     padded_cell(pod.running.to_string()),
                     padded_cell(pod.paused.to_string()),
@@ -599,20 +581,18 @@ fn render_pods(
     let table = Table::new(
         rows,
         [
-            Constraint::Length(18),
-            Constraint::Length(12),
-            Constraint::Length(8),
-            Constraint::Length(10),
-            Constraint::Length(10),
-            Constraint::Length(11),
-            Constraint::Length(8),
-            Constraint::Length(9),
+            Constraint::Length(19),
+            Constraint::Length(2),
+            Constraint::Length(5),
+            Constraint::Length(4),
+            Constraint::Length(3),
+            Constraint::Length(3),
+            Constraint::Length(5),
+            Constraint::Length(6),
         ],
     )
     .header(header_row(
-        [
-            "Pod", "Status", "Fins", "Running", "Paused", "Wakeable", "Mail", "Tasks",
-        ],
+        ["Pod", "S", "Fins", "Run", "P", "W", "Mail", "Tasks"],
         theme,
     ));
 
@@ -656,7 +636,7 @@ fn header_row<const N: usize>(labels: [&'static str; N], theme: &Theme) -> Row<'
 }
 
 fn padded_cell(value: impl Into<String>) -> Cell<'static> {
-    Cell::from(format!(" {} ", value.into()))
+    Cell::from(format!(" {}", value.into()))
 }
 
 fn metric(
@@ -685,6 +665,32 @@ fn error_pod(slug: &str, error: String) -> TopPod {
         unread_mail: 0,
         open_tasks: 0,
         error: Some(error),
+    }
+}
+
+pub(super) fn fin_status_symbol(fin: &TopFin) -> &'static str {
+    if fin.running {
+        "R"
+    } else if fin.sleeping {
+        "P"
+    } else if fin.wakeable {
+        "W"
+    } else {
+        "-"
+    }
+}
+
+pub(super) fn pod_status_symbol(pod: &TopPod) -> &'static str {
+    if pod.error.is_some() {
+        "E"
+    } else if pod.sleeping {
+        "P"
+    } else if pod.running > 0 {
+        "R"
+    } else if pod.wakeable > 0 {
+        "W"
+    } else {
+        "-"
     }
 }
 
