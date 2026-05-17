@@ -31,6 +31,7 @@ use crate::{
 };
 
 const TOP_LOOP_INTERVAL: Duration = Duration::from_secs(DEFAULT_GLOBAL_LOOP_INTERVAL);
+const TOP_INITIAL_LOOP_DELAY: Duration = Duration::from_secs(10);
 
 #[derive(Clone, Debug)]
 pub(super) struct TopFin {
@@ -75,11 +76,10 @@ struct TopState {
 
 impl TopState {
     fn new() -> Self {
+        let now = Instant::now();
         Self {
             selected_pod: 0,
-            last_wake: Instant::now()
-                .checked_sub(TOP_LOOP_INTERVAL)
-                .unwrap_or_else(Instant::now),
+            last_wake: initial_last_wake(now),
             message: String::new(),
         }
     }
@@ -699,6 +699,11 @@ pub(super) fn next_loop_label(last_wake: Instant, now: Instant) -> String {
     let elapsed = now.saturating_duration_since(last_wake);
     let remaining = TOP_LOOP_INTERVAL.saturating_sub(elapsed).as_secs();
     format!("next: {remaining}s")
+}
+
+pub(super) fn initial_last_wake(now: Instant) -> Instant {
+    let elapsed_at_start = TOP_LOOP_INTERVAL.saturating_sub(TOP_INITIAL_LOOP_DELAY);
+    now.checked_sub(elapsed_at_start).unwrap_or(now)
 }
 
 fn running_duration(orqa: &Orqa, pod: &str, fin: &str) -> u64 {

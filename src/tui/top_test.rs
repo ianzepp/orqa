@@ -1,6 +1,8 @@
 use std::time::{Duration, Instant};
 
-use super::top::{TopFin, TopPod, fin_status_symbol, next_loop_label, pod_status_symbol};
+use super::top::{
+    TopFin, TopPod, fin_status_symbol, initial_last_wake, next_loop_label, pod_status_symbol,
+};
 
 fn fin(running: bool, sleeping: bool, wakeable: bool) -> TopFin {
     TopFin {
@@ -62,4 +64,11 @@ fn top_next_loop_label_counts_down_from_last_wake() {
         next_loop_label(now, now + Duration::from_secs(61)),
         "next: 0s"
     );
+}
+
+#[test]
+fn top_first_loop_starts_after_ten_seconds() {
+    let now = Instant::now();
+
+    assert_eq!(next_loop_label(initial_last_wake(now), now), "next: 10s");
 }
