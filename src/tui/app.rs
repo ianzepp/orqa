@@ -132,6 +132,7 @@ pub struct App {
     pub expanded: bool,
     pub show_command_palette: bool,
     pub show_target_picker: bool,
+    pub show_help: bool,
     pub target_picker_index: usize,
     pub pod_paused: bool,
     pub next_loop_at: Instant,
@@ -179,6 +180,7 @@ impl App {
             expanded: true,
             show_command_palette: false,
             show_target_picker: false,
+            show_help: false,
             target_picker_index: 0,
             pod_paused: paused,
             next_loop_at: Instant::now() + TUI_LOOP_INTERVAL,
@@ -410,6 +412,15 @@ impl App {
     pub fn toggle_command_palette(&mut self) {
         self.show_command_palette = !self.show_command_palette;
         if self.show_command_palette {
+            self.show_target_picker = false;
+            self.show_help = false;
+        }
+    }
+
+    pub fn toggle_help(&mut self) {
+        self.show_help = !self.show_help;
+        if self.show_help {
+            self.show_command_palette = false;
             self.show_target_picker = false;
         }
     }

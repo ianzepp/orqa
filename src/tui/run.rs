@@ -155,6 +155,12 @@ fn handle_key(app: &mut App, key: KeyEvent) -> LoopAction {
         handle_command_palette_key(app, key);
         return LoopAction::Continue;
     }
+    if app.show_help {
+        if matches!(key.code, KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?')) {
+            app.show_help = false;
+        }
+        return LoopAction::Continue;
+    }
     if app.surface == Surface::Mail {
         handle_mail_key(app, key);
         return LoopAction::Continue;
@@ -178,6 +184,10 @@ fn handle_global_key(app: &mut App, key: KeyEvent) -> bool {
         }
         KeyCode::Char('t') if has_control(key) => {
             app.open_target_picker();
+            true
+        }
+        KeyCode::Char('?') => {
+            app.toggle_help();
             true
         }
         _ => false,

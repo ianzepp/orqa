@@ -61,5 +61,8 @@ impl App {
         if self.show_target_picker {
             overlays::render_target_picker(self, frame, area);
         }
+        if self.show_help {
+            overlays::render_help(self, frame, area);
+        }
     }
 }

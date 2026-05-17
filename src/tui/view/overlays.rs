@@ -21,6 +21,7 @@ pub(super) fn render_command_palette(app: &App, frame: &mut Frame, area: Rect) {
     let key = bold(app.theme.accent);
     let text = fg(app.theme.text);
     let rows = vec![
+        key_row(" ?", " full help & key reference", key, text),
         key_row(" i", " chat with target", key, text),
         key_row(" c", " open chat history", key, text),
         key_row(" m", " open mail", key, text),
@@ -34,7 +35,7 @@ pub(super) fn render_command_palette(app: &App, frame: &mut Frame, area: Rect) {
         key_row(" Esc", " close palette or leave chat", key, text),
         key_row(" q", " quit", key, text),
         Line::from(Span::styled(
-            " Ctrl+. closes this palette",
+            " Ctrl+. closes this palette  •  ? for the full guide",
             fg(app.theme.muted),
         )),
     ];
@@ -77,6 +78,71 @@ pub(super) fn render_target_picker(app: &App, frame: &mut Frame, area: Rect) {
 
     frame.render_widget(Clear, picker);
     frame.render_widget(block, picker);
+    frame.render_widget(Paragraph::new(rows), inner);
+}
+
+pub(super) fn render_help(app: &App, frame: &mut Frame, area: Rect) {
+    // A tall centered panel for the full key reference
+    let panel = centered_rect(area, 68, 32);
+    let block = titled_block(" Help — orqa Operator Cockpit ", app.theme.text);
+    let inner = block.inner(panel);
+
+    let key = bold(app.theme.accent);
+    let text = fg(app.theme.text);
+    let section = bold(app.theme.ok);
+    let mut rows: Vec<Line<'static>> = Vec::new();
+
+    // Global / Navigation
+    rows.push(Line::from(Span::styled("Global & Navigation", section)));
+    rows.push(key_row(" ?", "toggle this help", key, text));
+    rows.push(key_row(" q / Esc / Ctrl-C", "quit TUI", key, text));
+    rows.push(key_row(" Ctrl+.", "command palette (quick reference)", key, text));
+    rows.push(key_row(" Ctrl+T  or  f", "target fin picker / change composer target", key, text));
+    rows.push(key_row(" i", "enter chat mode (composer)", key, text));
+    rows.push(key_row(" Shift+Tab", "toggle normal/chat input mode", key, text));
+    rows.push(key_row(" H", "cycle theme (dark/light)", key, text));
+    rows.push(Line::from(Span::styled("", text)));
+
+    // Timeline
+    rows.push(Line::from(Span::styled("Timeline (main view)", section)));
+    rows.push(key_row(" F", "cycle fin filter", key, text));
+    rows.push(key_row(" o / O", "toggle operator-mail filter", key, text));
+    rows.push(key_row(" /  or  t", "toggle thread/subject filter", key, text));
+    rows.push(key_row(" ↑ / ↓  PgUp/PgDn", "scroll (pauses follow while scrolling)", key, text));
+    rows.push(key_row(" P", "pause/resume the pod wake loop", key, text));
+    rows.push(Line::from(Span::styled("", text)));
+
+    // Composer (when in chat input mode)
+    rows.push(Line::from(Span::styled("Composer (chat with a fin)", section)));
+    rows.push(key_row(" Enter", "send prompt directly to target fin (spawns run)", key, text));
+    rows.push(key_row(" Tab / f / F", "open target picker while typing", key, text));
+    rows.push(key_row(" ↑ / ↓ (with text)", "browse send history", key, text));
+    rows.push(key_row(" Ctrl+W", "delete previous word", key, text));
+    rows.push(key_row(" Esc", "leave chat input (back to normal)", key, text));
+    rows.push(Line::from(Span::styled("", text)));
+
+    // Mail surface
+    rows.push(Line::from(Span::styled("Mail surface (m)", section)));
+    rows.push(key_row(" m", "open/close mail (operator inbox)", key, text));
+    rows.push(key_row(" j/k  Enter  g/G", "navigate / open / top-bottom", key, text));
+    rows.push(key_row(" r", "reply to selected mail", key, text));
+    rows.push(key_row(" Ctrl+Y (in compose)", "send composed mail + wake target", key, text));
+    rows.push(key_row(" Tab (in compose)", "next field (To → Subject → Body)", key, text));
+    rows.push(Line::from(Span::styled("", text)));
+
+    // Other surfaces
+    rows.push(Line::from(Span::styled("Other surfaces", section)));
+    rows.push(key_row(" c / C", "open chat history surface", key, text));
+    rows.push(key_row(" Tab (in mail/chat)", "return to timeline", key, text));
+    rows.push(Line::from(Span::styled("", text)));
+
+    rows.push(Line::from(Span::styled(
+        "Tip: the bottom composer target is shown as @planner · chat. Use f to change who you address.",
+        fg(app.theme.muted),
+    )));
+
+    frame.render_widget(Clear, panel);
+    frame.render_widget(block, panel);
     frame.render_widget(Paragraph::new(rows), inner);
 }
 

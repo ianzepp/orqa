@@ -29,7 +29,7 @@ pub(super) fn render(app: &App, frame: &mut Frame, area: Rect) {
 }
 
 pub(super) fn render_footer(app: &App, frame: &mut Frame, area: Rect) {
-    let help = "c:chat  |  m:mail  |  Shift+Tab:mode  |  Ctrl+T:target  |  Ctrl+.:commands";
+    let help = "?:help  |  i:chat  |  m:mail  |  Shift+Tab:mode  |  f:target  |  Ctrl+.:commands";
 
     frame.render_widget(
         Paragraph::new(Line::from(Span::styled(
