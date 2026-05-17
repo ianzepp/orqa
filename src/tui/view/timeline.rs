@@ -20,13 +20,16 @@ pub(super) fn render(app: &mut App, frame: &mut Frame, area: Rect) {
     let visible_events = app.visible_events();
     let items: Vec<ListItem> = visible_events
         .into_iter()
-        .filter_map(|event| event_to_item(app, event, area.width))
+        .flat_map(|event| event_to_items(app, event, area.width))
         .collect();
     let visible_count = items.len();
+    app.timeline_rows = visible_count;
 
     let list = List::new(items).highlight_style(bold(app.theme.text));
 
-    if let Some(selected) = app.list_state.selected() {
+    if app.follow && visible_count > 0 {
+        app.list_state.select(Some(visible_count - 1));
+    } else if let Some(selected) = app.list_state.selected() {
         if selected >= visible_count && visible_count > 0 {
             app.list_state.select(Some(visible_count - 1));
         }
@@ -51,9 +54,11 @@ fn render_empty(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(empty), area);
 }
 
-fn event_to_item(app: &App, event: &Event, width: u16) -> Option<ListItem<'static>> {
-    let lines = event_to_lines(app, event, width);
-    (!lines.is_empty()).then(|| ListItem::new(lines))
+fn event_to_items(app: &App, event: &Event, width: u16) -> Vec<ListItem<'static>> {
+    event_to_lines(app, event, width)
+        .into_iter()
+        .map(ListItem::new)
+        .collect()
 }
 
 fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {

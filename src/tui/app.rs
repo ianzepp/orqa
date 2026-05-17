@@ -121,6 +121,7 @@ pub struct App {
     pub active_fins: HashSet<String>,
     pub active_since: HashMap<String, Instant>,
     pub max_events: usize,
+    pub timeline_rows: usize,
 
     /// The bottom message composer.
     pub composer: Composer,
@@ -174,6 +175,7 @@ impl App {
             active_fins: HashSet::new(),
             active_since: HashMap::new(),
             max_events: 2000,
+            timeline_rows: 0,
             composer: Composer::new(default_target),
             mode: InputMode::Normal,
             theme: default_theme(),
@@ -331,7 +333,7 @@ impl App {
     }
 
     pub fn scroll_down(&mut self, amount: usize) {
-        let visible = self.visible_events().len();
+        let visible = self.timeline_visible_count();
         if visible == 0 {
             return;
         }
@@ -345,11 +347,15 @@ impl App {
     }
 
     pub fn scroll_to_bottom(&mut self) {
-        let visible = self.visible_events().len();
+        let visible = self.timeline_visible_count();
         if visible > 0 {
             self.list_state.select(Some(visible - 1));
         }
         self.follow = true;
+    }
+
+    fn timeline_visible_count(&self) -> usize {
+        self.timeline_rows.max(self.visible_events().len())
     }
 
     /// Call this after new events arrive when in follow mode.
