@@ -4,7 +4,7 @@ use std::{
     fs, io,
     path::PathBuf,
     process::{Command as ProcessCommand, Stdio},
-    time::Duration,
+    time::{Duration, SystemTime, UNIX_EPOCH},
 };
 
 use serde::Serialize;
@@ -482,18 +482,8 @@ fn spawn_fin_background(
     fin: &FinRef,
     command: &BackendCommand,
 ) -> Result<crate::runs::RunRecord, String> {
-    if let Some(lock) = FinLock::try_existing(orqa, fin)? {
-        if lock.is_live() {
-            return Err(format!(
-                "fin {} is already running as pid {}",
-                fin.label(),
-                lock.pid
-            ));
-        }
-        lock.remove()?;
-    }
-
     ensure_runtime_homes(orqa, fin)?;
+    let mut lock = FinLock::claim(orqa, fin, "background", &command.command)?;
     let run = RunFiles::create(
         orqa,
         fin,
@@ -513,7 +503,12 @@ fn spawn_fin_background(
             let _ = run.mark_spawn_failed(&error.to_string());
             format!("failed to spawn {:?}: {error}", command.command)
         })?;
-    let lock = write_child_lock(orqa, fin, &mut child, &command.command, &run)?;
+    if let Err(error) = lock.mark_running(child.id(), &run.record.id, &command.command) {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = run.mark_spawn_failed(&error);
+        return Err(error);
+    }
     run.mark_spawned(child.id())?;
 
     let record = run.record.clone();
@@ -569,18 +564,8 @@ pub(crate) fn exec_fin_logged(
     command: &BackendCommand,
     capture_output: bool,
 ) -> Result<RunOutcome, String> {
-    if let Some(lock) = FinLock::try_existing(orqa, fin)? {
-        if lock.is_live() {
-            return Err(format!(
-                "fin {} is already running as pid {}",
-                fin.label(),
-                lock.pid
-            ));
-        }
-        lock.remove()?;
-    }
-
     ensure_runtime_homes(orqa, fin)?;
+    let mut lock = FinLock::claim(orqa, fin, "exec", &command.command)?;
     let run = RunFiles::create(
         orqa,
         fin,
@@ -599,7 +584,12 @@ pub(crate) fn exec_fin_logged(
                 let _ = run.mark_spawn_failed(&error.to_string());
                 format!("failed to run {:?}: {error}", command.command)
             })?;
-        let lock = write_child_lock(orqa, fin, &mut child, &command.command, &run)?;
+        if let Err(error) = lock.mark_running(child.id(), &run.record.id, &command.command) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = run.mark_spawn_failed(&error);
+            return Err(error);
+        }
         run.mark_spawned(child.id())?;
         let output = child
             .wait_with_output()
@@ -625,7 +615,12 @@ pub(crate) fn exec_fin_logged(
                 let _ = run.mark_spawn_failed(&error.to_string());
                 format!("failed to spawn {:?}: {error}", command.command)
             })?;
-        let lock = write_child_lock(orqa, fin, &mut child, &command.command, &run)?;
+        if let Err(error) = lock.mark_running(child.id(), &run.record.id, &command.command) {
+            let _ = child.kill();
+            let _ = child.wait();
+            let _ = run.mark_spawn_failed(&error);
+            return Err(error);
+        }
         run.mark_spawned(child.id())?;
         let status = child
             .wait()
@@ -652,18 +647,8 @@ pub(crate) struct RunOutcome {
 }
 
 fn fin_chat_interactive(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> Result<(), String> {
-    if let Some(lock) = FinLock::try_existing(orqa, fin)? {
-        if lock.is_live() {
-            return Err(format!(
-                "fin {} is already running as pid {}",
-                fin.label(),
-                lock.pid
-            ));
-        }
-        lock.remove()?;
-    }
-
     ensure_runtime_homes(orqa, fin)?;
+    let mut lock = FinLock::claim(orqa, fin, "chat", &command.command)?;
     let run = RunFiles::create(
         orqa,
         fin,
@@ -679,7 +664,12 @@ fn fin_chat_interactive(orqa: &Orqa, fin: &FinRef, command: &BackendCommand) -> 
             command.command
         )
     })?;
-    let lock = write_child_lock(orqa, fin, &mut child, &command.command, &run)?;
+    if let Err(error) = lock.mark_running(child.id(), &run.record.id, &command.command) {
+        let _ = child.kill();
+        let _ = child.wait();
+        let _ = run.mark_spawn_failed(&error);
+        return Err(error);
+    }
     run.mark_spawned(child.id())?;
     let status = child
         .wait()
@@ -737,27 +727,12 @@ fn child_path_with_orqa_bin() -> Option<OsString> {
     env::join_paths(paths).ok()
 }
 
-fn write_child_lock(
-    orqa: &Orqa,
-    fin: &FinRef,
-    child: &mut std::process::Child,
-    command: &OsString,
-    run: &RunFiles,
-) -> Result<FinLock, String> {
-    match FinLock::write(orqa, fin, child.id(), command) {
-        Ok(lock) => Ok(lock),
-        Err(error) => {
-            let _ = child.kill();
-            let _ = child.wait();
-            let _ = run.mark_spawn_failed(&error);
-            Err(error)
-        }
-    }
-}
-
+#[derive(Debug)]
 pub(crate) struct FinLock {
     path: PathBuf,
     pid: u32,
+    token: String,
+    owned: bool,
 }
 
 impl FinLock {
@@ -771,11 +746,17 @@ impl FinLock {
             .map_err(|error| format!("failed to read lock {}: {error}", path.display()))?;
         let pid = lock_pid(&contents)
             .ok_or_else(|| format!("lock {} does not contain a valid pid", path.display()))?;
+        let token = lock_field(&contents, "token").unwrap_or_default();
 
-        Ok(Some(Self { path, pid }))
+        Ok(Some(Self {
+            path,
+            pid,
+            token,
+            owned: false,
+        }))
     }
 
-    fn write(orqa: &Orqa, fin: &FinRef, pid: u32, command: &OsString) -> Result<Self, String> {
+    fn claim(orqa: &Orqa, fin: &FinRef, owner: &str, command: &OsString) -> Result<Self, String> {
         let path = orqa.lock_path(fin)?;
         let parent = path
             .parent()
@@ -787,51 +768,99 @@ impl FinLock {
             )
         })?;
 
-        let contents = format!(
-            "pid={pid}\npod={}\nfin={}\ncommand={:?}\n",
-            fin.pod, fin.fin, command
-        );
-
-        // Atomic lock acquisition: create_new(true) fails if the file already exists.
-        // This closes the TOCTOU window between try_existing and write.
-        let mut file = fs::OpenOptions::new()
-            .create_new(true)
-            .write(true)
-            .open(&path)
-            .map_err(|error| {
-                if error.kind() == std::io::ErrorKind::AlreadyExists {
-                    format!(
-                        "fin {} lock was acquired by another process (race)",
-                        fin.label()
-                    )
-                } else {
-                    format!("failed to create lock {}: {error}", path.display())
+        for _ in 0..8 {
+            if let Some(lock) = Self::try_existing(orqa, fin)? {
+                if lock.is_live() {
+                    return Err(format!(
+                        "fin {} is already starting or running as pid {}",
+                        fin.label(),
+                        lock.pid
+                    ));
                 }
+                lock.remove_stale()?;
+            }
+
+            let pid = std::process::id();
+            let token = lock_token(pid);
+            let contents = lock_contents(&[
+                ("state", "claimed".to_string()),
+                ("pid", pid.to_string()),
+                ("owner", owner.to_string()),
+                ("pod", fin.pod.clone()),
+                ("fin", fin.fin.clone()),
+                ("command", format!("{command:?}")),
+                ("token", token.clone()),
+            ]);
+
+            let mut file = match fs::OpenOptions::new()
+                .create_new(true)
+                .write(true)
+                .open(&path)
+            {
+                Ok(file) => file,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+                Err(error) => {
+                    return Err(format!("failed to create lock {}: {error}", path.display()));
+                }
+            };
+
+            use std::io::Write;
+            file.write_all(contents.as_bytes())
+                .map_err(|error| format!("failed to write lock {}: {error}", path.display()))?;
+            let _ = file.sync_all();
+
+            let written = fs::read_to_string(&path).map_err(|error| {
+                format!(
+                    "failed to verify lock we just wrote {}: {error}",
+                    path.display()
+                )
             })?;
+            if lock_field(&written, "token").as_deref() != Some(token.as_str()) {
+                let _ = fs::remove_file(&path);
+                return Err(format!(
+                    "lock verification failed for {} after claim (race or corruption)",
+                    fin.label()
+                ));
+            }
 
-        use std::io::Write;
-        file.write_all(contents.as_bytes())
-            .map_err(|error| format!("failed to write lock {}: {error}", path.display()))?;
-        // Best-effort fsync for durability
-        let _ = file.sync_all();
+            return Ok(Self {
+                path,
+                pid,
+                token,
+                owned: true,
+            });
+        }
 
-        // Post-write owner verification: re-read the lock we just created to confirm we own it.
-        // This catches certain replace/rename races on some filesystems.
-        let written = fs::read_to_string(&path).map_err(|e| {
-            format!(
-                "failed to verify lock we just wrote {}: {e}",
-                path.display()
-            )
-        })?;
-        if !written.contains(&format!("pid={pid}")) {
-            let _ = fs::remove_file(&path);
+        Err(format!(
+            "fin {} lock was acquired by another process (race)",
+            fin.label()
+        ))
+    }
+
+    fn mark_running(
+        &mut self,
+        child_pid: u32,
+        run_id: &str,
+        command: &OsString,
+    ) -> Result<(), String> {
+        if !self.is_owned()? {
             return Err(format!(
-                "lock verification failed for {} after write (race or corruption)",
-                fin.label()
+                "lock {} is no longer owned by this process",
+                self.path.display()
             ));
         }
 
-        Ok(Self { path, pid })
+        let contents = lock_contents(&[
+            ("state", "running".to_string()),
+            ("pid", child_pid.to_string()),
+            ("claimed_pid", std::process::id().to_string()),
+            ("run_id", run_id.to_string()),
+            ("command", format!("{command:?}")),
+            ("token", self.token.clone()),
+        ]);
+        write_lock_file_atomic(&self.path, &self.token, &contents)?;
+        self.pid = child_pid;
+        Ok(())
     }
 
     pub(crate) fn pid(&self) -> u32 {
@@ -842,7 +871,7 @@ impl FinLock {
         process_is_alive(self.pid)
     }
 
-    pub(crate) fn remove(&self) -> Result<(), String> {
+    fn remove_stale(&self) -> Result<(), String> {
         if self.path.exists() {
             fs::remove_file(&self.path).map_err(|error| {
                 format!("failed to remove lock {}: {error}", self.path.display())
@@ -852,8 +881,39 @@ impl FinLock {
         Ok(())
     }
 
-    pub(crate) fn release(self) {
-        let _ = self.remove();
+    pub(crate) fn release(mut self) {
+        if self.owned {
+            let _ = self.release_if_owned();
+            self.owned = false;
+        }
+    }
+
+    fn release_if_owned(&self) -> Result<(), String> {
+        if self.is_owned()? && self.path.exists() {
+            fs::remove_file(&self.path).map_err(|error| {
+                format!("failed to remove lock {}: {error}", self.path.display())
+            })?;
+        }
+        Ok(())
+    }
+
+    fn is_owned(&self) -> Result<bool, String> {
+        match fs::read_to_string(&self.path) {
+            Ok(contents) => Ok(lock_field(&contents, "token").as_deref() == Some(&self.token)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(false),
+            Err(error) => Err(format!(
+                "failed to read lock {}: {error}",
+                self.path.display()
+            )),
+        }
+    }
+}
+
+impl Drop for FinLock {
+    fn drop(&mut self) {
+        if self.owned {
+            let _ = self.release_if_owned();
+        }
     }
 }
 
@@ -861,6 +921,64 @@ pub(crate) fn lock_pid(contents: &str) -> Option<u32> {
     contents
         .lines()
         .find_map(|line| line.strip_prefix("pid=")?.parse::<u32>().ok())
+}
+
+fn lock_field(contents: &str, key: &str) -> Option<String> {
+    let prefix = format!("{key}=");
+    contents
+        .lines()
+        .find_map(|line| line.strip_prefix(&prefix).map(ToOwned::to_owned))
+}
+
+fn lock_contents(fields: &[(&str, String)]) -> String {
+    let mut contents = String::new();
+    for (key, value) in fields {
+        contents.push_str(key);
+        contents.push('=');
+        contents.push_str(value);
+        contents.push('\n');
+    }
+    contents
+}
+
+fn lock_token(pid: u32) -> String {
+    let nanos = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    format!("{pid}-{nanos}")
+}
+
+fn write_lock_file_atomic(
+    path: &std::path::Path,
+    token: &str,
+    contents: &str,
+) -> Result<(), String> {
+    let tmp_path = path.with_file_name(format!("run.lock.tmp.{token}"));
+    {
+        let mut file = fs::OpenOptions::new()
+            .create_new(true)
+            .write(true)
+            .open(&tmp_path)
+            .map_err(|error| {
+                format!(
+                    "failed to create temporary lock {}: {error}",
+                    tmp_path.display()
+                )
+            })?;
+        use std::io::Write;
+        file.write_all(contents.as_bytes()).map_err(|error| {
+            format!(
+                "failed to write temporary lock {}: {error}",
+                tmp_path.display()
+            )
+        })?;
+        let _ = file.sync_all();
+    }
+    fs::rename(&tmp_path, path).map_err(|error| {
+        let _ = fs::remove_file(&tmp_path);
+        format!("failed to update lock {}: {error}", path.display())
+    })
 }
 
 #[cfg(unix)]
@@ -878,3 +996,7 @@ pub(crate) fn process_is_alive(pid: u32) -> bool {
 pub(crate) fn process_is_alive(_pid: u32) -> bool {
     false
 }
+
+#[cfg(test)]
+#[path = "runtime_test.rs"]
+mod tests;

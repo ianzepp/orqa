@@ -515,9 +515,12 @@ Direct fin runs and loop-launched runs use a per-fin lock file:
 <pod-root>/.orqa/fins/<fin>/run.lock
 ```
 
-The lock records the child process PID. While that PID is alive, later wake
-scans skip the fin. If the PID is gone, Orqa removes the stale lock and the fin
-can run again.
+The lock is acquired before backend execution starts, so multiple terminals can
+scan the same pod concurrently without starting the same fin twice. A new lock
+starts as `state=claimed` with the launching process PID, then becomes
+`state=running` with the child process PID and run id after the backend process
+spawns. While the recorded PID is alive, later wake scans skip the fin. If the
+PID is gone, Orqa removes the stale lock and the fin can run again.
 
 ## Useful Agent Routine
 
