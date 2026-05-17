@@ -67,7 +67,7 @@ Use tasks for durable work assignments.
 - List open tasks: `orqa task list`
 - Read a task: `orqa task read <task-id>`
 - Mark a task done: `orqa task done <task-id>`
-- Create a task: `orqa task send --to <fin> --title <title> <body>`
+- Create a task: `orqa task send --to <fin> --title <title> -- <body>`
 - Filter tasks: `orqa task list --status open --priority high`
 
 Task bodies are Markdown with YAML front matter. Keep task titles short and

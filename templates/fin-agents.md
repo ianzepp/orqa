@@ -12,7 +12,10 @@ status, and fin discovery.
 
 ## Operating Notes
 
-- Check mail and tasks before starting new work.
+- Your `ROLE.md` is the primary source for what you should do when woken.
+- Check mail and tasks before starting new role-directed work.
+- If your queues are empty, continue with useful work implied by your role and
+  the pod charter instead of assuming there is nothing to do.
 - Use pod-local mail to coordinate with other fins.
 - Use tasks for durable requests that another fin should complete.
 - Keep this file updated when this fin's role becomes clearer.
