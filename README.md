@@ -73,7 +73,9 @@ my-project/
         fin.toml
         .codex/       # Codex state
         .hermes/      # Hermes state
-        .pi/          # Pi config and sessions
+        .pi/
+          agent/
+          sessions/
         mail/
           cur/
           new/
@@ -90,6 +92,8 @@ my-project/
         .codex/
         .hermes/
         .pi/
+          agent/
+          sessions/
         mail/
           cur/
           new/
@@ -102,6 +106,116 @@ my-project/
 
 Pods and fins are referenced by slug. Slugs may contain lowercase letters,
 digits, and hyphens.
+
+## Filesystem Architecture
+
+Orqa has one global home and many pod roots.
+
+The global home is selected by `--home`, then `ORQA_HOME`, then `~/.orqa`.
+It stores the pod registry and reusable pod templates:
+
+```text
+~/.orqa/
+  config.toml
+  templates/
+    executive/
+      fins/
+        ceo/
+          ROLE.md
+        cto/
+          ROLE.md
+```
+
+The registry is the global map from pod slug to real project directory:
+
+```toml
+[registry]
+version = 1
+
+[pods.sample-pod]
+path = "/Users/me/work/sample-pod"
+enabled = true
+```
+
+Each pod root is an ordinary project directory with local Orqa state under
+`.orqa/`. The pod root itself is where backend agents run and edit files.
+
+```text
+my-project/
+  .orqa/
+    AGENTS.md
+    CHARTER.md
+    pod.txt
+    pod.toml
+    sleep.lock             # optional pod pause marker
+    hooks/
+      pre-plan/
+        10-sync.toml
+        10-sync.sh
+      state/
+        10-sync/
+    fins/
+      operator/
+        AGENTS.md
+        ROLE.md
+        fin.txt
+        fin.toml
+        sleep.lock         # operator is seeded paused
+        mail/
+          cur/
+          new/
+          tmp/
+        tasks/
+          cur/
+          new/
+          tmp/
+        runs/
+      planner/
+        AGENTS.md
+        ROLE.md
+        fin.txt
+        fin.toml
+        sleep.lock         # optional fin pause marker
+        run.lock           # present while a fin process is considered running
+        latest-run         # latest run id pointer
+        runs.jsonl         # append-only finished/spawn-failed run ledger
+        .codex/
+          auth.json        # symlinked from user auth when available
+        .grok/
+          auth.json        # symlinked from user auth when available
+        .hermes/
+        .pi/
+          agent/
+          sessions/
+        mail/
+          cur/
+          new/
+          tmp/
+        tasks/
+          cur/
+          new/
+          tmp/
+        runs/
+          <run-id>/
+            command.txt
+            events.jsonl
+            status.json
+            stdout.log
+            stderr.log
+```
+
+`pod create` and `init` create the pod root state, seed the local `operator`
+fin, register the pod in global config, and add `/.orqa` to the project
+`.gitignore` when needed. `fin create` creates a runtime-ready fin under
+`.orqa/fins/<fin>/`. `template create` only creates reusable template files in
+the global home; template fins do not get runtime homes, maildirs, tasks, or run
+state until a real pod is created with `pod create --template`.
+
+Pod context resolution uses this order: explicit `--pod`, then `ORQA_POD`, then
+the nearest ancestor containing `.orqa/pod.toml`. Registered pods use
+`~/.orqa/config.toml`; local filesystem detection currently derives the detected
+slug from the pod root directory name, so app code that needs the canonical
+registry slug should prefer the registry when available.
 
 ## Configuration
 
