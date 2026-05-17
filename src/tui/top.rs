@@ -273,9 +273,9 @@ fn render_top(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnapsh
 
     render_header(frame, vertical[0], theme, snapshot, orqa);
     render_summary(frame, vertical[1], theme, snapshot);
-    render_section_label(frame, vertical[2], theme, "fins");
+    render_blank(frame, vertical[2]);
     render_fins(frame, vertical[3], theme, snapshot);
-    render_section_label(frame, vertical[4], theme, "pods");
+    render_blank(frame, vertical[4]);
     render_pods(frame, vertical[5], theme, snapshot);
     render_footer(frame, vertical[6], theme);
 }
@@ -340,24 +340,13 @@ fn render_summary(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSn
     frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
-fn render_section_label(frame: &mut Frame, area: Rect, theme: &Theme, label: &'static str) {
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::raw(" "),
-            Span::styled(
-                label,
-                Style::default()
-                    .fg(theme.accent)
-                    .add_modifier(Modifier::BOLD),
-            ),
-        ])),
-        area,
-    );
+fn render_blank(frame: &mut Frame, area: Rect) {
+    frame.render_widget(Paragraph::new(""), area);
 }
 
 fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnapshot) {
     let rows: Vec<Row<'_>> = if snapshot.fins.is_empty() {
-        vec![Row::new(vec![Cell::from("No fins registered")])]
+        vec![Row::new(vec![padded_cell("No fins registered")])]
     } else {
         snapshot
             .fins
@@ -383,15 +372,15 @@ fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
                 };
 
                 Row::new(vec![
-                    Cell::from(fin.pod.clone()),
-                    Cell::from(fin.fin.clone()),
-                    Cell::from(status),
-                    Cell::from(format_duration(fin.duration_secs)),
-                    Cell::from(fin.pid.map_or("-".to_string(), |pid| pid.to_string())),
-                    Cell::from(format_bytes(fin.stdout_bytes)),
-                    Cell::from(format_bytes(fin.stderr_bytes)),
-                    Cell::from(fin.unread_mail.to_string()),
-                    Cell::from(fin.open_tasks.to_string()),
+                    padded_cell(fin.pod.clone()),
+                    padded_cell(fin.fin.clone()),
+                    padded_cell(status),
+                    padded_cell(format_duration(fin.duration_secs)),
+                    padded_cell(fin.pid.map_or("-".to_string(), |pid| pid.to_string())),
+                    padded_cell(format_bytes(fin.stdout_bytes)),
+                    padded_cell(format_bytes(fin.stderr_bytes)),
+                    padded_cell(fin.unread_mail.to_string()),
+                    padded_cell(fin.open_tasks.to_string()),
                 ])
                 .style(style)
             })
@@ -401,15 +390,15 @@ fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
     let table = Table::new(
         rows,
         [
-            Constraint::Length(14),
-            Constraint::Length(14),
+            Constraint::Length(16),
+            Constraint::Length(16),
+            Constraint::Length(12),
             Constraint::Length(10),
+            Constraint::Length(10),
+            Constraint::Length(12),
+            Constraint::Length(12),
             Constraint::Length(8),
-            Constraint::Length(8),
-            Constraint::Length(10),
-            Constraint::Length(10),
-            Constraint::Length(6),
-            Constraint::Length(7),
+            Constraint::Length(9),
         ],
     )
     .header(header_row(
@@ -424,7 +413,7 @@ fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
 
 fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnapshot) {
     let rows: Vec<Row<'_>> = if snapshot.pods.is_empty() {
-        vec![Row::new(vec![Cell::from("No pods registered")])]
+        vec![Row::new(vec![padded_cell("No pods registered")])]
     } else {
         snapshot
             .pods
@@ -432,9 +421,9 @@ fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
             .map(|pod| {
                 if let Some(error) = &pod.error {
                     return Row::new(vec![
-                        Cell::from(pod.pod.clone()),
-                        Cell::from("error"),
-                        Cell::from(error.clone()),
+                        padded_cell(pod.pod.clone()),
+                        padded_cell("error"),
+                        padded_cell(error.clone()),
                     ])
                     .style(Style::default().fg(theme.error));
                 }
@@ -458,14 +447,14 @@ fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
                     Style::default().fg(theme.text)
                 };
                 Row::new(vec![
-                    Cell::from(pod.pod.clone()),
-                    Cell::from(status),
-                    Cell::from(pod.fins.to_string()),
-                    Cell::from(pod.running.to_string()),
-                    Cell::from(pod.paused.to_string()),
-                    Cell::from(pod.wakeable.to_string()),
-                    Cell::from(pod.unread_mail.to_string()),
-                    Cell::from(pod.open_tasks.to_string()),
+                    padded_cell(pod.pod.clone()),
+                    padded_cell(status),
+                    padded_cell(pod.fins.to_string()),
+                    padded_cell(pod.running.to_string()),
+                    padded_cell(pod.paused.to_string()),
+                    padded_cell(pod.wakeable.to_string()),
+                    padded_cell(pod.unread_mail.to_string()),
+                    padded_cell(pod.open_tasks.to_string()),
                 ])
                 .style(style)
             })
@@ -475,14 +464,14 @@ fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
     let table = Table::new(
         rows,
         [
-            Constraint::Length(16),
-            Constraint::Length(10),
-            Constraint::Length(6),
+            Constraint::Length(18),
+            Constraint::Length(12),
             Constraint::Length(8),
+            Constraint::Length(10),
+            Constraint::Length(10),
+            Constraint::Length(11),
             Constraint::Length(8),
             Constraint::Length(9),
-            Constraint::Length(6),
-            Constraint::Length(7),
         ],
     )
     .header(header_row(
@@ -509,12 +498,16 @@ fn render_footer(frame: &mut Frame, area: Rect, theme: &Theme) {
 }
 
 fn header_row<const N: usize>(labels: [&'static str; N], theme: &Theme) -> Row<'static> {
-    Row::new(labels.map(Cell::from)).style(
+    Row::new(labels.map(padded_cell)).style(
         Style::default()
             .fg(theme.text)
             .bg(theme.bar_bg)
             .add_modifier(Modifier::BOLD),
     )
+}
+
+fn padded_cell(value: impl Into<String>) -> Cell<'static> {
+    Cell::from(format!(" {} ", value.into()))
 }
 
 fn metric(
