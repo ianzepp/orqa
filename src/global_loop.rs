@@ -5,7 +5,7 @@ use crate::{
     runtime::{wake_pod, wake_pod_quiet},
 };
 
-pub(crate) const DEFAULT_GLOBAL_LOOP_INTERVAL: u64 = 60;
+pub(crate) const DEFAULT_GLOBAL_LOOP_INTERVAL: u64 = 10;
 pub(crate) const DEFAULT_GLOBAL_LOOP_PROMPT: &str = "handle your open Orqa mail and tasks";
 
 pub(crate) fn wake_all_pods(

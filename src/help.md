@@ -523,7 +523,7 @@ orqa top
 or the plain daemon-style loop:
 
 ```sh
-orqa daemon --interval 60 -- "handle your open Orqa mail and tasks"
+orqa daemon --interval 10 -- "handle your open Orqa mail and tasks"
 ```
 
 `orqa top` wakes all enabled pods on its loop tick, shows global pod/fin state,

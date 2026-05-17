@@ -55,13 +55,13 @@ fn top_status_symbols_are_compact() {
 fn top_next_loop_label_counts_down_from_last_wake() {
     let now = Instant::now();
 
-    assert_eq!(next_loop_label(now, now), "next: 60s");
+    assert_eq!(next_loop_label(now, now), "next: 10s");
     assert_eq!(
-        next_loop_label(now, now + Duration::from_secs(18)),
-        "next: 42s"
+        next_loop_label(now, now + Duration::from_secs(4)),
+        "next: 6s"
     );
     assert_eq!(
-        next_loop_label(now, now + Duration::from_secs(61)),
+        next_loop_label(now, now + Duration::from_secs(11)),
         "next: 0s"
     );
 }

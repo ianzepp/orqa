@@ -421,7 +421,8 @@ fn render_header(
             Style::default().fg(theme.muted),
         ),
     ];
-    let right = "loop 60s  up/down select  p pause  w wake  q quit";
+    let right =
+        format!("loop {DEFAULT_GLOBAL_LOOP_INTERVAL}s  up/down select  p pause  w wake  q quit");
     let spacer = area
         .width
         .saturating_sub(line_width(&left) as u16)
