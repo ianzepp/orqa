@@ -156,7 +156,10 @@ fn handle_key(app: &mut App, key: KeyEvent) -> LoopAction {
         return LoopAction::Continue;
     }
     if app.show_help {
-        if matches!(key.code, KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?')) {
+        if matches!(
+            key.code,
+            KeyCode::Esc | KeyCode::Char('q') | KeyCode::Char('?')
+        ) {
             app.show_help = false;
         }
         return LoopAction::Continue;

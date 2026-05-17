@@ -40,7 +40,22 @@ fn list_template_fins(orqa: &Orqa, template: &str) -> Result<(), String> {
     validate_slug(template)?;
     let template_dir = template_home(orqa, template);
     let fins_dir = template_fins_dir(&template_dir)?;
-    super::print_dirs(&fins_dir)
+
+    let names = super::list_dirs(&fins_dir)?;
+    if names.is_empty() {
+        println!("No fins defined in template '{}'.", template);
+        println!();
+        println!(
+            "Add one with: orqa template fin create {} <fin> --role <prompt|@file|->",
+            template
+        );
+        return Ok(());
+    }
+
+    for name in names {
+        println!("{name}");
+    }
+    Ok(())
 }
 
 fn create_template_fin(
@@ -99,7 +114,19 @@ fn list_templates(orqa: &Orqa) -> Result<(), String> {
             templates_dir.display()
         )
     })?;
-    super::print_dirs(&templates_dir)
+
+    let names = super::list_dirs(&templates_dir)?;
+    if names.is_empty() {
+        println!("No templates found.");
+        println!();
+        println!("Create one with: orqa template create <name>");
+        return Ok(());
+    }
+
+    for name in names {
+        println!("{name}");
+    }
+    Ok(())
 }
 
 fn templates_home(orqa: &Orqa) -> PathBuf {

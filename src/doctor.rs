@@ -10,8 +10,9 @@ use std::{
 use crate::{
     cli::{CommandContext, PodDoctorArgs},
     commands::list_dirs,
-    model::{FinRef, Orqa, PodRef},
+    model::{FinRef, Orqa, PodRef, load_registry},
     runtime::resolve_exec_command,
+    status::pod_status,
 };
 
 pub(crate) fn pod_doctor(
@@ -26,10 +27,34 @@ pub(crate) fn pod_doctor(
     let (slug, _) = context.resolve_pod(None, orqa)?;
     let pod = PodRef::new(&slug)?;
     orqa.ensure_pod_exists(&pod)?;
-    let mut ok = true;
 
+    // --- Nice human header ---
+    println!(
+        "{}",
+        format!("orqa pod doctor — {}", pod.slug).bold().cyan()
+    );
     let pod_root = orqa.pod_root_for_slug(&pod.slug)?;
+    println!("{} {}", "root:".dimmed(), pod_root.display());
+
     let pod_data = orqa.pod_data_home(&pod)?;
+    let pod_paused = pod_data.join("sleep.lock").exists();
+    if pod_paused {
+        println!("{}", "pod is PAUSED (sleep.lock present)".yellow().bold());
+    }
+
+    // Operator mail count (very useful signal)
+    let operator_mail = count_operator_mail(orqa, &pod.slug);
+    println!(
+        "{} {}",
+        "operator mail (unread):".dimmed(),
+        if operator_mail > 0 {
+            operator_mail.to_string().yellow().bold()
+        } else {
+            operator_mail.to_string().green()
+        }
+    );
+
+    let mut ok = true;
 
     check_path("pod root", &pod_root, &mut ok);
     check_path("pod config", &pod_data.join("pod.toml"), &mut ok);
@@ -79,6 +104,11 @@ fn doctor_fin(orqa: &Orqa, fin: &FinRef, prompt: &str, timeout: u64) -> Result<b
     check_path("fin config", &fin_home.join("fin.toml"), &mut ok);
     check_path("fin role", &fin_home.join("ROLE.md"), &mut ok);
     check_path("fin agents", &fin_home.join("AGENTS.md"), &mut ok);
+
+    // Role length (rough signal of instruction quality)
+    if let Ok(role) = std::fs::read_to_string(fin_home.join("ROLE.md")) {
+        println!("    {} chars in ROLE.md", role.len().to_string().dimmed());
+    }
 
     for path in [
         fin_home.join("mail").join("cur"),
@@ -236,4 +266,102 @@ fn child_path_with_orqa_bin() -> Option<OsString> {
 fn quote(value: &str) -> String {
     let escaped = value.replace('\\', "\\\\").replace('"', "\\\"");
     format!("\"{escaped}\"")
+}
+
+fn count_operator_mail(orqa: &Orqa, pod_slug: &str) -> usize {
+    if let Ok(op_fin) = FinRef::new(pod_slug, "operator") {
+        if let Ok(home) = orqa.fin_data_home(&op_fin) {
+            return unread_count(&home.join("mail")).unwrap_or(0);
+        }
+    }
+    0
+}
+
+// ============================================================================
+// Global Doctor (top-level `orqa doctor`)
+// ============================================================================
+
+use colored::Colorize;
+
+use crate::mailbox::unread_count;
+
+pub(crate) fn global_doctor(orqa: &Orqa) -> Result<(), String> {
+    println!("{}", "orqa doctor".bold().cyan());
+    println!("{} {}", "orqa home:".dimmed(), orqa.home.display());
+
+    let registry = load_registry(orqa)?;
+    let enabled_pods: Vec<_> = registry
+        .values()
+        .filter(|reg| reg.enabled)
+        .map(|reg| reg.slug.clone())
+        .collect();
+
+    if enabled_pods.is_empty() {
+        println!();
+        println!("{}", "No pods are registered.".yellow());
+        println!("Run {} to create your first pod.", "`orqa init`".green());
+        return Ok(());
+    }
+
+    println!();
+    println!("{} ({})", "Pods".bold(), enabled_pods.len());
+
+    let mut total_fins = 0usize;
+    let mut total_running = 0usize;
+    let mut total_paused = 0usize;
+    let mut total_wakeable = 0usize;
+
+    for slug in &enabled_pods {
+        let pod = PodRef::new(slug)?;
+        let status = pod_status(orqa, &pod)?;
+
+        total_fins += status.fin_count;
+        total_running += status.running;
+        total_wakeable += status.wakeable;
+
+        let pod_paused = status.sleeping;
+        let fin_paused = status.fins.iter().filter(|f| f.sleeping).count();
+        let paused = if pod_paused { 1 } else { 0 } + fin_paused;
+        total_paused += paused;
+
+        let pod_label = if pod_paused {
+            status.pod.bold().yellow()
+        } else if status.running > 0 {
+            status.pod.bold().green()
+        } else if status.wakeable > 0 {
+            status.pod.bold().cyan()
+        } else {
+            status.pod.bold()
+        };
+
+        println!(
+            "  {}  {} fins  {} running  {} paused  {} wakeable  mail={} tasks={}",
+            pod_label,
+            status.fin_count,
+            status.running.to_string().green(),
+            paused.to_string().yellow(),
+            status.wakeable,
+            status.unread_mail,
+            status.open_tasks,
+        );
+    }
+
+    println!();
+    println!(
+        "{} {} pods, {} fins, {} running, {} paused, {} wakeable",
+        "Summary:".bold(),
+        enabled_pods.len(),
+        total_fins,
+        total_running.to_string().green(),
+        total_paused.to_string().yellow(),
+        total_wakeable
+    );
+
+    println!();
+    println!(
+        "Run {} for a deep health check on one pod.",
+        "`orqa pod doctor`".cyan()
+    );
+
+    Ok(())
 }

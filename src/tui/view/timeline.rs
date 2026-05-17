@@ -83,15 +83,10 @@ fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {
                                 if text.trim().is_empty() {
                                     continue;
                                 }
-                                let content_width = usize::from(width)
-                                    .saturating_sub(prefix_width)
-                                    .max(1);
-                                let md = render_markdown(
-                                    &text,
-                                    content_width,
-                                    fg(color),
-                                    &app.theme,
-                                );
+                                let content_width =
+                                    usize::from(width).saturating_sub(prefix_width).max(1);
+                                let md =
+                                    render_markdown(&text, content_width, fg(color), &app.theme);
                                 out_lines.extend(prefixed_lines(prefix.clone(), prefix_width, md));
                             }
                         }
@@ -100,8 +95,8 @@ fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {
                 } else {
                     // Fallback for non-Grok stdout or parse failure: old behavior.
                     let content_width = usize::from(width).saturating_sub(prefix_width).max(1);
-                    let rendered_line = grok_streaming_json_to_markdown(line)
-                        .unwrap_or_else(|| line.to_string());
+                    let rendered_line =
+                        grok_streaming_json_to_markdown(line).unwrap_or_else(|| line.to_string());
                     if rendered_line.trim().is_empty() {
                         return Vec::new();
                     }
@@ -193,12 +188,7 @@ fn fin_tag_width(fin: &str) -> usize {
 /// First line gets `* {fin} thought: ` (per the current simple convention).
 /// Continuation lines are indented only (no repeated marker) so wrapped
 /// thoughts don't look like IRC spam.
-fn render_grok_thought(
-    fin: &str,
-    text: &str,
-    width: u16,
-    app: &App,
-) -> Vec<Line<'static>> {
+fn render_grok_thought(fin: &str, text: &str, width: u16, app: &App) -> Vec<Line<'static>> {
     let trimmed = text.trim();
     if trimmed.is_empty() {
         return vec![];

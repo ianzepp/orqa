@@ -10,10 +10,12 @@ pub mod events;
 pub mod loopctl;
 pub mod run;
 pub mod theme;
+pub mod top;
 mod view;
 pub mod watcher;
 
 pub use run::run_tui;
+pub use top::run_top;
 
 #[allow(unused_imports)]
 pub use watcher::PodWatcher;

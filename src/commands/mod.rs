@@ -32,7 +32,7 @@ use crate::{
     model::{FinRef, Orqa, PodRef},
     report::ops_report,
     runs::tail_pod,
-    status::{pod_status, print_json, print_pod_list_status, print_pod_status},
+    status::{pod_status, print_json, print_pod_status},
 };
 
 pub(crate) fn pod(
@@ -485,51 +485,4 @@ pub(crate) fn ops(orqa: &Orqa, command: OpsCommand) -> Result<(), String> {
     match command.command {
         OpsSubcommand::Report(args) => ops_report(orqa, args),
     }
-}
-
-pub(crate) fn overview(orqa: &Orqa) -> Result<(), String> {
-    println!("orqa — {}", orqa.home.display());
-
-    // Pods and wake signals
-    let pods = crate::model::load_registry(orqa)?;
-
-    if pods.is_empty() {
-        println!("pods: none");
-        println!();
-        println!("Create your first pod with: orqa init <slug>");
-        println!("Run `orqa --help` for a list of commands.");
-        return Ok(());
-    }
-
-    let mut total_fins = 0usize;
-    let mut total_wakeable = 0usize;
-    let mut _total_running = 0usize;
-    let mut total_mail = 0usize;
-    let mut total_tasks = 0usize;
-
-    println!("pods:");
-    for pod_name in pods.keys() {
-        let pod = PodRef::new(pod_name)?;
-        let status = pod_status(orqa, &pod)?;
-        total_fins += status.fin_count;
-        total_wakeable += status.wakeable;
-        _total_running += status.running;
-        total_mail += status.unread_mail;
-        total_tasks += status.open_tasks;
-        print_pod_list_status(&status);
-    }
-
-    println!();
-    println!(
-        "totals: {} pods, {} fins, {} wakeable, {} unread mail, {} open tasks",
-        pods.len(),
-        total_fins,
-        total_wakeable,
-        total_mail,
-        total_tasks
-    );
-    println!();
-    println!("Run `orqa --help` for commands. Run `orqa guide` for the operational guide.");
-
-    Ok(())
 }

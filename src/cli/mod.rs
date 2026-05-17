@@ -91,7 +91,12 @@ impl CommandContext {
 #[derive(Debug, Subcommand)]
 pub(crate) enum Command {
     /// Show runtime diagnostics.
+    ///
+    /// The top-level doctor gives a high-level colored overview of all pods.
+    /// For a deep health check on a specific pod, use `orqa pod doctor`.
     Doctor,
+    /// Live overview of currently running fins across all pods (like `top`).
+    Top,
     /// Print the operational guide.
     Guide,
     /// Initialize a pod in this directory.

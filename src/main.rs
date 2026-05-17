@@ -19,7 +19,7 @@ use clap::{Arg, ArgAction, Command as ClapCommand, CommandFactory, FromArgMatche
 
 #[allow(unused_imports)]
 use cli::{Cli, Command, CommandContext, InitArgs};
-use commands::{fin, loop_command, mail, ops, overview, pod, pod_init, task, template};
+use commands::{fin, loop_command, mail, ops, pod, pod_init, task, template};
 use model::Orqa;
 
 #[cfg(test)]
@@ -45,7 +45,8 @@ fn main() -> ExitCode {
     }
 
     let Some(command) = cli.command else {
-        // If we are inside a detectable pod root, launch the Operator Cockpit TUI.
+        // Bare `orqa` (no subcommand) is now the primary way to enter the TUI.
+        // It only makes sense inside a pod root.
         match context.resolve_pod(None, &orqa) {
             Ok((pod_slug, pod_root)) => {
                 if let Err(error) = crate::tui::run_tui(&pod_slug, &pod_root) {
@@ -55,12 +56,19 @@ fn main() -> ExitCode {
                 return ExitCode::SUCCESS;
             }
             Err(_) => {
-                // No pod detected; show global registered pod status.
-                if let Err(error) = overview(&orqa) {
-                    eprintln!("orqa: {error}");
-                    return ExitCode::FAILURE;
-                }
-                return ExitCode::SUCCESS;
+                // Running bare `orqa` outside any project should be a clear error,
+                // similar to `git` outside a repository.
+                let cwd = std::env::current_dir()
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| "<unknown>".to_string());
+
+                eprintln!("orqa: project is not initialized");
+                eprintln!();
+                eprintln!("  {}", cwd);
+                eprintln!();
+                eprintln!("Run `orqa init` to initialize a pod here.");
+                eprintln!("Run `orqa --help` for a full set of commands.");
+                return ExitCode::FAILURE;
             }
         }
     };
@@ -77,6 +85,7 @@ fn main() -> ExitCode {
 fn run(orqa: &Orqa, context: &CommandContext, command: Command) -> Result<(), String> {
     match command {
         Command::Doctor => doctor(orqa),
+        Command::Top => crate::tui::run_top(orqa),
         Command::Guide => {
             print_operational_help();
             Ok(())
@@ -94,9 +103,7 @@ fn run(orqa: &Orqa, context: &CommandContext, command: Command) -> Result<(), St
 }
 
 fn doctor(orqa: &Orqa) -> Result<(), String> {
-    println!("orqa is installed and ready.");
-    println!("orqa_home={}", orqa.home.display());
-    Ok(())
+    crate::doctor::global_doctor(orqa)
 }
 
 fn print_operational_help() {
