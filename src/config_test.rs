@@ -16,6 +16,7 @@ fn resolves_backend_command_from_pod_and_fin_config() {
     let root = temp_root();
     let orqa = Orqa::new(Some(root.clone()));
     let pod_home = register_test_pod(&root);
+    let pod_root = pod_home.parent().unwrap().to_path_buf();
     let fin = FinRef::new("test-pod", "amy").unwrap();
     let fin_home = orqa.fin_data_home(&fin).unwrap();
 
@@ -30,7 +31,7 @@ default_backend = "echo"
 [backends.echo]
 enabled = true
 command = "/bin/echo"
-exec_args = ["pod={pod}", "fin={fin}", "model={model}", "prompt={prompt}"]
+exec_args = ["pod={pod}", "pod_root={pod_root}", "pod_home={pod_home}", "fin={fin}", "model={model}", "prompt={prompt}"]
 chat_args = ["chat", "model={model}"]
 
 [backends.echo.defaults]
@@ -64,6 +65,8 @@ model = "fin-model"
         command.args,
         vec![
             OsString::from("pod=test-pod"),
+            OsString::from(format!("pod_root={}", pod_root.display())),
+            OsString::from(format!("pod_home={}", pod_home.display())),
             OsString::from("fin=amy"),
             OsString::from("model=fin-model"),
             OsString::from("prompt=hello world"),

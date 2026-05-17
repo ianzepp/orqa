@@ -278,13 +278,13 @@ exec_args = [
     "exec",
     "--skip-git-repo-check",
     "--sandbox", "workspace-write",
-    "--cd", "{pod_home}",
+    "--cd", "{pod_root}",
     "--model", "{model}",
     "{prompt}",
 ]
 chat_args = [
     "--sandbox", "workspace-write",
-    "--cd", "{pod_home}",
+    "--cd", "{pod_root}",
     "--model", "{model}",
 ]
 
@@ -323,7 +323,7 @@ accept plain seconds or units such as `30s`, `5m`, `3h`, or `1d`. Use
 only when there is work.
 
 Backend `exec_args` and `chat_args` are argv arrays, not shell strings.
-Template values include `{orqa_home}`, `{pod}`, `{pod_home}`, `{fin}`,
+Template values include `{orqa_home}`, `{pod}`, `{pod_root}`, `{pod_home}`, `{fin}`,
 `{fin_home}`, `{codex_home}`, `{mail_home}`, `{task_home}`, `{model}`, and
 `{prompt}`.
 

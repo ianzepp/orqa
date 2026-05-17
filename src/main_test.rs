@@ -409,9 +409,9 @@ fn pod_config_template_enables_builtin_backends() {
     assert!(toml.contains("command = \"codex\""));
     assert!(toml.contains("\"--skip-git-repo-check\""));
     assert!(toml.contains("\"--sandbox\", \"workspace-write\""));
-    assert!(toml.contains("\"--cd\", \"{pod_home}\""));
+    assert!(toml.contains("\"--cd\", \"{pod_root}\""));
     assert!(toml.contains(
-        "chat_args = [\n    \"--sandbox\", \"workspace-write\",\n    \"--cd\", \"{pod_home}\",\n    \"--model\", \"{model}\",\n]"
+        "chat_args = [\n    \"--sandbox\", \"workspace-write\",\n    \"--cd\", \"{pod_root}\",\n    \"--model\", \"{model}\",\n]"
     ));
     assert!(toml.contains("[backends.opencode]"));
     assert!(toml.contains("[backends.hermes]"));

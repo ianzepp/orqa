@@ -27,7 +27,7 @@ pub(crate) fn pod_config_template(pod: &PodRef) -> String {
 # Backend exec_args and chat_args are argv arrays, not shell strings. Supported
 # template values
 # include:
-#   {{orqa_home}}, {{pod}}, {{pod_home}}, {{fin}}, {{fin_home}}, {{home}},
+#   {{orqa_home}}, {{pod}}, {{pod_root}}, {{pod_home}}, {{fin}}, {{fin_home}}, {{home}},
 #   {{codex_home}}, {{grok_home}}, {{hermes_home}}, {{mail_home}}, {{task_home}},
 #   {{model}}, {{prompt}}
 
@@ -50,13 +50,13 @@ exec_args = [
     "exec",
     "--skip-git-repo-check",
     "--sandbox", "workspace-write",
-    "--cd", "{{pod_home}}",
+    "--cd", "{{pod_root}}",
     "--model", "{{model}}",
     "{{prompt}}",
 ]
 chat_args = [
     "--sandbox", "workspace-write",
-    "--cd", "{{pod_home}}",
+    "--cd", "{{pod_root}}",
     "--model", "{{model}}",
 ]
 
@@ -125,7 +125,7 @@ exec_args = [
     "exec",
     "--skip-git-repo-check",
     "--sandbox", "workspace-write",
-    "--cd", "{{pod_home}}",
+    "--cd", "{{pod_root}}",
     "{{prompt}}",
 ]
 chat_args = [
@@ -133,7 +133,7 @@ chat_args = [
     "--model", "{{model}}",
     "--",
     "--sandbox", "workspace-write",
-    "--cd", "{{pod_home}}",
+    "--cd", "{{pod_root}}",
 ]
 
 [backends.ollama_codex.defaults]
@@ -373,11 +373,13 @@ fn backend_values(
 ) -> Result<BTreeMap<String, String>, String> {
     let mut values = BTreeMap::new();
     let pod = PodRef::new(&fin.pod)?;
+    let pod_root = orqa.pod_root(&pod)?;
     let pod_home = orqa.pod_data_home(&pod)?;
     let fin_home = orqa.fin_data_home(fin)?;
 
     values.insert("orqa_home".to_string(), orqa.home.display().to_string());
     values.insert("pod".to_string(), fin.pod.clone());
+    values.insert("pod_root".to_string(), pod_root.display().to_string());
     values.insert("pod_home".to_string(), pod_home.display().to_string());
     values.insert("fin".to_string(), fin.fin.clone());
     values.insert("fin_home".to_string(), fin_home.display().to_string());

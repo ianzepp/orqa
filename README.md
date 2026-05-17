@@ -247,13 +247,13 @@ exec_args = [
     "exec",
     "--skip-git-repo-check",
     "--sandbox", "workspace-write",
-    "--cd", "{pod_home}",
+    "--cd", "{pod_root}",
     "--model", "{model}",
     "{prompt}",
 ]
 chat_args = [
     "--sandbox", "workspace-write",
-    "--cd", "{pod_home}",
+    "--cd", "{pod_root}",
     "--model", "{model}",
 ]
 
@@ -279,7 +279,7 @@ exec_args = [
     "exec",
     "--skip-git-repo-check",
     "--sandbox", "workspace-write",
-    "--cd", "{pod_home}",
+    "--cd", "{pod_root}",
     "{prompt}",
 ]
 chat_args = [
@@ -287,7 +287,7 @@ chat_args = [
     "--model", "{model}",
     "--",
     "--sandbox", "workspace-write",
-    "--cd", "{pod_home}",
+    "--cd", "{pod_root}",
 ]
 ```
 
