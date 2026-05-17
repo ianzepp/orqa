@@ -131,14 +131,22 @@ pub(crate) fn run_hooks(
 }
 
 pub(crate) fn run_hook_phase(orqa: &Orqa, pod: &PodRef, phase: &str) -> Result<(), String> {
+    run_hook_phase_inner(orqa, pod, phase, true)
+}
+
+pub(crate) fn run_hook_phase_quiet(orqa: &Orqa, pod: &PodRef, phase: &str) -> Result<(), String> {
+    run_hook_phase_inner(orqa, pod, phase, false)
+}
+
+fn run_hook_phase_inner(orqa: &Orqa, pod: &PodRef, phase: &str, emit: bool) -> Result<(), String> {
     validate_phase(phase)?;
     for hook in read_phase_hooks(orqa, pod, phase)? {
         if !hook.enabled {
             continue;
         }
-        match run_one_hook(orqa, pod, &hook) {
-            Ok(HookRun::Ok) => println!("hook {} {}/{} status=ok", pod.slug, phase, hook.id),
-            Ok(HookRun::Failed(status)) => println!(
+        let message = match run_one_hook(orqa, pod, &hook) {
+            Ok(HookRun::Ok) => format!("hook {} {}/{} status=ok", pod.slug, phase, hook.id),
+            Ok(HookRun::Failed(status)) => format!(
                 "hook {} {}/{} status=failed exit={}",
                 pod.slug,
                 phase,
@@ -146,12 +154,15 @@ pub(crate) fn run_hook_phase(orqa: &Orqa, pod: &PodRef, phase: &str) -> Result<(
                 exit_label(status)
             ),
             Ok(HookRun::TimedOut) => {
-                println!("hook {} {}/{} status=timeout", pod.slug, phase, hook.id)
+                format!("hook {} {}/{} status=timeout", pod.slug, phase, hook.id)
             }
-            Err(error) => println!(
+            Err(error) => format!(
                 "hook {} {}/{} status=error detail={error}",
                 pod.slug, phase, hook.id
             ),
+        };
+        if emit {
+            println!("{message}");
         }
     }
     Ok(())

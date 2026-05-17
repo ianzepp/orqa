@@ -13,7 +13,7 @@ use crate::{
     cli::{ChatArgs, CommandContext, ExecArgs, SuperviseArgs, WakeArgs},
     commands::list_dirs,
     config::{BackendCommand, BackendMode, backend_chat_command, backend_command, run_policy},
-    hooks::run_hook_phase,
+    hooks::{run_hook_phase, run_hook_phase_quiet},
     mailbox::unread_count,
     model::{FinRef, Orqa, PodRef},
     runs::{RunFiles, latest_run_started_at},
@@ -109,9 +109,36 @@ pub(crate) fn wake_pod(
     json: bool,
     args: &[OsString],
 ) -> Result<(), String> {
+    wake_pod_inner(orqa, pod, force, dry_run, json, args, true)
+}
+
+pub(crate) fn wake_pod_quiet(
+    orqa: &Orqa,
+    pod: &str,
+    force: bool,
+    dry_run: bool,
+    json: bool,
+    args: &[OsString],
+) -> Result<(), String> {
+    wake_pod_inner(orqa, pod, force, dry_run, json, args, false)
+}
+
+fn wake_pod_inner(
+    orqa: &Orqa,
+    pod: &str,
+    force: bool,
+    dry_run: bool,
+    json: bool,
+    args: &[OsString],
+    emit: bool,
+) -> Result<(), String> {
     let pod_ref = PodRef::new(pod)?;
     if !dry_run {
-        run_hook_phase(orqa, &pod_ref, "pre-plan")?;
+        if emit {
+            run_hook_phase(orqa, &pod_ref, "pre-plan")?;
+        } else {
+            run_hook_phase_quiet(orqa, &pod_ref, "pre-plan")?;
+        }
     }
     let plan = plan_pod(orqa, pod, force, args)?;
     if dry_run {
@@ -121,17 +148,19 @@ pub(crate) fn wake_pod(
     for fin in &plan.fins {
         if fin.decision != WakeDecision::WouldWake {
             if fin.reason != WakeReason::NoAction {
-                println!(
-                    "skip {} reason={} unread_mail={} open_tasks={}",
-                    fin.fin, fin.reason, fin.unread_mail, fin.open_tasks
-                );
+                if emit {
+                    println!(
+                        "skip {} reason={} unread_mail={} open_tasks={}",
+                        fin.fin, fin.reason, fin.unread_mail, fin.open_tasks
+                    );
+                }
             }
             continue;
         }
 
         let fin_ref = FinRef::new(&plan.pod, &fin.fin)?;
         let command = resolve_exec_command(orqa, &fin_ref, args)?;
-        spawn_supervised_wake(orqa, &fin_ref, &command, fin)?;
+        spawn_supervised_wake(orqa, &fin_ref, &command, fin, emit)?;
     }
 
     Ok(())
@@ -401,6 +430,7 @@ fn spawn_supervised_wake(
     fin: &FinRef,
     command: &BackendCommand,
     wake: &FinWakePlan,
+    emit: bool,
 ) -> Result<(), String> {
     let exe = std::env::current_exe()
         .map_err(|error| format!("failed to resolve current executable: {error}"))?;
@@ -426,13 +456,15 @@ fn spawn_supervised_wake(
         })?;
     let pid = child.id();
     let _ = child.try_wait();
-    println!(
-        "wake {} pid={} unread_mail={} open_tasks={}",
-        fin.label(),
-        pid,
-        wake.unread_mail,
-        wake.open_tasks
-    );
+    if emit {
+        println!(
+            "wake {} pid={} unread_mail={} open_tasks={}",
+            fin.label(),
+            pid,
+            wake.unread_mail,
+            wake.open_tasks
+        );
+    }
     Ok(())
 }
 

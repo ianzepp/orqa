@@ -1,9 +1,10 @@
 //! Ratatui global top view for all registered pods.
 
 use std::{
+    ffi::OsString,
     fs,
     io::{self, stdout},
-    time::{Duration, SystemTime, UNIX_EPOCH},
+    time::{Duration, Instant, SystemTime, UNIX_EPOCH},
 };
 
 use crossterm::{
@@ -21,10 +22,15 @@ use ratatui::{
 };
 
 use crate::{
+    global_loop::{DEFAULT_GLOBAL_LOOP_INTERVAL, DEFAULT_GLOBAL_LOOP_PROMPT, wake_all_pods},
+    mailbox::{remove_sleep_marker, write_sleep_marker},
     model::{FinRef, Orqa, PodRef, load_registry},
+    runtime::wake_pod_quiet,
     status::pod_status,
     tui::theme::{Theme, default_theme},
 };
+
+const TOP_LOOP_INTERVAL: Duration = Duration::from_secs(DEFAULT_GLOBAL_LOOP_INTERVAL);
 
 #[derive(Clone, Debug)]
 struct TopFin {
@@ -59,6 +65,36 @@ struct TopSnapshot {
     pods: Vec<TopPod>,
     fins: Vec<TopFin>,
     error: Option<String>,
+}
+
+struct TopState {
+    selected_pod: usize,
+    last_wake: Instant,
+    message: String,
+}
+
+impl TopState {
+    fn new() -> Self {
+        Self {
+            selected_pod: 0,
+            last_wake: Instant::now()
+                .checked_sub(TOP_LOOP_INTERVAL)
+                .unwrap_or_else(Instant::now),
+            message: String::new(),
+        }
+    }
+
+    fn clamp_selection(&mut self, snapshot: &TopSnapshot) {
+        if snapshot.pods.is_empty() {
+            self.selected_pod = 0;
+        } else if self.selected_pod >= snapshot.pods.len() {
+            self.selected_pod = snapshot.pods.len() - 1;
+        }
+    }
+
+    fn selected_pod<'a>(&self, snapshot: &'a TopSnapshot) -> Option<&'a TopPod> {
+        snapshot.pods.get(self.selected_pod)
+    }
 }
 
 impl TopSnapshot {
@@ -228,21 +264,50 @@ fn run_top_loop(
     orqa: &Orqa,
 ) -> Result<(), String> {
     let theme = default_theme();
+    let args = vec![OsString::from(DEFAULT_GLOBAL_LOOP_PROMPT)];
+    let mut state = TopState::new();
 
     loop {
+        run_top_loop_tick(orqa, &args, &mut state)?;
         let snapshot = TopSnapshot::collect(orqa);
+        state.clamp_selection(&snapshot);
         terminal
-            .draw(|frame| render_top(frame, frame.area(), &theme, &snapshot, orqa))
+            .draw(|frame| render_top(frame, frame.area(), &theme, &snapshot, &state, orqa))
             .map_err(|error| format!("terminal draw failed: {error}"))?;
 
-        if should_quit()? {
+        if handle_top_input(orqa, &args, &snapshot, &mut state)? {
             return Ok(());
         }
     }
 }
 
-fn should_quit() -> Result<bool, String> {
-    if !event::poll(Duration::from_millis(1000)).unwrap_or(false) {
+fn run_top_loop_tick(orqa: &Orqa, args: &[OsString], state: &mut TopState) -> Result<(), String> {
+    if state.last_wake.elapsed() < TOP_LOOP_INTERVAL {
+        return Ok(());
+    }
+
+    let mut errors = Vec::new();
+    for (pod, result) in wake_all_pods(orqa, args, true)? {
+        if let Err(error) = result {
+            errors.push(format!("{pod}: {error}"));
+        }
+    }
+    state.last_wake = Instant::now();
+    state.message = if errors.is_empty() {
+        "loop tick".to_string()
+    } else {
+        format!("loop errors: {}", errors.join("; "))
+    };
+    Ok(())
+}
+
+fn handle_top_input(
+    orqa: &Orqa,
+    args: &[OsString],
+    snapshot: &TopSnapshot,
+    state: &mut TopState,
+) -> Result<bool, String> {
+    if !event::poll(Duration::from_millis(250)).unwrap_or(false) {
         return Ok(false);
     }
 
@@ -254,10 +319,65 @@ fn should_quit() -> Result<bool, String> {
         return Ok(false);
     }
 
-    Ok(matches!(key.code, KeyCode::Char('q') | KeyCode::Esc))
+    match key.code {
+        KeyCode::Char('q') | KeyCode::Esc => Ok(true),
+        KeyCode::Up => {
+            state.selected_pod = state.selected_pod.saturating_sub(1);
+            Ok(false)
+        }
+        KeyCode::Down => {
+            if !snapshot.pods.is_empty() {
+                state.selected_pod = (state.selected_pod + 1).min(snapshot.pods.len() - 1);
+            }
+            Ok(false)
+        }
+        KeyCode::Char('p') | KeyCode::Char('P') => {
+            toggle_selected_pod(orqa, args, snapshot, state)?;
+            Ok(false)
+        }
+        KeyCode::Char('w') | KeyCode::Char('W') => {
+            if let Some(pod) = state.selected_pod(snapshot) {
+                wake_pod_quiet(orqa, &pod.pod, false, false, false, args)?;
+                state.last_wake = Instant::now();
+                state.message = format!("wake {}", pod.pod);
+            }
+            Ok(false)
+        }
+        _ => Ok(false),
+    }
 }
 
-fn render_top(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnapshot, orqa: &Orqa) {
+fn toggle_selected_pod(
+    orqa: &Orqa,
+    args: &[OsString],
+    snapshot: &TopSnapshot,
+    state: &mut TopState,
+) -> Result<(), String> {
+    let Some(pod) = state.selected_pod(snapshot) else {
+        return Ok(());
+    };
+    let pod_ref = PodRef::new(&pod.pod)?;
+    let path = orqa.pod_sleep_path(&pod_ref)?;
+    if path.exists() {
+        remove_sleep_marker(&path)?;
+        wake_pod_quiet(orqa, &pod.pod, false, false, false, args)?;
+        state.last_wake = Instant::now();
+        state.message = format!("resume {} and wake", pod.pod);
+    } else {
+        write_sleep_marker(&path)?;
+        state.message = format!("pause {}", pod.pod);
+    }
+    Ok(())
+}
+
+fn render_top(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    snapshot: &TopSnapshot,
+    state: &TopState,
+    orqa: &Orqa,
+) {
     let vertical = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
@@ -276,8 +396,8 @@ fn render_top(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnapsh
     render_blank(frame, vertical[2]);
     render_fins(frame, vertical[3], theme, snapshot);
     render_blank(frame, vertical[4]);
-    render_pods(frame, vertical[5], theme, snapshot);
-    render_footer(frame, vertical[6], theme);
+    render_pods(frame, vertical[5], theme, snapshot, state);
+    render_footer(frame, vertical[6], theme, state);
 }
 
 fn render_header(
@@ -301,7 +421,7 @@ fn render_header(
             Style::default().fg(theme.muted),
         ),
     ];
-    let right = "refresh 1s  q/Esc quit";
+    let right = "loop 60s  up/down select  p pause  w wake  q quit";
     let spacer = area
         .width
         .saturating_sub(line_width(&left) as u16)
@@ -411,21 +531,33 @@ fn render_fins(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
     frame.render_widget(table, area);
 }
 
-fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnapshot) {
+fn render_pods(
+    frame: &mut Frame,
+    area: Rect,
+    theme: &Theme,
+    snapshot: &TopSnapshot,
+    state: &TopState,
+) {
     let rows: Vec<Row<'_>> = if snapshot.pods.is_empty() {
         vec![Row::new(vec![padded_cell("No pods registered")])]
     } else {
         snapshot
             .pods
             .iter()
-            .map(|pod| {
+            .enumerate()
+            .map(|(index, pod)| {
                 if let Some(error) = &pod.error {
+                    let style = if index == state.selected_pod {
+                        Style::default().fg(theme.error).bg(theme.operator_bg)
+                    } else {
+                        Style::default().fg(theme.error)
+                    };
                     return Row::new(vec![
                         padded_cell(pod.pod.clone()),
                         padded_cell("error"),
                         padded_cell(error.clone()),
                     ])
-                    .style(Style::default().fg(theme.error));
+                    .style(style);
                 }
 
                 let status = if pod.sleeping {
@@ -437,7 +569,7 @@ fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
                 } else {
                     "idle"
                 };
-                let style = if pod.sleeping {
+                let mut style = if pod.sleeping {
                     Style::default().fg(theme.warn)
                 } else if pod.running > 0 {
                     Style::default().fg(theme.ok).bg(theme.panel_bg)
@@ -446,6 +578,9 @@ fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
                 } else {
                     Style::default().fg(theme.text)
                 };
+                if index == state.selected_pod {
+                    style = style.bg(theme.operator_bg).add_modifier(Modifier::BOLD);
+                }
                 Row::new(vec![
                     padded_cell(pod.pod.clone()),
                     padded_cell(status),
@@ -484,17 +619,31 @@ fn render_pods(frame: &mut Frame, area: Rect, theme: &Theme, snapshot: &TopSnaps
     frame.render_widget(table, area);
 }
 
-fn render_footer(frame: &mut Frame, area: Rect, theme: &Theme) {
-    frame.render_widget(
-        Paragraph::new(Line::from(vec![
-            Span::raw(" "),
-            Span::styled("q", Style::default().fg(theme.accent)),
-            Span::styled(" quit   ", Style::default().fg(theme.muted)),
-            Span::styled("Esc", Style::default().fg(theme.accent)),
-            Span::styled(" quit", Style::default().fg(theme.muted)),
-        ])),
-        area,
-    );
+fn render_footer(frame: &mut Frame, area: Rect, theme: &Theme, state: &TopState) {
+    let right = if state.message.is_empty() {
+        " ".to_string()
+    } else {
+        format!(" {}", state.message)
+    };
+    let left = vec![
+        Span::raw(" "),
+        Span::styled("↑/↓", Style::default().fg(theme.accent)),
+        Span::styled(" select   ", Style::default().fg(theme.muted)),
+        Span::styled("p", Style::default().fg(theme.accent)),
+        Span::styled(" pause/resume   ", Style::default().fg(theme.muted)),
+        Span::styled("w", Style::default().fg(theme.accent)),
+        Span::styled(" wake   ", Style::default().fg(theme.muted)),
+        Span::styled("q", Style::default().fg(theme.accent)),
+        Span::styled(" quit", Style::default().fg(theme.muted)),
+    ];
+    let spacer = area
+        .width
+        .saturating_sub(line_width(&left) as u16)
+        .saturating_sub(right.chars().count() as u16) as usize;
+    let mut spans = left;
+    spans.push(Span::raw(" ".repeat(spacer)));
+    spans.push(Span::styled(right, Style::default().fg(theme.muted)));
+    frame.render_widget(Paragraph::new(Line::from(spans)), area);
 }
 
 fn header_row<const N: usize>(labels: [&'static str; N], theme: &Theme) -> Row<'static> {

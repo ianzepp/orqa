@@ -97,6 +97,8 @@ pub(crate) enum Command {
     Doctor,
     /// Live overview of currently running fins across all pods (like `top`).
     Top,
+    /// Loop all registered pods in the foreground.
+    Daemon(DaemonArgs),
     /// Print the operational guide.
     Guide,
     /// Initialize a pod in this directory.
@@ -172,6 +174,16 @@ pub(crate) struct OpsCommand {
 pub(crate) enum OpsSubcommand {
     /// Generate a Markdown report.
     Report(OpsReportArgs),
+}
+
+#[derive(Debug, Args)]
+pub(crate) struct DaemonArgs {
+    /// Seconds between global wake scans.
+    #[arg(long, default_value_t = crate::global_loop::DEFAULT_GLOBAL_LOOP_INTERVAL)]
+    pub(crate) interval: u64,
+    /// Prompt passed to wakeable fins. Defaults to the standard Orqa work prompt.
+    #[arg(last = true)]
+    pub(crate) args: Vec<std::ffi::OsString>,
 }
 
 #[derive(Debug, Args)]

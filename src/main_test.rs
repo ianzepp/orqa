@@ -171,6 +171,18 @@ fn parses_template_authoring_commands() {
 }
 
 #[test]
+fn parses_daemon_command() {
+    let cli =
+        Cli::try_parse_from(["orqa", "daemon", "--interval", "30", "--", "handle work"]).unwrap();
+
+    assert!(matches!(
+        cli.command,
+        Some(Command::Daemon(args))
+            if args.interval == 30 && args.args == vec![std::ffi::OsString::from("handle work")]
+    ));
+}
+
+#[test]
 fn parses_templates_alias() {
     let cli = Cli::try_parse_from(["orqa", "templates", "list"]).unwrap();
 

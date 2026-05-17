@@ -504,6 +504,24 @@ orqa loop --interval 60 -- "handle your open Orqa mail and tasks"
 `orqa loop` wakes the current pod repeatedly and sleeps between turns until the
 process is interrupted.
 
+To run all registered pods in a foreground terminal, use either the dense TUI:
+
+```sh
+orqa top
+```
+
+or the plain daemon-style loop:
+
+```sh
+orqa daemon --interval 60 -- "handle your open Orqa mail and tasks"
+```
+
+`orqa top` wakes all enabled pods on its loop tick, shows global pod/fin state,
+and lets the operator pause, resume, and manually wake selected pods. `orqa
+daemon` runs the same global wake loop without a TUI. Both rely on per-fin
+runtime locks, so running one alongside another foreground controller may add
+extra scan noise but should not start the same fin twice.
+
 The old `orqa service` commands and `--forever` flag have been removed. Run
 `orqa loop` directly when you want a repeated foreground loop.
 

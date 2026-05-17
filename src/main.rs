@@ -2,6 +2,7 @@ mod cli;
 mod commands;
 mod config;
 mod doctor;
+mod global_loop;
 mod hooks;
 mod loop_worker;
 mod mailbox;
@@ -86,6 +87,7 @@ fn run(orqa: &Orqa, context: &CommandContext, command: Command) -> Result<(), St
     match command {
         Command::Doctor => doctor(orqa),
         Command::Top => crate::tui::run_top(orqa),
+        Command::Daemon(args) => crate::global_loop::run_daemon(orqa, args.interval, args.args),
         Command::Guide => {
             print_operational_help();
             Ok(())
