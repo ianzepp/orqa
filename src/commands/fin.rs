@@ -1,5 +1,5 @@
 use super::{
-    print_dirs, print_file, read_markdown_source, read_optional_markdown_source,
+    print_file, read_markdown_source, read_optional_markdown_source,
     validate_backend_name, write_text,
 };
 use crate::{
@@ -72,7 +72,19 @@ pub(crate) fn fin(
             let pod_ref = PodRef::new(&pod_slug)?;
             let fins_dir = pod_root.join(".orqa").join("fins");
             orqa.ensure_pod_exists(&pod_ref)?;
-            print_dirs(&fins_dir)
+
+            let names = super::list_dirs(&fins_dir)?;
+            if names.is_empty() {
+                println!("No fins found in pod '{}'.", pod_slug);
+                println!();
+                println!("Create one with: orqa fin create <fin> [--role <prompt|@file|->]");
+                return Ok(());
+            }
+
+            for name in names {
+                println!("{name}");
+            }
+            Ok(())
         }
         FinSubcommand::Create(args) => create_fin_in_current_pod(
             orqa,

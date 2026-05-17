@@ -423,15 +423,6 @@ pub(crate) fn list_dirs(dir: &Path) -> Result<Vec<String>, String> {
     Ok(names)
 }
 
-pub(super) fn print_dirs(dir: &Path) -> Result<(), String> {
-    let names = list_dirs(dir)?;
-    for name in names {
-        println!("{name}");
-    }
-
-    Ok(())
-}
-
 pub(super) fn print_file(path: &Path) -> Result<(), String> {
     let contents = fs::read_to_string(path)
         .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
