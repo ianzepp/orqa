@@ -279,7 +279,17 @@ fn list_templates(orqa: &Orqa) -> Result<(), String> {
     }
 
     for name in names {
-        println!("{name}");
+        let template_dir = template_home(orqa, &name);
+        let fins_dir = template_fins_dir(&template_dir)?;
+        let fins: Vec<String> = template_fins(&fins_dir)?
+            .into_iter()
+            .map(|fin| fin.slug)
+            .collect();
+        if fins.is_empty() {
+            println!("{name} fins=0");
+        } else {
+            println!("{name} fins={} [{}]", fins.len(), fins.join(", "));
+        }
     }
     Ok(())
 }

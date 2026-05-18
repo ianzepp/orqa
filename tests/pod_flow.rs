@@ -237,6 +237,10 @@ fn pod_create_template_flag_seeds_predefined_fin_roles() {
         orqa_output(&root, ["template", "fin", "list", "executive"]),
         "ceo\ncto\n"
     );
+    assert_eq!(
+        orqa_output(&root, ["template", "list"]),
+        "executive fins=2 [ceo, cto]\n"
+    );
 
     let target = pod_root(&root, "new-co");
     fs::create_dir_all(&target).unwrap();

@@ -112,7 +112,8 @@ orqa pod create <slug> --template <template> [--path <dir>] [--charter <prompt|@
 `template create` initializes only the reusable template directory. It does not
 create a real pod and does not create runtime-ready fins. Add template fins
 explicitly with `template fin create`, then materialize them through regular
-`pod create --template`.
+`pod create --template`. `template list` prints each template with its fin count
+and fin slugs.
 
 `template sync` applies a template to the selected pod. It always prints the
 plan, adds missing template fins, updates template-owned role and AGENTS files,
