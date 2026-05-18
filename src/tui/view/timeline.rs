@@ -98,18 +98,36 @@ fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {
                     }
                     out_lines
                 } else {
-                    // Fallback for non-Grok stdout or parse failure: old behavior.
-                    let content_width = usize::from(width).saturating_sub(prefix_width).max(1);
-                    let rendered_line =
-                        grok_streaming_json_to_markdown(line).unwrap_or_else(|| line.to_string());
-                    if rendered_line.trim().is_empty() {
-                        return Vec::new();
+                    // Try to summarize Codex-style tool call output.
+                    if let Some(summary) = codex_tool_output_to_summary(line) {
+                        let status_color = if summary.failed {
+                            fg(app.theme.error)
+                        } else {
+                            fg(app.theme.ok)
+                        };
+                        prefixed_wrapped_lines(
+                            prefix,
+                            prefix_width,
+                            &summary.text,
+                            status_color,
+                            width,
+                        )
+                    } else {
+                        // Fallback for non-Grok, non-Codex stdout: old behavior.
+                        let content_width =
+                            usize::from(width).saturating_sub(prefix_width).max(1);
+                        let rendered_line =
+                            grok_streaming_json_to_markdown(line)
+                                .unwrap_or_else(|| line.to_string());
+                        if rendered_line.trim().is_empty() {
+                            return Vec::new();
+                        }
+                        prefixed_lines(
+                            prefix,
+                            prefix_width,
+                            render_markdown(&rendered_line, content_width, fg(color), &app.theme),
+                        )
                     }
-                    prefixed_lines(
-                        prefix,
-                        prefix_width,
-                        render_markdown(&rendered_line, content_width, fg(color), &app.theme),
-                    )
                 }
             } else if *stream == LogStream::Event {
                 let rendered_line = match backend_event_json_to_summary(line) {
@@ -604,6 +622,169 @@ fn push_wrapped_word(lines: &mut Vec<String>, current: &mut String, word: &str, 
         remaining = &remaining[split_at..];
     }
     current.push_str(remaining);
+}
+
+/// Summarize a block of Codex CLI verbose tool-call output into a single line.
+///
+/// Codex prints each tool call like:
+///
+/// ```text
+/// exec
+///       /bin/zsh -lc "orqa mail list ..." in /some/path
+///       succeeded in 0ms:
+///       (output lines)
+///
+/// exec
+///       /bin/zsh -lc "orqa fin status ..." in /some/path
+///       failed in 1ms:
+///       (error output)
+/// ```
+///
+/// This collapses each tool call into one line:
+///   - Success: `[fin] ✓ exec: orqa mail list ...`
+///   - Failure: `[fin] ✗ exec: orqa fin status ... (failed)`
+///
+/// Returns `None` if the input doesn't look like Codex tool output.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(super) struct CodexToolSummary {
+    pub(super) text: String,
+    pub(super) failed: bool,
+}
+
+pub(super) fn codex_tool_output_to_summary(raw: &str) -> Option<CodexToolSummary> {
+    let lines: Vec<&str> = raw.lines().collect();
+    if lines.is_empty() {
+        return None;
+    }
+
+    // Quick heuristic: if the first non-empty line is a known tool name
+    // and we see "succeeded in" or "failed in" later, it's Codex output.
+    let first_nonempty = lines.iter().find(|l| !l.trim().is_empty())?;
+    let first_trimmed = first_nonempty.trim();
+
+    // Known Codex tool names (extensible).
+    let known_tools = ["exec", "read", "write", "edit", "bash", "grep", "find", "ls"];
+    if !known_tools.contains(&first_trimmed) {
+        return None;
+    }
+
+    // Parse tool calls from the block.
+    let mut tool_calls = Vec::new();
+    let mut i = 0;
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim();
+
+        // Look for a tool name line (not indented, matches known tool).
+        if !trimmed.is_empty()
+            && line.chars().next().map(|c| !c.is_whitespace()).unwrap_or(true)
+            && known_tools.contains(&trimmed)
+        {
+            let tool_name = trimmed.to_string();
+            i += 1;
+
+            // Next non-empty line should be the command with "in <path>".
+            let mut command = String::new();
+            let mut succeeded = true;
+            let mut output_lines = Vec::new();
+
+            while i < lines.len() {
+                let l = lines[i];
+                let lt = l.trim();
+
+                if lt.is_empty() {
+                    i += 1;
+                    continue;
+                }
+
+                // Check for status line: "succeeded in Nms:" or "failed in Nms:"
+                if lt.starts_with("succeeded in") || lt.starts_with("failed in") {
+                    succeeded = !lt.starts_with("failed");
+                    i += 1;
+                    // Remaining lines are the tool's output.
+                    // Collect up to the next blank line or next tool call.
+                    while i < lines.len() {
+                        let ol = lines[i];
+                        let ot = ol.trim();
+                        // Stop if we hit another tool call (unindented known tool name).
+                        if !ol.chars().next().map(|c| c.is_whitespace()).unwrap_or(false)
+                            && !ot.is_empty()
+                            && known_tools.contains(&ot)
+                        {
+                            break;
+                        }
+                        if ot.is_empty() {
+                            break;
+                        }
+                        output_lines.push(ot.to_string());
+                        i += 1;
+                    }
+                    break;
+                }
+
+                // Accumulate the command line (may span multiple indented lines).
+                if !command.is_empty() {
+                    command.push(' ');
+                }
+                command.push_str(lt);
+                i += 1;
+            }
+
+            // Truncate command to a reasonable length for display.
+            let display_cmd = if command.len() > 80 {
+                format!("{}...", &command[..80])
+            } else {
+                command
+            };
+
+            tool_calls.push(CodexToolCall {
+                tool_name,
+                command: display_cmd,
+                succeeded,
+                output: output_lines,
+            });
+        } else {
+            i += 1;
+        }
+    }
+
+    if tool_calls.is_empty() {
+        return None;
+    }
+
+    // Build summary.
+    let mut text = String::new();
+    let mut any_failed = false;
+
+    for (idx, tc) in tool_calls.iter().enumerate() {
+        if idx > 0 {
+            text.push(' ');
+        }
+        if tc.succeeded {
+            text.push_str(&format!("✓ {}", tc.tool_name));
+        } else {
+            any_failed = true;
+            text.push_str(&format!("✗ {}", tc.tool_name));
+        }
+        text.push_str(&format!(": {}", tc.command));
+        if !tc.succeeded {
+            text.push_str(" (failed)");
+        }
+    }
+
+    Some(CodexToolSummary {
+        text,
+        failed: any_failed,
+    })
+}
+
+#[derive(Debug, Clone)]
+#[allow(dead_code)]
+struct CodexToolCall {
+    tool_name: String,
+    command: String,
+    succeeded: bool,
+    output: Vec<String>,
 }
 
 #[cfg(test)]
