@@ -97,8 +97,8 @@ fn create_template_fin(
 
     let fins_dir = template_fins_dir(&template_dir)?;
     let fin_dir = fins_dir.join(fin);
-    let role_path = fin_dir.join("ROLE.md");
-    if role_path.exists() {
+    let agents_path = fin_dir.join("AGENTS.md");
+    if agents_path.exists() || fin_dir.join("ROLE.md").exists() {
         return Err(format!(
             "template fin '{}' already exists at {}",
             fin,
@@ -112,9 +112,9 @@ fn create_template_fin(
             fin_dir.display()
         )
     })?;
-    let role = read_markdown_source(role_source)?;
-    fs::write(&role_path, role)
-        .map_err(|error| format!("failed to write {}: {error}", role_path.display()))?;
+    let agents = read_markdown_source(role_source)?;
+    fs::write(&agents_path, agents)
+        .map_err(|error| format!("failed to write {}: {error}", agents_path.display()))?;
     let config_path = fin_dir.join("fin.toml");
     fs::write(&config_path, template_fin_config_template(fin))
         .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
@@ -154,10 +154,10 @@ fn sync_template(
 
     for (fin_slug, template_fin) in &template_by_slug {
         let fin_home = fins_dir.join(fin_slug);
-        let role = fs::read_to_string(&template_fin.role_path).map_err(|error| {
+        let template_agents = fs::read_to_string(&template_fin.agents_path).map_err(|error| {
             format!(
                 "failed to read {}: {error}",
-                template_fin.role_path.display()
+                template_fin.agents_path.display()
             )
         })?;
         let config = read_template_fin_config(template_fin)?;
@@ -176,7 +176,7 @@ fn sync_template(
                     &pod_root,
                     template,
                     fin_slug,
-                    &role,
+                    &template_agents,
                     config.as_deref(),
                 )?;
             }
@@ -202,12 +202,12 @@ fn sync_template(
             }
         }
 
-        let agents = fin_agents_template(&fin, &role);
+        let agents = fin_agents_template(&fin, &template_agents);
         let desired_config = config
             .as_deref()
             .map(|config| materialized_fin_config(&fin, template, Some(config)))
             .transpose()?;
-        let role_needs_update = file_contents(&fin_home.join("ROLE.md"))? != role;
+        let role_needs_update = file_contents(&fin_home.join("ROLE.md"))? != template_agents;
         let agents_needs_update = file_contents(&fin_home.join("AGENTS.md"))? != agents;
         let config_needs_update = match &desired_config {
             Some(config) => file_contents(&fin_home.join("fin.toml"))? != *config,
@@ -219,7 +219,7 @@ fn sync_template(
             println!("UPDATE fin {fin_slug}");
             println!("  ~ {}", fin_home.join("ROLE.md").display());
             if !dry_run {
-                write_text(&fin_home.join("ROLE.md"), &role)?;
+                write_text(&fin_home.join("ROLE.md"), &template_agents)?;
             }
         }
         if agents_needs_update {
@@ -275,7 +275,7 @@ pub(super) fn create_fin_from_template(
     pod_root: &Path,
     template: &str,
     fin_slug: &str,
-    role: &str,
+    agents_source: &str,
     config: Option<&str>,
 ) -> Result<(), String> {
     let fin = FinRef::new(pod_slug, fin_slug)?;
@@ -287,10 +287,10 @@ pub(super) fn create_fin_from_template(
 
     write_if_missing(&fin_home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
     write_if_missing(&fin_home.join("fin.toml"), &fin_config)?;
-    write_if_missing(&fin_home.join("ROLE.md"), role)?;
+    write_if_missing(&fin_home.join("ROLE.md"), agents_source)?;
     write_if_missing(
         &fin_home.join("AGENTS.md"),
-        &fin_agents_template(&fin, role),
+        &fin_agents_template(&fin, agents_source),
     )?;
 
     println!("{}", fin_home.display());
@@ -422,7 +422,7 @@ pub(super) fn template_fins_dir(template_dir: &Path) -> Result<PathBuf, String> 
 
 pub(super) struct TemplateFin {
     pub(super) slug: String,
-    pub(super) role_path: PathBuf,
+    pub(super) agents_path: PathBuf,
     pub(super) config_path: Option<PathBuf>,
 }
 
@@ -431,12 +431,12 @@ pub(super) fn template_fins(fins_dir: &Path) -> Result<Vec<TemplateFin>, String>
     for slug in list_dirs(fins_dir)? {
         validate_slug(&slug)?;
         let fin_dir = fins_dir.join(&slug);
-        let role_path = fin_dir.join("ROLE.md");
-        if !role_path.is_file() {
+        let agents_path = template_fin_agents_path(&fin_dir);
+        if !agents_path.is_file() {
             return Err(format!(
-                "template fin '{}' is missing {}",
+                "template fin '{}' is missing {} (or legacy ROLE.md)",
                 slug,
-                role_path.display()
+                fin_dir.join("AGENTS.md").display()
             ));
         }
         let config_path = fin_dir.join("fin.toml");
@@ -448,11 +448,19 @@ pub(super) fn template_fins(fins_dir: &Path) -> Result<Vec<TemplateFin>, String>
         };
         fins.push(TemplateFin {
             slug,
-            role_path,
+            agents_path,
             config_path,
         });
     }
     Ok(fins)
+}
+
+fn template_fin_agents_path(fin_dir: &Path) -> PathBuf {
+    let agents_path = fin_dir.join("AGENTS.md");
+    if agents_path.is_file() {
+        return agents_path;
+    }
+    fin_dir.join("ROLE.md")
 }
 
 fn read_template_fin_config(fin: &TemplateFin) -> Result<Option<String>, String> {

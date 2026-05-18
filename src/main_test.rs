@@ -481,5 +481,8 @@ fn fin_agents_template_names_fin_role_stub() {
 
     assert!(markdown.contains("planner"));
     assert!(markdown.contains("sample-pod"));
+    assert!(markdown.contains("required_context:"));
+    assert!(markdown.contains(".orqa/CHARTER.md"));
+    assert!(markdown.contains("Before acting, read every path"));
     assert!(markdown.contains("Plan the work."));
 }

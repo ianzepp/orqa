@@ -241,6 +241,10 @@ fn pod_create_template_flag_seeds_predefined_fin_roles() {
         fs::read_to_string(root.join("templates/executive/fins/ceo/fin.toml")).unwrap();
     assert!(template_config.contains("slug = \"ceo\""));
     assert!(template_config.contains("# exec_always = \"3h\""));
+    assert_eq!(
+        fs::read_to_string(root.join("templates/executive/fins/ceo/AGENTS.md")).unwrap(),
+        "Own company direction and executive decisions.\n"
+    );
     fs::write(
         root.join("templates/executive/fins/ceo/fin.toml"),
         r#"[fin]
@@ -281,11 +285,14 @@ model = "gpt-5.4"
         fs::read_to_string(fin_home(&root, "new-co", "ceo").join("ROLE.md")).unwrap(),
         "Own company direction and executive decisions.\n"
     );
-    assert!(
-        fs::read_to_string(fin_home(&root, "new-co", "cto").join("AGENTS.md"))
-            .unwrap()
-            .contains("Own technical architecture and delivery quality.")
-    );
+    let cto_agents =
+        fs::read_to_string(fin_home(&root, "new-co", "cto").join("AGENTS.md")).unwrap();
+    assert!(cto_agents.contains("orqa:"));
+    assert!(cto_agents.contains("pod: new-co"));
+    assert!(cto_agents.contains("fin: cto"));
+    assert!(cto_agents.contains("- .orqa/CHARTER.md"));
+    assert!(cto_agents.contains("Before acting, read every path in `orqa.required_context`."));
+    assert!(cto_agents.contains("Own technical architecture and delivery quality."));
     assert!(fin_home(&root, "new-co", "ceo").join("mail/new").exists());
     assert!(fin_home(&root, "new-co", "cto").join(".codex").exists());
     let materialized_config =
@@ -372,6 +379,11 @@ exec_always = "45m"
         fs::read_to_string(fin_home(&root, "sample", "steward").join("ROLE.md")).unwrap(),
         "Decide what work should happen next.\n"
     );
+    let steward_agents =
+        fs::read_to_string(fin_home(&root, "sample", "steward").join("AGENTS.md")).unwrap();
+    assert!(steward_agents.contains("pod: sample"));
+    assert!(steward_agents.contains("fin: steward"));
+    assert!(steward_agents.contains("Decide what work should happen next."));
     assert!(
         fs::read_to_string(fin_home(&root, "sample", "steward").join("fin.toml"))
             .unwrap()
@@ -481,6 +493,37 @@ fn fin_exec_runs_from_pod_root_for_agents_discovery() {
     orqa(&root, ["--pod", "test-pod", "fin", "exec", "amy"]);
 
     let cwd = fs::read_to_string(fin_home(&root, "test-pod", "amy").join("cwd.txt")).unwrap();
+    assert_eq!(
+        fs::canonicalize(Path::new(cwd.trim())).unwrap(),
+        fs::canonicalize(pod_root(&root, "test-pod")).unwrap()
+    );
+
+    remove_temp_root(root);
+}
+
+#[test]
+fn fin_exec_sets_home_and_codex_home_to_fin_root() {
+    let root = temp_root();
+
+    create_pod(&root, "test-pod");
+    orqa(&root, ["--pod", "test-pod", "fin", "create", "amy"]);
+    set_env_backend(&root, "test-pod");
+
+    orqa(&root, ["--pod", "test-pod", "fin", "exec", "amy"]);
+
+    let home = fs::read_to_string(fin_home(&root, "test-pod", "amy").join("home.txt")).unwrap();
+    let codex_home =
+        fs::read_to_string(fin_home(&root, "test-pod", "amy").join("codex-home.txt")).unwrap();
+    let cwd = fs::read_to_string(fin_home(&root, "test-pod", "amy").join("cwd.txt")).unwrap();
+
+    assert_eq!(
+        fs::canonicalize(Path::new(home.trim())).unwrap(),
+        fs::canonicalize(fin_home(&root, "test-pod", "amy")).unwrap()
+    );
+    assert_eq!(
+        fs::canonicalize(Path::new(codex_home.trim())).unwrap(),
+        fs::canonicalize(fin_home(&root, "test-pod", "amy")).unwrap()
+    );
     assert_eq!(
         fs::canonicalize(Path::new(cwd.trim())).unwrap(),
         fs::canonicalize(pod_root(&root, "test-pod")).unwrap()
@@ -1631,6 +1674,25 @@ fn set_pwd_backend(root: &Path, pod: &str) {
 enabled = true
 command = "/bin/sh"
 exec_args = ["-c", "pwd > {{fin_home}}/cwd.txt"]
+"#
+        ),
+    )
+    .unwrap();
+}
+
+fn set_env_backend(root: &Path, pod: &str) {
+    let pod_config = pod_home(root, pod).join("pod.toml");
+    let config = fs::read_to_string(&pod_config).unwrap();
+    let config = config.replace("default_backend = \"codex\"", "default_backend = \"env\"");
+    fs::write(
+        &pod_config,
+        format!(
+            r#"{config}
+
+[backends.env]
+enabled = true
+command = "/bin/sh"
+exec_args = ["-c", "printf '%s' \"$HOME\" > {{fin_home}}/home.txt; printf '%s' \"$CODEX_HOME\" > {{fin_home}}/codex-home.txt; pwd > {{fin_home}}/cwd.txt"]
 "#
         ),
     )

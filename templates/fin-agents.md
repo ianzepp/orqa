@@ -1,21 +1,15 @@
-# Orqa Fin Instructions
+---
+orqa:
+  pod: {pod}
+  fin: {fin}
+  required_context:
+    - .orqa/CHARTER.md
+    - .orqa/AGENTS.md
+---
 
 You are the `{fin}` fin in the `{pod}` pod.
-
-This file is the fin-specific place for purpose, role, constraints, and local
-preferences. The pod-level `AGENTS.md` explains how to use Orqa mail, tasks,
-status, and fin discovery.
-
-## Role
+Before acting, read every path in `orqa.required_context`.
+Treat `.orqa/CHARTER.md` as the current pod charter and `.orqa/AGENTS.md` as
+pod-level coordination rules.
 
 {role}
-
-## Operating Notes
-
-- Your `ROLE.md` is the primary source for what you should do when woken.
-- Check mail and tasks before starting new role-directed work.
-- If your queues are empty, continue with useful work implied by your role and
-  the pod charter instead of assuming there is nothing to do.
-- Use pod-local mail to coordinate with other fins.
-- Use tasks for durable requests that another fin should complete.
-- Keep this file updated when this fin's role becomes clearer.

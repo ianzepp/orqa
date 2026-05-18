@@ -326,13 +326,13 @@ Template directories live in the global Orqa home:
     executive/
       fins/
         ceo/
-          ROLE.md
+          AGENTS.md
         cto/
-          ROLE.md
+          AGENTS.md
         cmo/
-          ROLE.md
+          AGENTS.md
         coo/
-          ROLE.md
+          AGENTS.md
 ```
 
 Create an empty template and add fins with predefined roles:
@@ -347,7 +347,7 @@ orqa template fin list executive
 The full pod-style layout is also accepted:
 
 ```text
-~/.orqa/templates/executive/.orqa/fins/ceo/ROLE.md
+~/.orqa/templates/executive/.orqa/fins/ceo/AGENTS.md
 ```
 
 Create a new pod from a template:
@@ -357,8 +357,11 @@ orqa pod create launch-team --path /path/to/project --template executive
 ```
 
 The command creates the normal pod files, seeds the built-in `operator` fin,
-then creates each template fin with its predefined `ROLE.md`, generated
-`AGENTS.md`, `fin.toml`, maildir, task queue, and runtime state directories.
+then creates each template fin from its predefined template `AGENTS.md`,
+generated runtime `AGENTS.md`, compatibility `ROLE.md`, `fin.toml`, maildir,
+task queue, and runtime state directories. The generated runtime `AGENTS.md`
+adds Orqa front matter and required-context instructions before the copied
+template role content.
 Templates may not include an `operator` fin because every pod owns that local
 human identity automatically.
 
@@ -380,12 +383,8 @@ Ollama    ollama launch codex -- exec ...         ollama launch codex -- ...
 Runtime state is fin-local. Orqa sets the standard `HOME` environment variable
 to each fin's home directory so that every backend automatically discovers its
 state under the usual dot-directory (`.codex`, `.grok`, `.hermes`, `.pi`, etc.).
-For compatibility, the classic tool-specific variables are also set:
-
-- `CODEX_HOME` → `.codex/`
-- `GROK_HOME` → `.grok/`
-- `HERMES_HOME` → `.hermes/`
-- `PI_CODING_AGENT_DIR` → `.pi/agent/`
+For Codex, Orqa also sets `CODEX_HOME` to the fin home so Codex loads the fin's
+generated `AGENTS.md` as its home-level instructions.
 
 The generated Ollama + Codex example keeps Codex owning the tool loop and
 fin-local state while Ollama supplies the model. OpenCode and raw Ollama server
@@ -522,8 +521,9 @@ orqa --pod sample-pod fin chat planner
 `fin chat` attaches stdin, stdout, and stderr directly to the terminal while
 using the same fin environment and lock behavior as `fin exec`.
 
-Backend processes start with their current directory and `HOME` set to the pod
-root. Runtime-specific homes stay isolated under the fin data directory.
+Backend processes start with their current directory set to the pod root and
+`HOME` set to the fin home. The project workspace and agent identity home stay
+separate.
 
 When a fin runs, `orqa` sets these environment variables:
 
@@ -531,19 +531,15 @@ When a fin runs, `orqa` sets these environment variables:
 ORQA_HOME=<home>
 ORQA_POD=<pod-slug>
 ORQA_FIN=<fin-slug>
-HOME=<pod-root>
-CODEX_HOME=<pod-root>/.orqa/fins/<fin-slug>/.codex
-GROK_HOME=<pod-root>/.orqa/fins/<fin-slug>/.grok
-HERMES_HOME=<pod-root>/.orqa/fins/<fin-slug>/.hermes
-PI_CODING_AGENT_DIR=<pod-root>/.orqa/fins/<fin-slug>/.pi/agent
+HOME=<pod-root>/.orqa/fins/<fin-slug>
+CODEX_HOME=<pod-root>/.orqa/fins/<fin-slug>
 ```
 
 The `ORQA_*` variables give commands executed by the fin enough context to use
-short mail addresses. Setting the standard `HOME` variable (plus the classic
-tool-specific variables for compatibility) lets every supported backend keep
-its state isolated under the fin data home instead of sharing your global user
-profile. Backends can also reference `{fin_home}` or `{home}` from `exec_args`
-or `chat_args`.
+short mail addresses. Setting the standard `HOME` variable lets supported
+backends keep state isolated under the fin data home instead of sharing your
+global user profile. Backends can also reference `{fin_home}` or `{home}` from
+`exec_args` or `chat_args`.
 
 For Codex and Grok, Orqa automatically links the user's existing
 `~/.codex/auth.json` or `~/.grok/auth.json` into the fin-local copy when the
@@ -904,7 +900,7 @@ orqa pod create <slug> --template <template> [--path <dir>] [--charter <prompt|@
 
 `template create` initializes `ORQA_HOME/templates/<template>/fins/` without
 creating any real pod or fin runtime state. `template fin create` adds a fin
-definition to that template by writing `fins/<fin>/ROLE.md` and a baseline
+definition to that template by writing `fins/<fin>/AGENTS.md` and a baseline
 `fins/<fin>/fin.toml`; pass the role inline, from `@file.md`, or from stdin
 with `-`. `template list` prints each template with its fin count and fin slugs;
 `template fin list` prints the fin slugs defined by one template. To materialize

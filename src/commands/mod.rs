@@ -282,8 +282,8 @@ fn seed_template_fins(
     fins: Vec<template::TemplateFin>,
 ) -> Result<(), String> {
     for fin in fins {
-        let role = fs::read_to_string(&fin.role_path)
-            .map_err(|error| format!("failed to read {}: {error}", fin.role_path.display()))?;
+        let agents = fs::read_to_string(&fin.agents_path)
+            .map_err(|error| format!("failed to read {}: {error}", fin.agents_path.display()))?;
         let config = match &fin.config_path {
             Some(path) => Some(
                 fs::read_to_string(path)
@@ -297,7 +297,7 @@ fn seed_template_fins(
             pod_root,
             template,
             &fin.slug,
-            &role,
+            &agents,
             config.as_deref(),
         )?;
     }

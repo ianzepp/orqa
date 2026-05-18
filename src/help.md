@@ -93,10 +93,12 @@ orqa --pod launch-team template sync executive
 ```
 
 Templates live under `ORQA_HOME/templates/<template-slug>/` and may use either
-`fins/<fin>/ROLE.md` or `.orqa/fins/<fin>/ROLE.md`. Orqa creates a normal pod,
-seeds `operator`, then creates each template fin with the predefined role and
-standard fin directories. Template-generated fins record their template origin
-in `fin.toml` so later syncs can distinguish them from manually created fins.
+`fins/<fin>/AGENTS.md` or `.orqa/fins/<fin>/AGENTS.md`. Legacy template
+`ROLE.md` files are still accepted. Orqa creates a normal pod, seeds
+`operator`, then creates each template fin with generated runtime `AGENTS.md`
+that includes Orqa required-context front matter before the template role
+content. Template-generated fins record their template origin in `fin.toml` so
+later syncs can distinguish them from manually created fins.
 
 Template command summary:
 
@@ -111,15 +113,15 @@ orqa pod create <slug> --template <template> [--path <dir>] [--charter <prompt|@
 
 `template create` initializes only the reusable template directory. It does not
 create a real pod and does not create runtime-ready fins. Add template fins
-explicitly with `template fin create`, which writes `ROLE.md` and a baseline
+explicitly with `template fin create`, which writes `AGENTS.md` and a baseline
 `fin.toml`, then materialize them through regular `pod create --template`.
 When present, the template fin's `fin.toml` is used as the baseline generated
 fin config. `template list` prints each template with its fin count and fin
 slugs.
 
 `template sync` applies a template to the selected pod. It always prints the
-plan, adds missing template fins, updates template-owned role, AGENTS, and
-fin.toml files, adopts same-named existing fins by recording template origin,
+plan, adds missing template fins, updates template-owned runtime AGENTS,
+compatibility ROLE, and fin.toml files, adopts same-named existing fins by recording template origin,
 and deletes only fins whose `fin.toml` says they came from that template. Use
 `--dry-run` to preview those changes without writing files.
 
@@ -192,8 +194,8 @@ orqa --pod sample-pod fin chat planner
 `fin chat` attaches stdin, stdout, and stderr directly to the terminal while
 using the same fin environment and lock behavior as `fin exec`.
 
-Backend processes start in the pod root. Runtime-specific homes stay isolated
-under the fin data directory.
+Backend processes start in the pod root with `HOME` set to the fin home. The
+project workspace and agent identity home stay separate.
 
 When Orqa launches a fin, it sets:
 
@@ -201,17 +203,15 @@ When Orqa launches a fin, it sets:
 ORQA_HOME=<home>
 ORQA_POD=<pod-slug>
 ORQA_FIN=<fin-slug>
-HOME=<pod-root>
-CODEX_HOME=<pod-root>/.orqa/fins/<fin-slug>/.codex
-GROK_HOME=<pod-root>/.orqa/fins/<fin-slug>/.grok
-HERMES_HOME=<pod-root>/.orqa/fins/<fin-slug>/.hermes
-PI_CODING_AGENT_DIR=<pod-root>/.orqa/fins/<fin-slug>/.pi/agent
+HOME=<pod-root>/.orqa/fins/<fin-slug>
+CODEX_HOME=<pod-root>/.orqa/fins/<fin-slug>
 ```
 
 An agent can use `ORQA_POD` and `ORQA_FIN` to call mail and task commands with
-short addresses. Orqa sets the standard `HOME` variable (plus classic
-tool-specific variables for compatibility) so every backend keeps its state
-isolated under the fin data home. Backends can also reference `{fin_home}` from
+short addresses. Orqa sets the standard `HOME` variable so every backend keeps
+its state isolated under the fin data home. Codex also receives `CODEX_HOME`
+pointing at the fin home so it loads the generated fin `AGENTS.md` as
+home-level instructions. Backends can also reference `{fin_home}` from
 `exec_args` or `chat_args`.
 
 For Codex and Grok, Orqa links the user's existing `~/.codex/auth.json` or
@@ -302,7 +302,7 @@ need a site-specific command.
 
 The generated Ollama example uses `ollama launch codex` rather than raw
 `ollama run`, so Codex still provides the tool loop, working directory,
-sandboxing, and fin-local `CODEX_HOME` while Ollama supplies the model.
+sandboxing, and fin-local home while Ollama supplies the model.
 
 `fin.toml` can override the backend or backend values for one fin:
 

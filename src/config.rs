@@ -114,7 +114,7 @@ model = "grok-code-latest"
 
 # Ollama is most useful through a coding-agent integration. This runs Codex
 # against an Ollama model while keeping Codex's tool loop and fin-local
-# CODEX_HOME.
+# instructions and state.
 [backends.ollama_codex]
 enabled = true
 command = "ollama"

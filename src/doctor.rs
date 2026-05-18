@@ -242,10 +242,8 @@ fn fin_process(
         .env("ORQA_HOME", &orqa.home)
         .env("ORQA_POD", &fin.pod)
         .env("ORQA_FIN", &fin.fin)
-        .env("HOME", &pod_root)
-        .env("CODEX_HOME", fin_home.join(".codex"))
-        .env("HERMES_HOME", fin_home.join(".hermes"))
-        .env("PI_CODING_AGENT_DIR", fin_home.join(".pi/agent"))
+        .env("HOME", &fin_home)
+        .env("CODEX_HOME", &fin_home)
         .args(args);
     if let Some(path) = child_path_with_orqa_bin() {
         process.env("PATH", path);
