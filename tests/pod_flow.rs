@@ -237,6 +237,10 @@ fn pod_create_template_flag_seeds_predefined_fin_roles() {
         orqa_output(&root, ["template", "fin", "list", "executive"]),
         "ceo\ncto\n"
     );
+    let template_config =
+        fs::read_to_string(root.join("templates/executive/fins/ceo/fin.toml")).unwrap();
+    assert!(template_config.contains("slug = \"ceo\""));
+    assert!(template_config.contains("# exec_always = \"3h\""));
     assert_eq!(
         orqa_output(&root, ["template", "list"]),
         "executive fins=2 [ceo, cto]\n"

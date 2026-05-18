@@ -6,7 +6,10 @@ use std::{
 
 use crate::{
     cli::{CommandContext, TemplateCommand, TemplateFinSubcommand, TemplateSubcommand},
-    config::{fin_agents_template, fin_config_template_with_backend_and_template},
+    config::{
+        fin_agents_template, fin_config_template_with_backend_and_template,
+        template_fin_config_template,
+    },
     mailbox::{ensure_maildir, write_if_missing},
     model::{FinRef, Orqa, PodRef, validate_slug},
     runtime_home::ensure_fin_runtime_homes,
@@ -112,6 +115,9 @@ fn create_template_fin(
     let role = read_markdown_source(role_source)?;
     fs::write(&role_path, role)
         .map_err(|error| format!("failed to write {}: {error}", role_path.display()))?;
+    let config_path = fin_dir.join("fin.toml");
+    fs::write(&config_path, template_fin_config_template(fin))
+        .map_err(|error| format!("failed to write {}: {error}", config_path.display()))?;
 
     println!("{}", fin_dir.display());
     Ok(())

@@ -904,11 +904,11 @@ orqa pod create <slug> --template <template> [--path <dir>] [--charter <prompt|@
 
 `template create` initializes `ORQA_HOME/templates/<template>/fins/` without
 creating any real pod or fin runtime state. `template fin create` adds a fin
-definition to that template by writing `fins/<fin>/ROLE.md`; pass the role
-inline, from `@file.md`, or from stdin with `-`. `template list` prints each
-template with its fin count and fin slugs; `template fin list` prints the fin
-slugs defined by one template. To materialize the template, use the regular pod
-command with `--template`.
+definition to that template by writing `fins/<fin>/ROLE.md` and a baseline
+`fins/<fin>/fin.toml`; pass the role inline, from `@file.md`, or from stdin
+with `-`. `template list` prints each template with its fin count and fin slugs;
+`template fin list` prints the fin slugs defined by one template. To materialize
+the template, use the regular pod command with `--template`.
 
 ### Fin Commands
 

@@ -230,6 +230,30 @@ model = "gpt-5.3-codex"
     )
 }
 
+pub(crate) fn template_fin_config_template(fin: &str) -> String {
+    format!(
+        r#"# Orqa template fin configuration.
+#
+# This file is stored with a reusable template fin. Template materialization can
+# use it as the baseline for generated .orqa/fins/{slug}/fin.toml.
+
+[fin]
+slug = "{slug}"
+# backend = "codex"
+# Use "0" to run any time there is work.
+# debounce = "5m"
+# Use "0" to run only when there is work.
+# exec_always = "3h"
+
+# Per-fin template values. These can be used by backend exec_args and chat_args
+# in pod.toml.
+[backend]
+model = "gpt-5.3-codex"
+"#,
+        slug = escape_toml_string(fin)
+    )
+}
+
 fn escape_toml_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('"', "\\\"")
 }
