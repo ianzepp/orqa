@@ -114,11 +114,9 @@ fn event_to_lines(app: &App, event: &Event, width: u16) -> Vec<Line<'static>> {
                         )
                     } else {
                         // Fallback for non-Grok, non-Codex stdout: old behavior.
-                        let content_width =
-                            usize::from(width).saturating_sub(prefix_width).max(1);
-                        let rendered_line =
-                            grok_streaming_json_to_markdown(line)
-                                .unwrap_or_else(|| line.to_string());
+                        let content_width = usize::from(width).saturating_sub(prefix_width).max(1);
+                        let rendered_line = grok_streaming_json_to_markdown(line)
+                            .unwrap_or_else(|| line.to_string());
                         if rendered_line.trim().is_empty() {
                             return Vec::new();
                         }
@@ -663,7 +661,9 @@ pub(super) fn codex_tool_output_to_summary(raw: &str) -> Option<CodexToolSummary
     let first_trimmed = first_nonempty.trim();
 
     // Known Codex tool names (extensible).
-    let known_tools = ["exec", "read", "write", "edit", "bash", "grep", "find", "ls"];
+    let known_tools = [
+        "exec", "read", "write", "edit", "bash", "grep", "find", "ls",
+    ];
     if !known_tools.contains(&first_trimmed) {
         return None;
     }
@@ -677,7 +677,11 @@ pub(super) fn codex_tool_output_to_summary(raw: &str) -> Option<CodexToolSummary
 
         // Look for a tool name line (not indented, matches known tool).
         if !trimmed.is_empty()
-            && line.chars().next().map(|c| !c.is_whitespace()).unwrap_or(true)
+            && line
+                .chars()
+                .next()
+                .map(|c| !c.is_whitespace())
+                .unwrap_or(true)
             && known_tools.contains(&trimmed)
         {
             let tool_name = trimmed.to_string();
@@ -707,7 +711,11 @@ pub(super) fn codex_tool_output_to_summary(raw: &str) -> Option<CodexToolSummary
                         let ol = lines[i];
                         let ot = ol.trim();
                         // Stop if we hit another tool call (unindented known tool name).
-                        if !ol.chars().next().map(|c| c.is_whitespace()).unwrap_or(false)
+                        if !ol
+                            .chars()
+                            .next()
+                            .map(|c| c.is_whitespace())
+                            .unwrap_or(false)
                             && !ot.is_empty()
                             && known_tools.contains(&ot)
                         {

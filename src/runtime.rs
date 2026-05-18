@@ -147,13 +147,11 @@ fn wake_pod_inner(
 
     for fin in &plan.fins {
         if fin.decision != WakeDecision::WouldWake {
-            if fin.reason != WakeReason::NoAction {
-                if emit {
-                    println!(
-                        "skip {} reason={} unread_mail={} open_tasks={}",
-                        fin.fin, fin.reason, fin.unread_mail, fin.open_tasks
-                    );
-                }
+            if fin.reason != WakeReason::NoAction && emit {
+                println!(
+                    "skip {} reason={} unread_mail={} open_tasks={}",
+                    fin.fin, fin.reason, fin.unread_mail, fin.open_tasks
+                );
             }
             continue;
         }

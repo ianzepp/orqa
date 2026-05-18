@@ -81,6 +81,7 @@ pub(super) fn render_target_picker(app: &App, frame: &mut Frame, area: Rect) {
     frame.render_widget(Paragraph::new(rows), inner);
 }
 
+#[allow(clippy::vec_init_then_push)]
 pub(super) fn render_help(app: &App, frame: &mut Frame, area: Rect) {
     // A tall centered panel for the full key reference
     let panel = centered_rect(area, 68, 32);

@@ -501,7 +501,7 @@ fn markdown_with_trailing_newline(contents: &str) -> String {
 }
 
 pub(crate) fn ops(orqa: &Orqa, command: OpsCommand) -> Result<(), String> {
-    match command.command {
+    match command.command.unwrap_or_default() {
         OpsSubcommand::Report(args) => ops_report(orqa, args),
     }
 }

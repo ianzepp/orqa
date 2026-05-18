@@ -164,16 +164,21 @@ pub(crate) enum FinSubcommand {
 }
 
 #[derive(Debug, Args)]
-#[command(subcommand_required = true, arg_required_else_help = true)]
 pub(crate) struct OpsCommand {
     #[command(subcommand)]
-    pub(crate) command: OpsSubcommand,
+    pub(crate) command: Option<OpsSubcommand>,
 }
 
 #[derive(Debug, Subcommand)]
 pub(crate) enum OpsSubcommand {
     /// Generate a Markdown report.
     Report(OpsReportArgs),
+}
+
+impl Default for OpsSubcommand {
+    fn default() -> Self {
+        Self::Report(OpsReportArgs::default())
+    }
 }
 
 #[derive(Debug, Args)]

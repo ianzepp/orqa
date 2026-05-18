@@ -8,11 +8,13 @@ use crate::{
 pub(crate) const DEFAULT_GLOBAL_LOOP_INTERVAL: u64 = 10;
 pub(crate) const DEFAULT_GLOBAL_LOOP_PROMPT: &str = "handle your open Orqa mail and tasks";
 
+type PodWakeResult = (String, Result<(), String>);
+
 pub(crate) fn wake_all_pods(
     orqa: &Orqa,
     args: &[OsString],
     quiet: bool,
-) -> Result<Vec<(String, Result<(), String>)>, String> {
+) -> Result<Vec<PodWakeResult>, String> {
     let registry = load_registry(orqa)?;
     let mut results = Vec::new();
 

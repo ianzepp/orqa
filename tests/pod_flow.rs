@@ -1555,6 +1555,20 @@ fn ops_report_prints_current_pod_tasks_and_mail() {
     assert!(report.contains(" id=`"));
     assert!(report.contains(" path=`"));
 
+    let alias_output = command(&root, ["ops"])
+        .current_dir(pod_root(&root, "deploy"))
+        .output()
+        .unwrap();
+    assert!(
+        alias_output.status.success(),
+        "orqa failed: {}\n{}",
+        String::from_utf8_lossy(&alias_output.stdout),
+        String::from_utf8_lossy(&alias_output.stderr)
+    );
+    let alias_report = String::from_utf8(alias_output.stdout).unwrap();
+    assert!(alias_report.contains("# Orqa Ops Report"));
+    assert!(alias_report.contains("## Pod `deploy`"));
+
     remove_temp_root(root);
 }
 

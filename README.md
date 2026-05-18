@@ -477,10 +477,11 @@ orqa --home /tmp/orqa-demo pod create sample-pod
 
 ```text
 src/
-  cli.rs              clap command and argument definitions
-  commands.rs         top-level command handlers
+  cli/                clap command and argument definitions
+  commands/           command handlers by namespace
   config.rs           pod and fin config templates
   doctor.rs           pod readiness and backend connectivity checks
+  global_loop.rs      all-pod foreground loop used by top and daemon
   mailbox/
     mod.rs            mail and task command behavior
     storage.rs        Maildir storage, addresses, ids, and pause markers
@@ -806,8 +807,9 @@ This moves the task from `tasks/new` to `tasks/cur` and clears that wake signal.
 ## Commands
 
 All commands accept the global `--home <DIR>` option to override `ORQA_HOME`.
-With no command, `orqa` prints a live status overview (pods, wake signals, and
-totals) plus a hint to run `--help`.
+With no command, `orqa` opens the pod TUI when run inside a pod. Outside an
+initialized project, it exits with a short message pointing to `orqa init` and
+`orqa --help`.
 
 ### Top Level
 
@@ -825,6 +827,8 @@ Options:
 
 Commands:
   doctor    Show runtime diagnostics
+  top       Live overview of currently running fins across all pods (like `top`)
+  daemon    Loop all registered pods in the foreground
   guide     Print the operational guide
   init      Initialize a pod in this directory
   pod       Manage pods
@@ -840,6 +844,9 @@ Commands:
 
 `orqa doctor` prints basic runtime information, including the active
 `ORQA_HOME`.
+
+`orqa top` opens the global operator cockpit for all registered pods. `orqa
+daemon` runs the same all-pod wake loop without the TUI.
 
 `orqa guide` prints an embedded Markdown operational guide for agents and humans
 who need the runtime overview without install or development notes.

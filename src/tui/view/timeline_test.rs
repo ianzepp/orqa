@@ -172,7 +172,10 @@ fn returns_none_for_non_codex_output() {
 #[test]
 fn truncates_long_commands() {
     let long_cmd = "a".repeat(200);
-    let input = format!("exec\n       {} in /path\n       succeeded in 0ms:", long_cmd);
+    let input = format!(
+        "exec\n       {} in /path\n       succeeded in 0ms:",
+        long_cmd
+    );
     let summary = codex_tool_output_to_summary(&input).unwrap();
     // The command portion after "✓ exec: " should be truncated at 80 chars
     let colon_pos = summary.text.find(": ").unwrap();

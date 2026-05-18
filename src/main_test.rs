@@ -3,7 +3,10 @@ use std::{env, fs};
 use clap::Parser;
 
 use crate::{
-    cli::{Cli, Command, FinSubcommand, MailSubcommand, TaskListArgs, TemplateSubcommand},
+    cli::{
+        Cli, Command, FinSubcommand, MailSubcommand, OpsSubcommand, TaskListArgs,
+        TemplateSubcommand,
+    },
     config::{fin_agents_template, fin_config_template, pod_agents_template, pod_config_template},
     mailbox::{
         TaskFilters, canonical_task_body, deliver_mail, ensure_maildir, mark_task_done, message_id,
@@ -217,6 +220,20 @@ fn parses_daemon_command() {
         cli.command,
         Some(Command::Daemon(args))
             if args.interval == 30 && args.args == vec![std::ffi::OsString::from("handle work")]
+    ));
+}
+
+#[test]
+fn parses_bare_ops_as_report_alias() {
+    let cli = Cli::try_parse_from(["orqa", "ops"]).unwrap();
+
+    let Some(Command::Ops(command)) = cli.command else {
+        panic!("expected ops command");
+    };
+    assert!(command.command.is_none());
+    assert!(matches!(
+        command.command.unwrap_or_default(),
+        OpsSubcommand::Report(args) if args.since.is_none()
     ));
 }
 
