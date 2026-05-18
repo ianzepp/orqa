@@ -93,8 +93,10 @@ orqa --pod launch-team template sync executive
 ```
 
 Templates live under `ORQA_HOME/templates/<template-slug>/` and may use either
-`fins/<fin>/AGENTS.md` or `.orqa/fins/<fin>/AGENTS.md`. Legacy template
-`ROLE.md` files are still accepted. Orqa creates a normal pod, seeds
+top-level `AGENTS.md` or `.orqa/AGENTS.md` for pod-level instructions, plus
+either `fins/<fin>/AGENTS.md` or `.orqa/fins/<fin>/AGENTS.md` for fin
+instructions. Legacy template `ROLE.md` files are still accepted. Orqa creates
+a normal pod, copies the template pod `AGENTS.md` when present, seeds
 `operator`, then creates each template fin with generated runtime `AGENTS.md`
 that includes Orqa required-context front matter before the template role
 content. Template-generated fins record their template origin in `fin.toml` so
@@ -120,8 +122,9 @@ fin config. `template list` prints each template with its fin count and fin
 slugs.
 
 `template sync` applies a template to the selected pod. It always prints the
-plan, adds missing template fins, updates template-owned runtime AGENTS,
-compatibility ROLE, and fin.toml files, adopts same-named existing fins by recording template origin,
+plan, updates pod-level AGENTS when the template defines one, adds missing
+template fins, updates template-owned runtime AGENTS, compatibility ROLE, and
+fin.toml files, adopts same-named existing fins by recording template origin,
 and deletes only fins whose `fin.toml` says they came from that template. Use
 `--dry-run` to preview those changes without writing files.
 

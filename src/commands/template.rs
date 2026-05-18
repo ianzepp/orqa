@@ -152,6 +152,10 @@ fn sync_template(
         if dry_run { " (dry run)" } else { "" }
     );
 
+    if sync_template_pod_agents(orqa, &pod_root, template, dry_run)? {
+        changed = true;
+    }
+
     for (fin_slug, template_fin) in &template_by_slug {
         let fin_home = fins_dir.join(fin_slug);
         let template_agents = fs::read_to_string(&template_fin.agents_path).map_err(|error| {
@@ -267,6 +271,42 @@ fn sync_template(
         println!("No template changes.");
     }
     Ok(())
+}
+
+pub(super) fn sync_template_pod_agents(
+    orqa: &Orqa,
+    pod_root: &Path,
+    template: &str,
+    dry_run: bool,
+) -> Result<bool, String> {
+    let Some((source_path, agents)) = read_template_pod_agents(orqa, template)? else {
+        return Ok(false);
+    };
+
+    let target_path = pod_root.join(".orqa").join("AGENTS.md");
+    if file_contents(&target_path)? == agents {
+        return Ok(false);
+    }
+
+    println!("UPDATE pod AGENTS.md from {}", source_path.display());
+    println!("  ~ {}", target_path.display());
+    if !dry_run {
+        write_text(&target_path, &agents)?;
+    }
+    Ok(true)
+}
+
+fn read_template_pod_agents(
+    orqa: &Orqa,
+    template: &str,
+) -> Result<Option<(PathBuf, String)>, String> {
+    let template_dir = template_home(orqa, template);
+    let Some(path) = template_pod_agents_path(&template_dir) else {
+        return Ok(None);
+    };
+    let agents = fs::read_to_string(&path)
+        .map_err(|error| format!("failed to read {}: {error}", path.display()))?;
+    Ok(Some((path, agents)))
 }
 
 pub(super) fn create_fin_from_template(
@@ -418,6 +458,20 @@ pub(super) fn template_fins_dir(template_dir: &Path) -> Result<PathBuf, String> 
         "template '{}' must contain .orqa/fins or fins",
         template_dir.display()
     ))
+}
+
+fn template_pod_agents_path(template_dir: &Path) -> Option<PathBuf> {
+    let compact_style = template_dir.join("AGENTS.md");
+    if compact_style.is_file() {
+        return Some(compact_style);
+    }
+
+    let pod_style = template_dir.join(".orqa").join("AGENTS.md");
+    if pod_style.is_file() {
+        return Some(pod_style);
+    }
+
+    None
 }
 
 pub(super) struct TemplateFin {

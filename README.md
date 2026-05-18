@@ -324,6 +324,7 @@ Template directories live in the global Orqa home:
 ~/.orqa/
   templates/
     executive/
+      AGENTS.md
       fins/
         ceo/
           AGENTS.md
@@ -344,9 +345,11 @@ orqa template fin create executive cto --role "Own technical architecture and de
 orqa template fin list executive
 ```
 
-The full pod-style layout is also accepted:
+If a template has a top-level `AGENTS.md`, Orqa copies it into the materialized
+pod as `.orqa/AGENTS.md`. The full pod-style layout is also accepted:
 
 ```text
+~/.orqa/templates/executive/.orqa/AGENTS.md
 ~/.orqa/templates/executive/.orqa/fins/ceo/AGENTS.md
 ```
 
@@ -356,12 +359,12 @@ Create a new pod from a template:
 orqa pod create launch-team --path /path/to/project --template executive
 ```
 
-The command creates the normal pod files, seeds the built-in `operator` fin,
-then creates each template fin from its predefined template `AGENTS.md`,
-generated runtime `AGENTS.md`, compatibility `ROLE.md`, `fin.toml`, maildir,
-task queue, and runtime state directories. The generated runtime `AGENTS.md`
-adds Orqa front matter and required-context instructions before the copied
-template role content.
+The command creates the normal pod files, copies the template pod `AGENTS.md`
+when present, seeds the built-in `operator` fin, then creates each template fin
+from its predefined template `AGENTS.md`, generated runtime `AGENTS.md`,
+compatibility `ROLE.md`, `fin.toml`, maildir, task queue, and runtime state
+directories. The generated fin runtime `AGENTS.md` adds Orqa front matter and
+required-context instructions before the copied template role content.
 Templates may not include an `operator` fin because every pod owns that local
 human identity automatically.
 

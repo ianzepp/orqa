@@ -106,6 +106,11 @@ fn init_seeds_operator_fin_for_tui_identity() {
 fn init_template_flag_seeds_predefined_fin_roles() {
     let root = temp_root();
     orqa(&root, ["template", "create", "team"]);
+    fs::write(
+        root.join("templates/team/AGENTS.md"),
+        "# Team Pod\n\nShared team operating rules.\n",
+    )
+    .unwrap();
     orqa(
         &root,
         [
@@ -143,6 +148,10 @@ fn init_template_flag_seeds_predefined_fin_roles() {
         fs::read_to_string(project.join(".orqa/fins/planner/fin.toml"))
             .unwrap()
             .contains("name = \"team\"")
+    );
+    assert_eq!(
+        fs::read_to_string(project.join(".orqa/AGENTS.md")).unwrap(),
+        "# Team Pod\n\nShared team operating rules.\n"
     );
 
     remove_temp_root(root);
@@ -208,6 +217,11 @@ fn pod_create_and_charter_commands_manage_charter_agents_injection() {
 fn pod_create_template_flag_seeds_predefined_fin_roles() {
     let root = temp_root();
     orqa(&root, ["template", "create", "executive"]);
+    fs::write(
+        root.join("templates/executive/AGENTS.md"),
+        "# Executive Pod\n\nCoordinate through Orqa mail.\n",
+    )
+    .unwrap();
     orqa(
         &root,
         [
@@ -282,6 +296,10 @@ model = "gpt-5.4"
     let fins = orqa_output(&root, ["--pod", "new-co", "fin", "list"]);
     assert_eq!(fins, "ceo\ncto\noperator\n");
     assert_eq!(
+        fs::read_to_string(pod_home(&root, "new-co").join("AGENTS.md")).unwrap(),
+        "# Executive Pod\n\nCoordinate through Orqa mail.\n"
+    );
+    assert_eq!(
         fs::read_to_string(fin_home(&root, "new-co", "ceo").join("ROLE.md")).unwrap(),
         "Own company direction and executive decisions.\n"
     );
@@ -309,6 +327,11 @@ model = "gpt-5.4"
 fn template_sync_adds_updates_and_prunes_template_owned_fins() {
     let root = temp_root();
     orqa(&root, ["template", "create", "team"]);
+    fs::write(
+        root.join("templates/team/AGENTS.md"),
+        "# Team Pod\n\nOriginal shared rules.\n",
+    )
+    .unwrap();
     orqa(
         &root,
         [
@@ -337,8 +360,17 @@ fn template_sync_adds_updates_and_prunes_template_owned_fins() {
         ],
     );
     orqa(&root, ["--pod", "sample", "fin", "create", "manual"]);
+    assert_eq!(
+        fs::read_to_string(pod_home(&root, "sample").join("AGENTS.md")).unwrap(),
+        "# Team Pod\n\nOriginal shared rules.\n"
+    );
 
     fs::remove_dir_all(root.join("templates/team/fins/planner")).unwrap();
+    fs::write(
+        root.join("templates/team/AGENTS.md"),
+        "# Team Pod\n\nUpdated shared rules.\n",
+    )
+    .unwrap();
     orqa(
         &root,
         [
@@ -364,15 +396,25 @@ exec_always = "45m"
         &root,
         ["--pod", "sample", "template", "sync", "team", "--dry-run"],
     );
+    assert!(plan.contains("UPDATE pod AGENTS.md"));
     assert!(plan.contains("ADD fin steward"));
     assert!(plan.contains("DELETE fin planner"));
     assert!(!plan.contains("DELETE fin manual"));
     assert!(fin_home(&root, "sample", "planner").exists());
     assert!(!fin_home(&root, "sample", "steward").exists());
+    assert_eq!(
+        fs::read_to_string(pod_home(&root, "sample").join("AGENTS.md")).unwrap(),
+        "# Team Pod\n\nOriginal shared rules.\n"
+    );
 
     let applied = orqa_output(&root, ["--pod", "sample", "template", "sync", "team"]);
+    assert!(applied.contains("UPDATE pod AGENTS.md"));
     assert!(applied.contains("ADD fin steward"));
     assert!(applied.contains("DELETE fin planner"));
+    assert_eq!(
+        fs::read_to_string(pod_home(&root, "sample").join("AGENTS.md")).unwrap(),
+        "# Team Pod\n\nUpdated shared rules.\n"
+    );
     assert!(!fin_home(&root, "sample", "planner").exists());
     assert!(fin_home(&root, "sample", "manual").exists());
     assert_eq!(

@@ -55,6 +55,7 @@ pub(crate) fn pod(
                 .transpose()?;
             create_pod_in_dir(orqa, &args.slug, target_root.clone(), args.charter)?;
             if let Some((template, fins)) = template_fins {
+                template::sync_template_pod_agents(orqa, &target_root, &template, false)?;
                 seed_template_fins(orqa, &args.slug, &target_root, &template, fins)?;
             }
             Ok(())
@@ -175,6 +176,7 @@ pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
         .transpose()?;
     create_pod_in_dir(orqa, &slug, root.clone(), args.charter)?;
     if let Some((template, fins)) = template_fins {
+        template::sync_template_pod_agents(orqa, &root, &template, false)?;
         seed_template_fins(orqa, &slug, &root, &template, fins)?;
     }
 
