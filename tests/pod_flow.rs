@@ -103,6 +103,52 @@ fn init_seeds_operator_fin_for_tui_identity() {
 }
 
 #[test]
+fn init_template_flag_seeds_predefined_fin_roles() {
+    let root = temp_root();
+    orqa(&root, ["template", "create", "team"]);
+    orqa(
+        &root,
+        [
+            "template",
+            "fin",
+            "create",
+            "team",
+            "planner",
+            "--role",
+            "Plan the first slice.",
+        ],
+    );
+
+    let project = root.join("sample-project");
+    fs::create_dir_all(&project).unwrap();
+    orqa(
+        &root,
+        [
+            "init",
+            "sample-project",
+            "--path",
+            project.to_str().unwrap(),
+            "--template",
+            "team",
+        ],
+    );
+
+    let fins = orqa_output(&root, ["--pod", "sample-project", "fin", "list"]);
+    assert_eq!(fins, "operator\nplanner\n");
+    assert_eq!(
+        fs::read_to_string(project.join(".orqa/fins/planner/ROLE.md")).unwrap(),
+        "Plan the first slice.\n"
+    );
+    assert!(
+        fs::read_to_string(project.join(".orqa/fins/planner/fin.toml"))
+            .unwrap()
+            .contains("name = \"team\"")
+    );
+
+    remove_temp_root(root);
+}
+
+#[test]
 fn pod_create_and_charter_commands_manage_charter_agents_injection() {
     let root = temp_root();
 

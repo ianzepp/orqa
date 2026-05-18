@@ -168,7 +168,17 @@ pub(crate) fn pod_init(orqa: &Orqa, args: InitArgs) -> Result<(), String> {
         }
     };
 
-    create_pod_in_dir(orqa, &slug, root, args.charter)
+    let template_fins = args
+        .template
+        .as_deref()
+        .map(|template| load_template_fins(orqa, template))
+        .transpose()?;
+    create_pod_in_dir(orqa, &slug, root.clone(), args.charter)?;
+    if let Some((template, fins)) = template_fins {
+        seed_template_fins(orqa, &slug, &root, &template, fins)?;
+    }
+
+    Ok(())
 }
 
 fn validate_slug_for_init(slug: &str) -> Result<(), String> {

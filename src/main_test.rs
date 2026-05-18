@@ -143,6 +143,26 @@ fn parses_pod_create_template_flag() {
 }
 
 #[test]
+fn parses_init_template_flag() {
+    let cli = Cli::try_parse_from([
+        "orqa",
+        "init",
+        "new-co",
+        "--template",
+        "executive",
+        "--path",
+        "/tmp/new-co",
+    ])
+    .unwrap();
+
+    assert!(matches!(
+        cli.command,
+        Some(Command::Init(args))
+            if args.template.as_deref() == Some("executive") && args.slug.as_deref() == Some("new-co")
+    ));
+}
+
+#[test]
 fn parses_template_authoring_commands() {
     let create = Cli::try_parse_from(["orqa", "template", "create", "executive"]).unwrap();
     assert!(matches!(
