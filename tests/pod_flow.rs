@@ -241,6 +241,18 @@ fn pod_create_template_flag_seeds_predefined_fin_roles() {
         fs::read_to_string(root.join("templates/executive/fins/ceo/fin.toml")).unwrap();
     assert!(template_config.contains("slug = \"ceo\""));
     assert!(template_config.contains("# exec_always = \"3h\""));
+    fs::write(
+        root.join("templates/executive/fins/ceo/fin.toml"),
+        r#"[fin]
+slug = "ceo"
+debounce = "10m"
+exec_always = "30m"
+
+[backend]
+model = "gpt-5.4"
+"#,
+    )
+    .unwrap();
     assert_eq!(
         orqa_output(&root, ["template", "list"]),
         "executive fins=2 [ceo, cto]\n"
@@ -276,11 +288,12 @@ fn pod_create_template_flag_seeds_predefined_fin_roles() {
     );
     assert!(fin_home(&root, "new-co", "ceo").join("mail/new").exists());
     assert!(fin_home(&root, "new-co", "cto").join(".codex").exists());
-    assert!(
-        fs::read_to_string(fin_home(&root, "new-co", "ceo").join("fin.toml"))
-            .unwrap()
-            .contains("name = \"executive\"")
-    );
+    let materialized_config =
+        fs::read_to_string(fin_home(&root, "new-co", "ceo").join("fin.toml")).unwrap();
+    assert!(materialized_config.contains("debounce = \"10m\""));
+    assert!(materialized_config.contains("exec_always = \"30m\""));
+    assert!(materialized_config.contains("model = \"gpt-5.4\""));
+    assert!(materialized_config.contains("name = \"executive\""));
 
     remove_temp_root(root);
 }
@@ -319,10 +332,24 @@ fn template_sync_adds_updates_and_prunes_template_owned_fins() {
     orqa(&root, ["--pod", "sample", "fin", "create", "manual"]);
 
     fs::remove_dir_all(root.join("templates/team/fins/planner")).unwrap();
-    fs::create_dir_all(root.join("templates/team/fins/steward")).unwrap();
+    orqa(
+        &root,
+        [
+            "template",
+            "fin",
+            "create",
+            "team",
+            "steward",
+            "--role",
+            "Decide what work should happen next.",
+        ],
+    );
     fs::write(
-        root.join("templates/team/fins/steward/ROLE.md"),
-        "Decide what work should happen next.\n",
+        root.join("templates/team/fins/steward/fin.toml"),
+        r#"[fin]
+slug = "steward"
+exec_always = "45m"
+"#,
     )
     .unwrap();
 
@@ -344,6 +371,11 @@ fn template_sync_adds_updates_and_prunes_template_owned_fins() {
     assert_eq!(
         fs::read_to_string(fin_home(&root, "sample", "steward").join("ROLE.md")).unwrap(),
         "Decide what work should happen next.\n"
+    );
+    assert!(
+        fs::read_to_string(fin_home(&root, "sample", "steward").join("fin.toml"))
+            .unwrap()
+            .contains("exec_always = \"45m\"")
     );
 
     remove_temp_root(root);

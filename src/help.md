@@ -113,13 +113,15 @@ orqa pod create <slug> --template <template> [--path <dir>] [--charter <prompt|@
 create a real pod and does not create runtime-ready fins. Add template fins
 explicitly with `template fin create`, which writes `ROLE.md` and a baseline
 `fin.toml`, then materialize them through regular `pod create --template`.
-`template list` prints each template with its fin count and fin slugs.
+When present, the template fin's `fin.toml` is used as the baseline generated
+fin config. `template list` prints each template with its fin count and fin
+slugs.
 
 `template sync` applies a template to the selected pod. It always prints the
-plan, adds missing template fins, updates template-owned role and AGENTS files,
-adopts same-named existing fins by recording template origin, and deletes only
-fins whose `fin.toml` says they came from that template. Use `--dry-run` to
-preview those changes without writing files.
+plan, adds missing template fins, updates template-owned role, AGENTS, and
+fin.toml files, adopts same-named existing fins by recording template origin,
+and deletes only fins whose `fin.toml` says they came from that template. Use
+`--dry-run` to preview those changes without writing files.
 
 Manage the durable pod charter and fin role files:
 

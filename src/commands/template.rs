@@ -137,9 +137,9 @@ fn sync_template(
     let (_, template_fins) = load_template_fins_for_sync(orqa, template)?;
     let template_slugs: BTreeSet<String> =
         template_fins.iter().map(|fin| fin.slug.clone()).collect();
-    let template_by_slug: BTreeMap<String, PathBuf> = template_fins
+    let template_by_slug: BTreeMap<String, TemplateFin> = template_fins
         .into_iter()
-        .map(|fin| (fin.slug, fin.role_path))
+        .map(|fin| (fin.slug.clone(), fin))
         .collect();
     let fins_dir = pod_root.join(".orqa").join("fins");
     let existing_fins = list_dirs(&fins_dir)?;
@@ -152,10 +152,15 @@ fn sync_template(
         if dry_run { " (dry run)" } else { "" }
     );
 
-    for (fin_slug, role_path) in &template_by_slug {
+    for (fin_slug, template_fin) in &template_by_slug {
         let fin_home = fins_dir.join(fin_slug);
-        let role = fs::read_to_string(role_path)
-            .map_err(|error| format!("failed to read {}: {error}", role_path.display()))?;
+        let role = fs::read_to_string(&template_fin.role_path).map_err(|error| {
+            format!(
+                "failed to read {}: {error}",
+                template_fin.role_path.display()
+            )
+        })?;
+        let config = read_template_fin_config(template_fin)?;
         let fin = FinRef::new(&pod_slug, fin_slug)?;
 
         if !fin_home.join("fin.toml").exists() {
@@ -165,7 +170,15 @@ fn sync_template(
             println!("  + {}", fin_home.join("ROLE.md").display());
             println!("  + {}", fin_home.join("AGENTS.md").display());
             if !dry_run {
-                create_fin_from_template(orqa, &pod_slug, &pod_root, template, fin_slug, &role)?;
+                create_fin_from_template(
+                    orqa,
+                    &pod_slug,
+                    &pod_root,
+                    template,
+                    fin_slug,
+                    &role,
+                    config.as_deref(),
+                )?;
             }
             continue;
         }
@@ -190,8 +203,16 @@ fn sync_template(
         }
 
         let agents = fin_agents_template(&fin, &role);
+        let desired_config = config
+            .as_deref()
+            .map(|config| materialized_fin_config(&fin, template, Some(config)))
+            .transpose()?;
         let role_needs_update = file_contents(&fin_home.join("ROLE.md"))? != role;
         let agents_needs_update = file_contents(&fin_home.join("AGENTS.md"))? != agents;
+        let config_needs_update = match &desired_config {
+            Some(config) => file_contents(&fin_home.join("fin.toml"))? != *config,
+            None => false,
+        };
 
         if role_needs_update {
             changed = true;
@@ -209,6 +230,16 @@ fn sync_template(
             println!("  ~ {}", fin_home.join("AGENTS.md").display());
             if !dry_run {
                 write_text(&fin_home.join("AGENTS.md"), &agents)?;
+            }
+        }
+        if let Some(desired_config) = desired_config.filter(|_| config_needs_update) {
+            changed = true;
+            if !role_needs_update && !agents_needs_update {
+                println!("UPDATE fin {fin_slug}");
+            }
+            println!("  ~ {}", fin_home.join("fin.toml").display());
+            if !dry_run {
+                write_text(&fin_home.join("fin.toml"), &desired_config)?;
             }
         }
     }
@@ -245,18 +276,17 @@ pub(super) fn create_fin_from_template(
     template: &str,
     fin_slug: &str,
     role: &str,
+    config: Option<&str>,
 ) -> Result<(), String> {
     let fin = FinRef::new(pod_slug, fin_slug)?;
     let fin_home = pod_root.join(".orqa").join("fins").join(fin_slug);
+    let fin_config = materialized_fin_config(&fin, template, config)?;
     ensure_fin_runtime_homes(orqa, &fin)?;
     ensure_maildir(&fin_home.join("mail"))?;
     ensure_maildir(&fin_home.join("tasks"))?;
 
     write_if_missing(&fin_home.join("fin.txt"), &format!("slug={}\n", fin.fin))?;
-    write_if_missing(
-        &fin_home.join("fin.toml"),
-        &fin_config_template_with_backend_and_template(&fin, None, Some(template)),
-    )?;
+    write_if_missing(&fin_home.join("fin.toml"), &fin_config)?;
     write_if_missing(&fin_home.join("ROLE.md"), role)?;
     write_if_missing(
         &fin_home.join("AGENTS.md"),
@@ -308,6 +338,64 @@ pub(super) fn template_home(orqa: &Orqa, template: &str) -> PathBuf {
     templates_home(orqa).join(template)
 }
 
+fn materialized_fin_config(
+    fin: &FinRef,
+    template: &str,
+    source_config: Option<&str>,
+) -> Result<String, String> {
+    let Some(source_config) = source_config else {
+        return Ok(fin_config_template_with_backend_and_template(
+            fin,
+            None,
+            Some(template),
+        ));
+    };
+
+    let mut table = source_config.parse::<toml::Table>().map_err(|error| {
+        format!(
+            "failed to parse template fin config for {}: {error}",
+            fin.fin
+        )
+    })?;
+    stamp_fin_config(&mut table, template, &fin.fin)?;
+    toml::to_string_pretty(&table).map_err(|error| {
+        format!(
+            "failed to serialize template fin config for {}: {error}",
+            fin.fin
+        )
+    })
+}
+
+fn stamp_fin_config(table: &mut toml::Table, template: &str, fin: &str) -> Result<(), String> {
+    let fin_value = table
+        .entry("fin".to_string())
+        .or_insert_with(|| toml::Value::Table(toml::Table::new()));
+    let fin_table = fin_value
+        .as_table_mut()
+        .ok_or_else(|| "template fin config [fin] must be a table".to_string())?;
+    if let Some(existing_slug) = fin_table.get("slug") {
+        let existing_slug = existing_slug
+            .as_str()
+            .ok_or_else(|| "template fin config [fin].slug must be a string".to_string())?;
+        if existing_slug != fin {
+            return Err(format!(
+                "template fin config slug '{}' does not match fin '{}'",
+                existing_slug, fin
+            ));
+        }
+    }
+    fin_table.insert("slug".to_string(), toml::Value::String(fin.to_string()));
+
+    let mut template_table = toml::Table::new();
+    template_table.insert(
+        "name".to_string(),
+        toml::Value::String(template.to_string()),
+    );
+    template_table.insert("fin".to_string(), toml::Value::String(fin.to_string()));
+    table.insert("template".to_string(), toml::Value::Table(template_table));
+    Ok(())
+}
+
 pub(super) fn template_fins_dir(template_dir: &Path) -> Result<PathBuf, String> {
     if !template_dir.exists() {
         return Err(format!(
@@ -335,13 +423,15 @@ pub(super) fn template_fins_dir(template_dir: &Path) -> Result<PathBuf, String> 
 pub(super) struct TemplateFin {
     pub(super) slug: String,
     pub(super) role_path: PathBuf,
+    pub(super) config_path: Option<PathBuf>,
 }
 
 pub(super) fn template_fins(fins_dir: &Path) -> Result<Vec<TemplateFin>, String> {
     let mut fins = Vec::new();
     for slug in list_dirs(fins_dir)? {
         validate_slug(&slug)?;
-        let role_path = fins_dir.join(&slug).join("ROLE.md");
+        let fin_dir = fins_dir.join(&slug);
+        let role_path = fin_dir.join("ROLE.md");
         if !role_path.is_file() {
             return Err(format!(
                 "template fin '{}' is missing {}",
@@ -349,9 +439,74 @@ pub(super) fn template_fins(fins_dir: &Path) -> Result<Vec<TemplateFin>, String>
                 role_path.display()
             ));
         }
-        fins.push(TemplateFin { slug, role_path });
+        let config_path = fin_dir.join("fin.toml");
+        let config_path = if config_path.exists() {
+            validate_template_fin_config(&config_path, &slug)?;
+            Some(config_path)
+        } else {
+            None
+        };
+        fins.push(TemplateFin {
+            slug,
+            role_path,
+            config_path,
+        });
     }
     Ok(fins)
+}
+
+fn read_template_fin_config(fin: &TemplateFin) -> Result<Option<String>, String> {
+    fin.config_path
+        .as_ref()
+        .map(|path| {
+            fs::read_to_string(path).map_err(|error| {
+                format!(
+                    "failed to read template fin config {}: {error}",
+                    path.display()
+                )
+            })
+        })
+        .transpose()
+}
+
+fn validate_template_fin_config(path: &Path, fin: &str) -> Result<(), String> {
+    let contents = fs::read_to_string(path).map_err(|error| {
+        format!(
+            "failed to read template fin config {}: {error}",
+            path.display()
+        )
+    })?;
+    let parsed = contents.parse::<toml::Table>().map_err(|error| {
+        format!(
+            "failed to parse template fin config {}: {error}",
+            path.display()
+        )
+    })?;
+    if let Some(fin_table) = parsed.get("fin") {
+        let fin_table = fin_table.as_table().ok_or_else(|| {
+            format!(
+                "template fin config {} [fin] must be a table",
+                path.display()
+            )
+        })?;
+        if let Some(slug) = fin_table.get("slug") {
+            let slug = slug.as_str().ok_or_else(|| {
+                format!(
+                    "template fin config {} [fin].slug must be a string",
+                    path.display()
+                )
+            })?;
+            if slug != fin {
+                return Err(format!(
+                    "template fin config {} slug '{}' does not match fin '{}'",
+                    path.display(),
+                    slug,
+                    fin
+                ));
+            }
+        }
+    }
+    Ok(())
 }
 
 fn load_template_fins_for_sync(

@@ -284,7 +284,22 @@ fn seed_template_fins(
     for fin in fins {
         let role = fs::read_to_string(&fin.role_path)
             .map_err(|error| format!("failed to read {}: {error}", fin.role_path.display()))?;
-        template::create_fin_from_template(orqa, pod_slug, pod_root, template, &fin.slug, &role)?;
+        let config = match &fin.config_path {
+            Some(path) => Some(
+                fs::read_to_string(path)
+                    .map_err(|error| format!("failed to read {}: {error}", path.display()))?,
+            ),
+            None => None,
+        };
+        template::create_fin_from_template(
+            orqa,
+            pod_slug,
+            pod_root,
+            template,
+            &fin.slug,
+            &role,
+            config.as_deref(),
+        )?;
     }
 
     println!("Seeded pod '{}' from template '{}'", pod_slug, template);
